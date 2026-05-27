@@ -1,0 +1,20 @@
+{
+  "name": "trajectory",
+  "version": "1.0.0",
+  "contextFileName": "plugin/trajectory-gemini/GEMINI.md",
+  "settings": [
+    {
+      "name": "Datadog API Key",
+      "description": "API key for Datadog export (optional, only needed for export)",
+      "envVar": "DD_API_KEY",
+      "sensitive": true
+    },
+    {
+      "name": "Capture Level",
+      "description": "What to capture: full, redacted, metadata-only",
+      "envVar": "TRAJECTORY_CAPTURE_LEVEL",
+      "sensitive": false,
+      "default": "full"
+    }
+  ]
+}

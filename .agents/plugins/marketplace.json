@@ -1,0 +1,20 @@
+{
+  "name": "trajectory",
+  "interface": {
+    "displayName": "Trajectory"
+  },
+  "plugins": [
+    {
+      "name": "trajectory",
+      "source": {
+        "source": "local",
+        "path": "./plugin/trajectory-codex"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

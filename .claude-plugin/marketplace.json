@@ -1,0 +1,16 @@
+{
+  "name": "trajectory",
+  "metadata": {
+    "description": "Turnkey observability for AI coding agents - capture sessions and export to Datadog LLM Observability"
+  },
+  "owner": {
+    "name": "Datadog",
+    "email": "no-reply@datadoghq.com"
+  },
+  "plugins": [
+    {
+      "name": "trajectory",
+      "source": "./plugin/trajectory"
+    }
+  ]
+}

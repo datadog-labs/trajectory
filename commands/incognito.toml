@@ -1,0 +1,12 @@
+description = "Toggle Trajectory incognito mode for the current Gemini session."
+
+prompt = """
+Use the Trajectory incognito skill to toggle incognito mode for this Gemini CLI session.
+
+Interpret command arguments this way:
+- "off", "disable", "resume", or "resume publish" means disable incognito.
+- "toggle" means invert the current state.
+- Empty arguments, "on", "enable", "private", or "pause capture" means enable incognito.
+
+Command arguments: {{args}}
+"""
