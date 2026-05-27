@@ -1,0 +1,21 @@
+{
+  "hooks": {
+    "SessionStart": [{ "matcher": "", "hooks": [{ "type": "command", "command": "\"${HOME}/.trajectory/bin/trajectory\" capture-hook SessionStart", "timeout": 5 }] }],
+    "UserPromptSubmit": [{ "matcher": "", "hooks": [
+      { "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/ensure-serve.sh", "timeout": 6 },
+      { "type": "http", "url": "http://localhost:19222/capture/UserPromptSubmit?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.2", "timeout": 5 }
+    ] }],
+    "PreToolUse": [{ "matcher": "", "hooks": [{ "type": "http", "url": "http://localhost:19222/capture/PreToolUse?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.2", "timeout": 5 }] }],
+    "PostToolUse": [{ "matcher": "", "hooks": [{ "type": "http", "url": "http://localhost:19222/capture/PostToolUse?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.2", "timeout": 5 }] }],
+    "PostToolUseFailure": [{ "matcher": "", "hooks": [{ "type": "http", "url": "http://localhost:19222/capture/PostToolUseFailure?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.2", "timeout": 5 }] }],
+    "Stop": [{ "matcher": "", "hooks": [
+      { "type": "http", "url": "http://localhost:19222/capture/Stop?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.2", "timeout": 10 }
+    ] }],
+    "PreCompact": [{ "matcher": "", "hooks": [{ "type": "http", "url": "http://localhost:19222/capture/PreCompact?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.2", "timeout": 5 }] }],
+    "PostCompact": [{ "matcher": "", "hooks": [{ "type": "http", "url": "http://localhost:19222/capture/PostCompact?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.2", "timeout": 5 }] }],
+    "PermissionRequest": [{ "matcher": "", "hooks": [{ "type": "http", "url": "http://localhost:19222/capture/PermissionRequest?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.2", "timeout": 5 }] }],
+    "SubagentStart": [{ "matcher": "", "hooks": [{ "type": "http", "url": "http://localhost:19222/capture/SubagentStart?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.2", "timeout": 5 }] }],
+    "SubagentStop": [{ "matcher": "", "hooks": [{ "type": "http", "url": "http://localhost:19222/capture/SubagentStop?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.2", "timeout": 5 }] }],
+    "SessionEnd": [{ "matcher": "", "hooks": [{ "type": "command", "command": "\"${HOME}/.trajectory/bin/trajectory\" capture-hook SessionEnd &", "timeout": 2 }] }]
+  }
+}

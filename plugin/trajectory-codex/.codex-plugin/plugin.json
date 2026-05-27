@@ -1,0 +1,29 @@
+{
+  "name": "trajectory",
+  "version": "1.0.0",
+  "description": "Agent observability for AI coding assistants - captures sessions and exports to Datadog LLM Observability.",
+  "author": {
+    "name": "Datadog",
+    "url": "https://github.com/datadog-labs/trajectory"
+  },
+  "homepage": "https://github.com/datadog-labs/trajectory",
+  "repository": "https://github.com/datadog-labs/trajectory",
+  "license": "Apache-2.0",
+  "keywords": ["trajectory", "observability", "datadog", "llm-obs", "tracing"],
+  "hooks": "./hooks.json",
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Trajectory",
+    "shortDescription": "Agent observability for AI coding assistants.",
+    "longDescription": "Captures coding agent sessions and exports traces, metrics, and behavioral markers to Datadog LLM Observability. Includes introspection tools for querying session data and diagnosing instrumentation.",
+    "developerName": "Datadog",
+    "category": "Developer Tools",
+    "capabilities": [],
+    "websiteURL": "https://github.com/datadog-labs/trajectory",
+    "defaultPrompt": [
+      "Check trajectory status and recent sessions",
+      "Diagnose why my sessions aren't exporting"
+    ]
+  }
+}
