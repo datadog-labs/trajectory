@@ -37,6 +37,42 @@ info()  { echo "[trajectory]  $1"; }
 warn()  { echo "[trajectory]  WARNING: $1" >&2; }
 fail()  { echo "[trajectory]  ERROR: $1" >&2; exit 1; }
 
+codex_marketplace_add() {
+    local output status marketplace_dir
+    marketplace_dir="$1"
+    if output=$(codex plugin marketplace add "$marketplace_dir" 2>&1); then
+        if [ -n "$output" ]; then printf '%s\n' "$output"; fi
+        return 0
+    fi
+    status=$?
+    case "$output" in
+        *"unexpected argument"*"marketplace"*|*"unrecognized subcommand"*"marketplace"*|*"unknown command"*"marketplace"*|*"invalid command"*"marketplace"*)
+            warn "Codex CLI does not support plugin marketplace; MCP-only setup was handled by trajectory setup. Upgrade Codex to enable live plugin hooks."
+            return 0
+            ;;
+    esac
+    if [ -n "$output" ]; then printf '%s\n' "$output" >&2; fi
+    return "$status"
+}
+
+copilot_plugin_command() {
+    local output status prompt
+    if output=$(copilot "$@" 2>&1); then
+        if [ -n "$output" ]; then printf '%s\n' "$output"; fi
+        return 0
+    fi
+    status=$?
+    if [ -n "$output" ]; then printf '%s\n' "$output" >&2; fi
+    case "$output" in
+        *"Invalid command format"*|*"Did you mean: copilot -p"*|*"use the -p"*|*"unexpected argument"*)
+            prompt="$*"
+            copilot -p "$prompt"
+            return $?
+            ;;
+    esac
+    return "$status"
+}
+
 # Collect args that pass through to `trajectory setup`. Recognized flags:
 # --site, --ml-app, --api-key, --clients (all take a value), --non-interactive,
 # --add-to-path. Unknown args are forwarded so setup can validate them.
@@ -259,10 +295,19 @@ CC_PLUGIN_DIR="$SCRIPT_DIR/plugin/trajectory"
 if command -v claude >/dev/null 2>&1; then
     if [ -d "$CC_PLUGIN_DIR" ]; then
         info "[5/5] Installing Claude Code plugin..."
-        claude plugin marketplace add "$SCRIPT_DIR" 2>/dev/null && claude plugin install trajectory@trajectory --scope user || {
-            warn "Claude Code plugin install failed. Install manually:"
-            warn "  claude plugin marketplace add /path/to/trajectory && claude plugin install trajectory@trajectory --scope user"
-        }
+        claude plugin marketplace add "$SCRIPT_DIR" 2>/dev/null
+        if claude plugin list 2>/dev/null | grep -qE "trajectory@trajectory"; then
+            info "      Plugin already installed - running update..."
+            claude plugin update trajectory@trajectory --scope user || {
+                warn "Claude Code plugin update failed. Update manually:"
+                warn "  claude plugin update trajectory@trajectory --scope user"
+            }
+        else
+            claude plugin install trajectory@trajectory --scope user || {
+                warn "Claude Code plugin install failed. Install manually:"
+                warn "  claude plugin marketplace add /path/to/trajectory && claude plugin install trajectory@trajectory --scope user"
+            }
+        fi
         PLUGIN_INSTALLED=1
     fi
 else
@@ -274,7 +319,7 @@ if command -v codex >/dev/null 2>&1; then
     CODEX_MARKETPLACE_DIR="$INSTALL_DIR/codex-marketplace"
     if [ -d "$CODEX_MARKETPLACE_DIR/.agents" ]; then
         info "      Installing Codex marketplace plugin..."
-        codex plugin marketplace add "$CODEX_MARKETPLACE_DIR" || {
+        codex_marketplace_add "$CODEX_MARKETPLACE_DIR" || {
             warn "Codex marketplace install failed. Install manually:"
             warn "  ~/.trajectory/bin/trajectory setup --clients codex"
         }
@@ -286,6 +331,44 @@ if command -v codex >/dev/null 2>&1; then
     fi
 else
     info "      Codex CLI not detected - skipping Codex plugin."
+fi
+
+# GitHub Copilot CLI plugin (marketplace-based, beta)
+if command -v copilot >/dev/null 2>&1; then
+    COPILOT_MARKETPLACE_DIR="$INSTALL_DIR/copilot-marketplace"
+    if [ -d "$COPILOT_MARKETPLACE_DIR/.github/plugin" ]; then
+        info "      Installing GitHub Copilot CLI plugin (beta)..."
+        copilot_plugin_command plugin marketplace add "$COPILOT_MARKETPLACE_DIR" && copilot_plugin_command plugin install trajectory@trajectory || {
+            warn "GitHub Copilot CLI plugin install failed. Install manually:"
+            warn "  ~/.trajectory/bin/trajectory setup --clients copilot"
+        }
+        PLUGIN_INSTALLED=1
+    else
+        info "      GitHub Copilot CLI detected, but Copilot setup was not selected - skipping Copilot plugin."
+        info "      To install later: ~/.trajectory/bin/trajectory setup --clients copilot"
+        PLUGIN_INSTALLED=1
+    fi
+else
+    info "      GitHub Copilot CLI not detected - skipping Copilot plugin."
+fi
+
+# Factory Droid plugin (marketplace-based, beta)
+if command -v droid >/dev/null 2>&1; then
+    DROID_MARKETPLACE_DIR="$INSTALL_DIR/factory-marketplace"
+    if [ -d "$DROID_MARKETPLACE_DIR/.factory-plugin" ]; then
+        info "      Installing Factory Droid plugin (beta)..."
+        droid plugin marketplace add "$DROID_MARKETPLACE_DIR" && droid plugin install trajectory@trajectory --scope user || {
+            warn "Factory Droid plugin install failed. Install manually:"
+            warn "  ~/.trajectory/bin/trajectory setup --clients droid"
+        }
+        PLUGIN_INSTALLED=1
+    else
+        info "      Factory Droid CLI detected, but Droid setup was not selected - skipping Droid plugin."
+        info "      To install later: ~/.trajectory/bin/trajectory setup --clients droid"
+        PLUGIN_INSTALLED=1
+    fi
+else
+    info "      Factory Droid CLI not detected - skipping Droid plugin."
 fi
 
 # Gemini CLI extension
@@ -352,6 +435,8 @@ if [ "$PLUGIN_INSTALLED" = "0" ]; then
     info "  No coding assistant CLIs detected. Install plugins later:"
     info "    Claude Code: claude plugin marketplace add https://github.com/datadog-labs/trajectory.git && claude plugin install trajectory@trajectory --scope user"
     info "    Codex:       ~/.trajectory/bin/trajectory setup --clients codex"
+    info "    Copilot beta: ~/.trajectory/bin/trajectory setup --clients copilot"
+    info "    Droid beta:  ~/.trajectory/bin/trajectory setup --clients droid"
     info "    Gemini:      gemini extensions install datadog-labs/trajectory"
     info "    Cursor:      ~/.trajectory/bin/trajectory setup --clients cursor"
     info "    OpenCode:    ~/.trajectory/bin/trajectory setup --clients opencode"

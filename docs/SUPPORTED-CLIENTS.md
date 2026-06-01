@@ -6,29 +6,35 @@ For the lower-level install artifacts, hook surfaces, watcher behavior, and
 backfill boundaries per client, see
 [CLIENT-INSTRUMENTATION.md](CLIENT-INSTRUMENTATION.md).
 
+For the shared MCP tool and resource catalog, run `trajectory user-guide mcp`.
+
 ## Quick Reference
 
 | Client | Install | Min Version | Capture |
 |--------|---------|-------------|---------|
 | Claude Code | `trajectory setup --clients cc` | 2.0+ | HTTP hooks + MCP |
-| Codex CLI | `trajectory setup --clients codex` | 0.128.0 | HTTP hooks (primary) + rollout watcher (fallback) |
-| Gemini CLI | `trajectory setup --clients gemini` | 0.30.0+ | Managed hooks + MCP |
+| Codex CLI | `trajectory setup --clients codex` | 0.128.0 | Command hooks (primary) + rollout watcher (fallback) |
+| GitHub Copilot CLI | `trajectory setup --clients copilot` | Beta | Copilot plugin command hooks + MCP |
+| Gemini CLI | `trajectory setup --clients gemini` | 0.30.0+ | Managed command hooks + MCP |
 | Cursor Desktop | `trajectory setup --clients cursor` | 1.0+ | Command hooks that POST to capture |
 | cursor-agent CLI | Automatic when `cursor-agent` is on PATH | Beta | Transcript watcher |
+| Factory Droid | `trajectory setup --clients droid` | Beta | Factory plugin command hooks + MCP |
 | Pi | `trajectory setup --clients pi` | Beta | TypeScript extension + MCP |
-| OpenCode | `trajectory setup --clients opencode` | Beta | Plugin SDK hooks + MCP |
+| OpenCode | `trajectory setup --clients opencode` | Beta | Plugin SDK events + MCP |
 
 ## Feature Coverage Matrix
 
 | Client | Live capture | Tool/model events | Token/cost usage | Incognito or MCP | Backfill | Resume |
 |--------|--------------|-------------------|------------------|------------------|----------|--------|
-| Claude Code | HTTP hooks | Yes | Yes | Yes | Transcript backfill | Yes |
-| Codex CLI | HTTP hooks plus rollout watcher fallback | Yes | Yes | Yes | Codex rollout backfill | Yes |
-| Gemini CLI | Managed hooks | Yes | Yes | Yes | Gemini transcript backfill | Yes |
-| Cursor Desktop | Command hooks | Yes | Cursor DB dependent | Yes | Cursor chat backfill | Yes |
-| cursor-agent CLI | Transcript watcher | Tool and turn events | Not exposed by current transcripts | No | Same transcript source | No setup-managed resume |
-| Pi | TypeScript extension | Yes | Yes | Native tool plus MCP | Pi/OMP session backfill | Yes |
-| OpenCode | Plugin SDK hooks | Yes | Yes | Yes | SQLite backfill | Yes |
+| Claude Code | Yes, HTTP hooks | Yes | Yes | Yes | Transcript backfill | Yes |
+| Codex CLI | Yes, command hooks plus rollout watcher fallback | Yes | Yes | Yes | Codex rollout backfill | Yes |
+| GitHub Copilot CLI | Beta command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
+| Gemini CLI | Yes, managed command hooks | Yes | Yes | Yes | Gemini transcript backfill | Yes |
+| Cursor Desktop | Yes, command hooks | Yes | Cursor DB dependent | Yes | Cursor chat backfill | Yes |
+| cursor-agent CLI | Yes, transcript watcher | Tool and turn events | Not exposed by current transcripts | No | Same transcript source | No setup-managed resume |
+| Factory Droid | Beta command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
+| Pi | Yes, TypeScript extension | Yes | Yes | Native tool plus MCP | Pi/OMP session backfill | Yes |
+| OpenCode | Yes, plugin SDK events | Yes | Yes | Yes | SQLite backfill | Yes |
 
 ## Recommended vs Manual Installs
 
@@ -53,7 +59,7 @@ Earlier versions may have partial support (marketplace without hook discovery, o
 
 Codex uses two capture mechanisms:
 
-1. **HTTP hooks (primary)** - the plugin's `hooks.json` registers 12 lifecycle hooks that POST to the trajectory capture server. This is the standard path, matching how all other clients work.
+1. **Command hooks (primary)** - the plugin's `hooks.json` registers 12 lifecycle hooks that use `curl` to POST stdin to the trajectory capture server. Codex accepts `type: "command"` hook entries; it does not accept Claude-style `type: "http"` hook entries.
 
 2. **Rollout watcher (fallback)** - the trajectory binary tails `~/.codex/sessions/` for rollout JSONL files. This captures sessions that started before the plugin was installed, or if hooks aren't firing.
 
@@ -68,6 +74,24 @@ The Codex marketplace plugin also ships the `/incognito` skill. It uses the `tra
 Setup discovers Codex from `PATH`, common user install directories, Volta, nvm, fnm, npm, pnpm, yarn, asdf, and mise/rtx. For npm-style installs, setup also checks for the vendored native Codex binary before falling back to the node launcher. Each candidate must pass `codex --version`; setup skips broken candidates and uses the first working launcher.
 
 If setup reports that every `codex --version` candidate failed with `ENOENT` under an npm, nvm, fnm, or Volta path, the Codex launcher is present but its bundled native binary is missing. Repair or reinstall the Codex CLI first, or install the standalone/Homebrew Codex binary, then rerun `trajectory setup --clients codex`.
+
+## GitHub Copilot CLI
+
+**Status: Beta, fixture-tested only**
+
+Install the Copilot CLI plugin with setup:
+
+```bash
+trajectory setup --clients copilot
+```
+
+Setup writes a local Copilot marketplace under
+`~/.trajectory/copilot-marketplace`, registers it with Copilot, and installs
+`trajectory@trajectory`. The plugin includes command hooks, MCP config, and an
+incognito skill.
+
+Capture is live local CLI capture only. There is no Copilot historical backfill,
+transcript watcher, cloud-agent capture path, or session import path.
 
 ## Claude Code
 
@@ -103,7 +127,7 @@ Install with setup:
 trajectory setup --clients gemini
 ```
 
-Setup writes `~/.gemini/settings.json`, `~/.gemini/hooks/hooks.json`, `~/.gemini/skills/incognito/SKILL.md`, and `~/.gemini/commands/incognito.toml`. The settings file registers Trajectory MCP, and the hooks file posts session events to the local capture server.
+Setup writes `~/.gemini/settings.json`, `~/.gemini/hooks/hooks.json`, `~/.gemini/skills/incognito/SKILL.md`, and `~/.gemini/commands/incognito.toml`. The settings file registers Trajectory MCP, and the hooks file uses command hooks with `curl` to post session events to the local capture server.
 
 The repository still includes `hooks/hooks.json` as a legacy extension command-hook template for older manual installs. Manual extension installs remain supported for development and recovery, but they must match Gemini's hook format and wire MCP, skills, and commands separately. Current setup-managed installs should use `trajectory setup --clients gemini`.
 
@@ -123,9 +147,9 @@ The trajectory setup wizard writes hooks and MCP config directly:
 trajectory setup --clients cursor
 ```
 
-This creates `~/.cursor/hooks.json` and `~/.cursor/mcp.json`. Capture uses Cursor's supported command hooks to `curl` POST payloads to the Trajectory capture server. Cursor does not currently accept every Claude Code lifecycle hook name; setup registers the supported Cursor event names and omits unsupported lifecycle hooks. When Claude Code is installed, Cursor uses the Claude Code Trajectory skill path for `/incognito`; otherwise setup installs a native Cursor fallback at `~/.cursor/skills/incognito/SKILL.md`. The `incognito` skill uses the shared `trajectory_incognito` MCP tool to suppress publish to non-exempt Datadog destinations for the active Cursor session while local JSONL capture continues. Cursor Desktop metrics include tool, turn, session, duration, and per-request cost values; token usage metrics are emitted when Cursor's `state.vscdb` exposes non-zero real token counts.
+This creates `~/.cursor/hooks.json` and `~/.cursor/mcp.json`. Capture uses Cursor's supported command hooks to `curl` POST payloads to the Trajectory capture server. Cursor does not currently accept every Claude Code lifecycle hook name; setup registers the supported Cursor event names and omits unsupported lifecycle hooks. When Claude Code is installed, Cursor uses the Claude Code Trajectory skill path for `/incognito`; otherwise setup installs a native Cursor fallback at `~/.cursor/skills/incognito/SKILL.md`. The `incognito` skill uses the shared `trajectory_incognito` MCP tool to suppress publish to non-exempt Datadog destinations for the active Cursor session while local JSONL capture continues.
 
-CI validates this Desktop install surface on macOS by running setup in an isolated home, checking the Cursor MCP/hooks files and incognito skill routing, replaying Cursor Desktop hook payloads into `/capture/cursor`, and verifying the `/session/incognito` sentinel lifecycle. That coverage is separate from the Docker `cursor-agent` test below.
+CI validates this Desktop install surface on macOS by running setup in an isolated home, checking the Cursor MCP/hooks files and incognito skill routing, replaying Cursor Desktop hook payloads into `/capture/cursor`, and verifying the `/session/incognito` sentinel lifecycle. That coverage is separate from the Docker `cursor-agent` test below. Cursor Desktop metrics include tool, turn, session, duration, and per-request cost values; token usage metrics are emitted when Cursor's `state.vscdb` exposes non-zero real token counts.
 
 ### cursor-agent (CLI)
 
@@ -158,6 +182,24 @@ Setup writes `~/.pi/agent/extensions/trajectory/` and points `~/.pi/agent/mcp.js
 
 Pi does not currently consume the Codex/Claude-style `skills/` plugin directory. The Trajectory Pi extension vends incognito through its native `trajectory_incognito` tool; environments that expose MCP can also use the shared `trajectory_incognito` MCP tool.
 
+## Factory Droid
+
+**Status: Beta, fixture-tested only**
+
+Install the Factory Droid plugin with setup:
+
+```bash
+trajectory setup --clients droid
+```
+
+Setup writes a local Factory marketplace under
+`~/.trajectory/factory-marketplace`, registers it with Droid, and installs
+`trajectory@trajectory` at user scope. The plugin includes command hooks, MCP
+config, and an incognito skill.
+
+Capture is live only. There is no Factory Droid historical backfill, transcript
+watcher, or session import path.
+
 ## OpenCode
 
 **Status: Supported** (headless mode: `opencode run`)
@@ -187,4 +229,6 @@ gemini --version          # Gemini CLI
 cursor --version          # Cursor (desktop) / cursor-agent --version (CLI)
 pi --version              # Pi
 opencode --version        # OpenCode (note: takes cwd as argument)
+droid --version           # Factory Droid
+copilot version           # GitHub Copilot CLI
 ```

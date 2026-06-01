@@ -33,6 +33,42 @@ Trajectory always starts with embedded built-ins for common agent outcomes and f
 
 The setup default profile adds Datadog-oriented signals such as `force-push`, `destructive-command`, `secret-in-command`, `high-cost-turn`, CI and infrastructure touch points, retry ranges, and language/code-change measures.
 
+The built-in `test-passed` and `test-failed` command regexes are intentionally
+examples, not an exhaustive test-runner catalog. They cover common
+high-confidence commands such as `go test`, `cargo test`, `pytest`, JavaScript
+package-manager test scripts, `make test`-style targets, shell scripts under
+`tests/`, and representative language-native runners like Maven/Gradle,
+`dotnet test`, RSpec, PHPUnit/Composer, Swift, and CTest. If your team uses
+more specific commands, override those points in org, user, or project marker
+config:
+
+```yaml
+version: 2
+
+points:
+  - name: test-failed
+    severity: error
+    confidence: high
+    emit: metric
+    scope: turn
+    match:
+      tool: [Bash, Shell, exec_command, run_shell]
+      command: '\b(?:mvnw?|gradlew?|bundle\s+exec\s+rspec|composer\s+test)\b'
+      output: '(?m)\b(?:FAIL|FAILED|Error:|AssertionError|[1-9][0-9]* failed)\b'
+
+  - name: test-passed
+    severity: success
+    confidence: high
+    emit: metric
+    scope: turn
+    match:
+      tool: [Bash, Shell, exec_command, run_shell]
+      command: '\b(?:mvnw?|gradlew?|bundle\s+exec\s+rspec|composer\s+test)\b'
+      success: true
+      output: '(?i)\b(?:BUILD SUCCESS|passed|0 failed|OK)\b'
+      not_output: '(?m)\b(?:FAIL|FAILED|Error:|AssertionError|[1-9][0-9]* failed)\b'
+```
+
 The optional security catalog is installed with:
 
 ```bash
@@ -95,7 +131,8 @@ measures:
     scope: session            # scope -> prefix
     count:
       point: force-push
-# Publishes as: trajectory.session.force_pushes
+# Publishes as the compatibility gauge trajectory.session.force_pushes and
+# the dashboard-safe completed-session count trajectory.session.force_pushes.completed_count.
 ```
 
 Explicit override (when you want a stable name that does not match the marker name):
@@ -444,15 +481,15 @@ Metric names should describe what the value means without relying on the Datadog
 - Use `metric_kind: count` only for additive deltas that should be summed across time buckets.
 - Use `metric_kind: distribution` for raw sample populations where percentiles, averages, and sums over samples are the desired product behavior.
 
-Do not publish the same metric name with multiple `metric_kind` values. If a value is useful both while it is still in progress and after it completes, publish distinct lifecycle names such as `.elapsed` or `.accumulated` for the live gauge and `.total` for the completed distribution.
+Do not publish the same metric name with multiple `metric_kind` values. If a value is useful both while it is still in progress and after it completes, publish distinct lifecycle names such as `.elapsed` or `.accumulated` for the live gauge and `.total` for the completed sample.
 
 Examples of the derivation:
 
 | Marker (v2) | Published metric |
 | --- | --- |
-| measure `commits`, scope `session`, count over `git-commit` | `trajectory.session.commits` |
-| measure `force-pushes`, scope `session` | `trajectory.session.force_pushes` |
-| measure `permissions-denied`, scope `session` | `trajectory.session.permissions_denied` |
+| measure `commits`, scope `session`, count over `git-commit` | `trajectory.session.commits` plus `trajectory.session.commits.completed_count` for dashboard totals |
+| measure `force-pushes`, scope `session` | `trajectory.session.force_pushes` plus `trajectory.session.force_pushes.completed_count` for dashboard totals |
+| measure `permissions-denied`, scope `session` | `trajectory.session.permissions_denied` plus `trajectory.session.permissions_denied.completed_count` for dashboard totals |
 | measure `task-outcome-score`, scope `task` | `trajectory.task.outcome_score` |
 | measure `commit-cost-usd`, scope `commit`, distribution per commit | `trajectory.commit.cost.usd.total` |
 | built-in PR-attributed cost, distribution per PR | `trajectory.pr.cost.usd.attributed.total` |
@@ -510,13 +547,18 @@ trajectory publish validate
 
 ### Dashboard query examples
 
-Trajectory submits marker metrics according to `metric_kind`. Most session measures are gauges; raw per-commit samples are distributions. Use `sum:` for gauge-backed count-like session measures, `avg:` for ratios/scores, and percentile aggregators such as `p95:` for distribution samples.
+Trajectory submits marker metrics according to `metric_kind`. Most session
+measures are gauges with completed-session `.completed_count` mirrors for
+dashboard totals; raw per-commit samples are distributions. Use `sum:` on the
+`.completed_count` mirrors for count-like session totals, `avg:` for
+ratios/scores, and percentile aggregators such as `p95:` for distribution
+samples.
 
 | Widget | Example Datadog query | Notes |
 | --- | --- | --- |
 | Security events query value | `sum:trajectory.session.security_risky_shell_secret_exfils{env:prod}.rollup(sum, 3600)` | Count risky shell/secret exfil markers per hour. |
-| Force pushes by repo toplist | `sum:trajectory.session.force_pushes{*} by {repo}.rollup(sum, 86400)` | Requires the repo tag to be resolved or supplied. |
-| Permission denials trend | `sum:trajectory.session.permissions_denied{team:agent-platform}.rollup(sum, 3600)` | Useful for safety/friction dashboards. |
+| Force pushes by repo toplist | `sum:trajectory.session.force_pushes.completed_count{*} by {repo}.rollup(sum, 86400)` | Requires the repo tag to be resolved or supplied. |
+| Permission denials trend | `sum:trajectory.session.permissions_denied.completed_count{team:agent-platform}.rollup(sum, 3600)` | Useful for safety/friction dashboards. |
 | P95 tools per completed turn | `p95:trajectory.turn.tool_uses.total{repo:trajectory}` | Distribution sample per completed turn; use the gauge `trajectory.turn.tool_uses` only for `tool_name` breakdowns. |
 | P95 cost per completed turn | `p95:trajectory.turn.cost.usd.total{repo:trajectory}` | Distribution sample per completed turn. |
 | P95 completed-turn duration | `p95:trajectory.turn.duration_ms.total{repo:trajectory}` | Requires clients to emit or derive turn duration. |
@@ -528,7 +570,7 @@ Trajectory submits marker metrics according to `metric_kind`. Most session measu
 | Average containing-session cost for PRs | `avg:trajectory.pr.containing_session.cost.usd.total{repo:trajectory}` | Compares attributed PR cost with the broader session cost that contained PR activity. |
 | P95 range duration | `p95:trajectory.session.test_fix_cycle.duration.ms{*}` | Backed by a range distribution using `@range_duration_ms` and `metric_kind: distribution`. |
 | Test success ratio | `avg:trajectory.session.test_success_rate{repo:trajectory}` | Ratio measures are session-level gauges; graph with `avg:`. |
-| Marker density formula | `sum:trajectory.session.force_pushes{*}.rollup(sum, 86400) / count_not_null(avg:trajectory.session.turns.total{*} by {gen_ai.conversation.id})` | Use a formula widget to normalize marker counts by completed sessions. |
+| Marker density formula | `sum:trajectory.session.force_pushes.completed_count{*}.rollup(sum, 86400) / count_not_null(avg:trajectory.session.turns.total{*} by {gen_ai.conversation.id})` | Use a formula widget to normalize marker counts by completed sessions. |
 
 ### Monitor examples
 

@@ -1,6 +1,8 @@
 # Trajectory
 
-Trajectory is Datadog's observability tooling for AI coding agents.
+Trajectory is Datadog's observability tooling for AI coding agents. It captures
+local agent sessions, evaluates them for operational signals, and exports
+telemetry to Datadog LLM Observability.
 
 This repository contains:
 
@@ -19,7 +21,7 @@ The installer downloads the latest Trajectory release asset for your platform, i
 
 To upgrade an install from this repository, rerun the installer.
 
-Release assets are expected to use this naming convention:
+Release assets use this naming convention:
 
 ```text
 trajectory-darwin-amd64
@@ -28,7 +30,6 @@ trajectory-darwin-universal
 trajectory-linux-amd64
 trajectory-linux-arm64
 trajectory-windows-amd64.exe
-trajectory-windows-arm64.exe
 ```
 
 ## Supported Clients
@@ -37,8 +38,10 @@ Trajectory supports:
 
 - Claude Code
 - Codex CLI
+- GitHub Copilot CLI beta
 - Gemini CLI
 - Cursor Desktop and cursor-agent
+- Factory Droid beta
 - Pi
 - OpenCode
 
@@ -65,13 +68,7 @@ install.sh                Installer
 
 ## Development
 
-This repository accepts changes to public docs, marketplace metadata, plugin assets, and installer scaffolding.
-
-Run the scaffold validation before opening a PR:
-
-```bash
-bash scripts/validate-scaffold.sh
-```
+This repository accepts changes to public docs, marketplace metadata, plugin assets, installer scaffolding, and release metadata.
 
 ## Reference
 
