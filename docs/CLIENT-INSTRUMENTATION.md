@@ -3,7 +3,7 @@
 Trajectory instruments each supported coding agent through that agent's native
 plugin, hook, MCP, or transcript surface. All live capture paths normalize into
 canonical JSONL under `~/.trajectory/trajectories/` and route through the local
-capture server on `localhost:19222` when live HTTP capture is available.
+capture server on `localhost:19222` through the transport each client supports.
 
 For installation status and version support, see
 [SUPPORTED-CLIENTS.md](SUPPORTED-CLIENTS.md).
@@ -13,24 +13,14 @@ For installation status and version support, see
 | Client | Setup path | Live capture surface | Backfill |
 |---|---|---|---|
 | Claude Code | `trajectory setup --clients cc` | Marketplace plugin hooks plus MCP | Transcript backfill |
-| Codex CLI | `trajectory setup --clients codex` | Plugin HTTP hooks plus rollout watcher fallback | Codex rollout backfill |
+| Codex CLI | `trajectory setup --clients codex` | Plugin command hooks plus rollout watcher fallback | Codex rollout backfill |
+| GitHub Copilot CLI | `trajectory setup --clients copilot` | Beta plugin command hooks plus MCP | None |
 | Gemini CLI | `trajectory setup --clients gemini` | Managed command hooks plus MCP | Gemini transcript backfill |
 | Cursor Desktop | `trajectory setup --clients cursor` | Cursor command hooks plus MCP | Cursor chat backfill |
 | cursor-agent CLI | Automatic when `cursor-agent` is on PATH | Transcript watcher | Same transcript source |
+| Factory Droid | `trajectory setup --clients droid` | Beta Factory command hooks plus MCP | None |
 | Pi | `trajectory setup --clients pi` | TypeScript extension plus eager MCP | Pi/OMP session backfill |
-| OpenCode | `trajectory setup --clients opencode` | OpenCode plugin SDK hooks plus MCP | SQLite backfill |
-
-## Feature Coverage Matrix
-
-| Client | Live capture | Tool/model events | Token/cost usage | Incognito or MCP | Backfill | Resume |
-|---|---|---|---|---|---|---|
-| Claude Code | HTTP hooks | Yes | Yes | Yes | Transcript backfill | Yes |
-| Codex CLI | HTTP hooks plus rollout watcher fallback | Yes | Yes | Yes | Codex rollout backfill | Yes |
-| Gemini CLI | Managed hooks | Yes | Yes | Yes | Gemini transcript backfill | Yes |
-| Cursor Desktop | Command hooks | Yes | Cursor DB dependent | Yes | Cursor chat backfill | Yes |
-| cursor-agent CLI | Transcript watcher | Tool and turn events | Not exposed by current transcripts | No | Same transcript source | No setup-managed resume |
-| Pi | TypeScript extension | Yes | Yes | Native tool plus MCP | Pi/OMP session backfill | Yes |
-| OpenCode | Plugin SDK hooks | Yes | Yes | Yes | SQLite backfill | Yes |
+| OpenCode | `trajectory setup --clients opencode` | OpenCode plugin SDK events plus MCP | SQLite backfill |
 
 ## Shared Local Flow
 
@@ -47,8 +37,8 @@ markers, metrics, diagnosis, and local UI indexing derive from local capture.
 The setup-managed clients also install or register the companion pieces needed
 for the client:
 
-- MCP entries that expose Trajectory tools such as status, sessions, markers,
-  and incognito.
+- MCP entries that expose Trajectory tools and resources for local
+  introspection.
 - Agent skills or slash commands where the client supports them.
 - Local marketplace metadata for plugin-based clients.
 - An installed or extension-local `trajectory` binary path where the client
@@ -57,16 +47,35 @@ for the client:
 Plugin-only manual installs can miss these companion pieces. Use
 `trajectory setup --clients <client>` for normal installs.
 
+The authoritative MCP catalog, including safe query examples, is embedded in
+the binary:
+
+```bash
+trajectory user-guide mcp
+```
+
+Compact MCP surface:
+
+| Surface | Names |
+|---|---|
+| Session/status tools | `trajectory_status`, `list_active_sessions`, `get_session_trajectory` |
+| Evaluation/privacy tools | `evaluate_markers`, `trajectory_incognito` |
+| SQLite tools | `trajectory_schema`, `trajectory_query` |
+| Resources | `trajectory://status`, `trajectory://config`, `trajectory://sqlite/schema` |
+
+Agents should call `trajectory_schema` before `trajectory_query` so SQL matches
+the live local-ui database selected by `TRAJECTORY_CACHE_DB` or the default
+cache path.
+
 ## Claude Code
 
 Setup writes a local Claude Code marketplace under
 `~/.trajectory/claude-marketplace`, registers it, refreshes it, and installs or
-updates `trajectory@trajectory` at user scope. If the plugin is already
-installed, setup updates it from the local marketplace instead of requiring a
-remote marketplace refresh.
+updates `trajectory@trajectory` at user scope.
 
 The plugin registers Claude lifecycle hooks that post to the local capture
-server. The plugin also carries MCP configuration and skills, including
+server. Claude Code supports native HTTP hook entries, so most lifecycle events
+use HTTP hooks. The plugin also carries MCP configuration and skills, including
 `/incognito`.
 
 Verify:
@@ -79,19 +88,14 @@ trajectory doctor
 ## Codex CLI
 
 Setup writes a local Codex marketplace under `~/.trajectory/codex-marketplace`
-and registers it with Codex. The local marketplace avoids remote startup sync in
-normal use and contains the hook plugin plus bundled skills.
+and registers it with Codex. The plugin provides command hooks that use `curl`
+to post to the local capture server, MCP configuration, and the `/incognito`
+skill. Codex hook configs must use `type: "command"`; `type: "http"` is not a
+supported Codex hook variant.
 
-The plugin provides HTTP hooks, MCP configuration, and the `/incognito` skill.
 Codex also has a rollout watcher fallback that tails `~/.codex/sessions/`.
 Hook-active sentinels under `~/.trajectory/state/codex-hook-active/` prevent
 the watcher from duplicating events while live hooks are firing.
-
-Setup discovers Codex from `PATH`, common user install directories, Volta, nvm,
-fnm, npm, pnpm, yarn, asdf, and mise/rtx. For npm-style installs, setup also
-checks for the vendored native Codex binary before falling back to the node
-launcher. Each candidate must pass `codex --version`; setup skips broken
-candidates and uses the first working launcher.
 
 Verify:
 
@@ -99,6 +103,16 @@ Verify:
 codex mcp list
 trajectory doctor
 ```
+
+## GitHub Copilot CLI
+
+Setup writes a local Copilot marketplace under
+`~/.trajectory/copilot-marketplace`, registers it, and installs
+`trajectory@trajectory`. The plugin includes command hooks, MCP config, and an
+incognito skill.
+
+Capture is beta live CLI capture only. There is no Copilot historical backfill
+or transcript import path.
 
 ## Gemini CLI
 
@@ -111,29 +125,35 @@ Setup writes:
 ~/.gemini/commands/incognito.toml
 ```
 
-`settings.json` registers Trajectory MCP. `hooks.json` posts supported Gemini
-events to the capture server. The skill and command expose `/incognito` with an
-MCP path and HTTP fallback.
+`settings.json` registers Trajectory MCP. `hooks.json` uses command hooks with
+`curl` to post supported Gemini events to the capture server. The skill and
+command expose `/incognito` with an MCP path and HTTP fallback.
 
 ## Cursor
 
 Cursor has two distinct capture paths.
 
 Cursor Desktop uses setup-managed `~/.cursor/hooks.json` and
-`~/.cursor/mcp.json`. Hooks post Cursor payloads to `/capture/cursor/...`.
+`~/.cursor/mcp.json`. Command hooks post Cursor payloads to `/capture/cursor/...`.
 Cursor does not accept every Claude lifecycle hook name, so setup writes only
 the supported Cursor event set. If Claude Code is not installed, setup also
 writes `~/.cursor/skills/incognito/SKILL.md`.
-
-Cursor Desktop metrics include tool, turn, session, duration, and per-request
-cost values. Token usage metrics are emitted when Cursor's `state.vscdb`
-exposes non-zero real token counts.
 
 cursor-agent CLI does not support `hooks.json`. Trajectory watches nested
 transcript files under `~/.cursor/projects/*/agent-transcripts/` when
 `cursor-agent` is present on `PATH`. Current cursor-agent transcripts do not
 expose token or cost fields, so metrics are limited to activity that can be
 derived from transcript structure.
+
+## Factory Droid
+
+Setup writes a local Factory marketplace under
+`~/.trajectory/factory-marketplace`, registers it with Droid, and installs
+`trajectory@trajectory`. The plugin includes command hooks, MCP config, and an
+incognito skill.
+
+Capture is beta live CLI capture only. There is no Factory Droid historical
+backfill or transcript import path.
 
 ## Pi
 
@@ -146,8 +166,9 @@ fork, and session shutdown. Key events also write through `trajectory
 capture-hook` for robustness when a short-lived `pi --print` process exits
 before async HTTP posting completes.
 
-Pi exposes `trajectory_status`, `trajectory_flush`, and
-`trajectory_incognito` as native tools.
+Pi exposes native Trajectory tools through the extension and can use the shared
+MCP catalog when the environment supports MCP. It does not install a
+`hooks.json` file.
 
 ## OpenCode
 
@@ -156,8 +177,9 @@ directory, merges the plugin path plus a `trajectory` MCP entry into
 `opencode.json`, and writes the incognito skill into the OpenCode skills
 directory.
 
-The plugin SDK hooks cover chat messages, tool execution before/after events,
-and lifecycle events. Historical import uses OpenCode SQLite databases.
+The plugin SDK events cover chat messages, tool execution before/after events,
+and lifecycle events. Historical import uses OpenCode SQLite databases. OpenCode
+does not install a `hooks.json` file.
 
 ## Troubleshooting
 

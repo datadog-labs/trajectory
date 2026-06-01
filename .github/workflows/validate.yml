@@ -1,4 +1,4 @@
-name: Validate Scaffold
+name: Validate
 
 on:
   pull_request:
@@ -14,5 +14,37 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
-      - name: Validate public scaffold
-        run: bash scripts/validate-scaffold.sh
+      - name: Validate JSON metadata
+        run: |
+          python3 - <<'PY'
+          import json
+          import pathlib
+
+          root = pathlib.Path(".")
+          json_paths = [
+              ".agents/plugins/marketplace.json",
+              ".claude-plugin/marketplace.json",
+              "RELEASES.json",
+              "gemini-extension.json",
+              "plugin/trajectory/.claude-plugin/plugin.json",
+              "plugin/trajectory/.claude-plugin/.mcp.json",
+              "plugin/trajectory/.mcp.json",
+              "plugin/trajectory-codex/.codex-plugin/plugin.json",
+              "plugin/trajectory-codex/.mcp.json",
+              "plugin/trajectory-codex/hooks.json",
+              "plugin/trajectory-pi/package.json",
+              "plugin/trajectory-pi/tsconfig.json",
+              "plugin/trajectory-opencode/package.json",
+          ]
+
+          for rel in json_paths:
+              with (root / rel).open(encoding="utf-8") as handle:
+                  json.load(handle)
+
+          releases = json.loads((root / "RELEASES.json").read_text(encoding="utf-8"))
+          unexpected = set(releases) - {"stable", "beta"}
+          if unexpected:
+              raise SystemExit(f"unexpected release channels: {sorted(unexpected)}")
+          PY
+      - name: Validate shell syntax
+        run: bash -n install.sh

@@ -4,13 +4,13 @@ Codex marketplace plugin for trajectory agent observability.
 
 ## What It Does
 
-- **12 lifecycle hooks** capture every session event (tool calls, prompts, compaction, subagents) via HTTP to the trajectory capture server
+- **12 lifecycle hooks** capture every session event (tool calls, prompts, compaction, subagents) with command hooks that `curl` POST to the trajectory capture server
 - **MCP server** provides introspection tools (status, sessions, queries, incognito, flush, markers)
 - **`/incognito` skill** toggles publish suppression for the current session while local JSONL capture continues
 
 The built-in Codex watcher (rollout file tailing) serves as a fallback for sessions started before the plugin was installed.
 
-For CLI usage, run `trajectory user-guide` or see the repository user guide at `../../docs/USER-GUIDE.md`.
+For CLI usage, run `trajectory user-guide` or see `docs/USER-GUIDE.md`.
 
 ## Prerequisites
 

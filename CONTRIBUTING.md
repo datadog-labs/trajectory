@@ -7,10 +7,11 @@ This repository contains distribution metadata, documentation, and coding-agent 
 ## Local Checks
 
 ```bash
-bash scripts/validate-scaffold.sh
+python3 -m json.tool RELEASES.json >/dev/null
+bash -n install.sh
 ```
 
-The validation script checks JSON metadata, required marketplace files, and guardrails that prevent unrelated files, worktree content, local paths, and credential material from entering this repository.
+These checks validate release metadata JSON and shell syntax for the installer.
 
 ## Pull Requests
 

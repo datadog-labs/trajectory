@@ -42,10 +42,20 @@ Common settings:
 trajectory config set export.site datadoghq.com
 trajectory config set export.traces standard       # off | minimal | standard | full
 trajectory config set export.metrics true
+trajectory config set export.placeholder_llm_span false  # omit synthetic cost-only LLM spans
+trajectory config set local_ui.auto_start false    # disable automatic local-ui startup
 trajectory config set-secret dd-api-key             # prompts for the key securely
 ```
 
 Trace export is off by default. Set `export.traces` explicitly when you want sessions published to LLM Observability.
+
+Set `export.placeholder_llm_span: false` in `~/.trajectory/config.yaml` to stop
+publishing Trajectory's synthetic LLM child span for turn-level token and cost
+enrichment. The turn span still carries cost fallback metadata so cost remains
+queryable without the placeholder child span.
+
+Set `local_ui.auto_start: false` to disable automatic local-ui startup. Explicit
+`trajectory local-ui` and `trajectory view` commands still work.
 
 ## Capture server
 
@@ -67,14 +77,49 @@ trajectory query "SELECT * FROM sessions ORDER BY start_time DESC LIMIT 5"
 trajectory query --named list_named_queries   # List built-in queries
 ```
 
+## MCP tools
+
+Setup-managed clients launch `trajectory mcp` automatically to expose local
+agent introspection tools and resources. The MCP server covers status, active
+sessions, JSONL-derived session data, marker evaluation, incognito, and guarded
+read-only SQLite access.
+
+| Surface | Names |
+|---------|-------|
+| Tools | `trajectory_status`, `list_active_sessions`, `get_session_trajectory`, `evaluate_markers`, `trajectory_incognito`, `trajectory_schema`, `trajectory_query` |
+| Resources | `trajectory://status`, `trajectory://config`, `trajectory://sqlite/schema` |
+
+For SQLite queries, call `trajectory_schema` first so the agent uses the live
+database path and schema before calling `trajectory_query`.
+
+```bash
+trajectory user-guide mcp
+```
+
 ## Setup and client registration
 
 ```bash
 trajectory setup                     # Interactive setup (site, API key, agents)
 trajectory setup --clients codex     # Register one client integration
-trajectory setup --clients all       # Register all detected clients
+trajectory setup --clients copilot   # Register GitHub Copilot CLI beta live capture
+trajectory setup --clients droid     # Register Factory Droid beta live capture
+trajectory setup --clients all       # Register all setup-managed clients
 trajectory setup --uninstall codex   # Remove one client integration
 ```
+
+### Feature coverage matrix
+
+| Client | Live capture | Tool/model events | Token/cost usage | Incognito or MCP | Backfill | Resume |
+|--------|--------------|-------------------|------------------|------------------|----------|--------|
+| Claude Code | HTTP hooks | Yes | Yes | Yes | Transcript backfill | Yes |
+| Codex CLI | Command hooks plus rollout watcher fallback | Yes | Yes | Yes | Codex rollout backfill | Yes |
+| GitHub Copilot CLI | Beta command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
+| Gemini CLI | Managed command hooks | Yes | Yes | Yes | Gemini transcript backfill | Yes |
+| Cursor Desktop | Command hooks | Yes | Cursor DB dependent | Yes | Cursor chat backfill | Yes |
+| cursor-agent CLI | Transcript watcher | Tool and turn events | Not exposed by current transcripts | No | Same transcript source | No setup-managed resume |
+| Factory Droid | Beta command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
+| Pi | TypeScript extension | Yes | Yes | Native tool plus MCP | Pi/OMP session backfill | Yes |
+| OpenCode | Plugin SDK events | Yes | Yes | Yes | SQLite backfill | Yes |
 
 ## Publishing and export
 
@@ -88,6 +133,12 @@ trajectory diagnose publish          # Explain whether traces/metrics should pub
 `trajectory publish validate` checks configuration, trust policy, and credentials. `trajectory publish status` shows the effective mode, including metrics-only and trace-off states. Neither command verifies Datadog intake or readback.
 
 `trajectory audit --deep` adds an interpretation block for local capture fidelity, config-driven trace-off states, missing model/cost attribution, and the 24-hour LLMO trace intake backfill limit.
+
+`trajectory audit --source-data` checks the local SQLite cache contracts used by
+local-ui, including completed-session finalization, session and turn aggregate
+consistency, tool-call parentage, model and cost attribution, sparse turn IDs,
+and contentless active turns. Use `--json` for machine-readable output or
+`--db <path>` to inspect a non-default cache.
 
 For the full metric catalog, see [METRICS-REFERENCE.md](METRICS-REFERENCE.md).
 
@@ -116,17 +167,22 @@ Customer details, HR/legal content, credentials, or private investigation notes.
 
 These tags are a convention, not a redaction boundary. Trajectory may capture the tags and enclosed text locally. If ordinary publish should be suppressed, enable `/incognito` before sharing the content, and keep sensitive values out of metric tags and marker dimensions.
 
-For the full privacy-controls guide, see [PRIVACY.md](PRIVACY.md).
+The embedded `privacy` topic gives the full privacy-controls guide:
+
+```bash
+trajectory user-guide privacy
+```
 
 ## Backfill
 
 Import sessions from before trajectory was installed:
 
 ```bash
-trajectory backfill --from-transcripts                 # Claude Code transcripts
+trajectory backfill --from-claude-code                 # Claude Code transcripts
 trajectory backfill --from-codex-sessions --limit 100  # Codex rollout files, newest first
 trajectory backfill --from-codex-sessions --continue   # Continue the previous Codex page
 trajectory backfill --index-local --limit 100          # Index trajectory JSONL into local-ui cache
+trajectory backfill --republish-local --all            # Re-forward cached sessions to local-ui
 trajectory backfill --status                           # Show saved paged backfill status
 ```
 
@@ -184,9 +240,12 @@ trajectory user-guide publish        # Per-repo publish config
 trajectory user-guide dashboards     # Datadog dashboard export and MCP import
 trajectory user-guide markers        # Marker authoring and metrics
 trajectory user-guide metrics        # Metric gates, names, tags, and queries
+trajectory user-guide mcp            # MCP tools, resources, and SQL query workflow
 trajectory user-guide privacy        # Incognito, sensitive tags, and sensitivity scanning
 trajectory user-guide clients        # All supported clients
 trajectory user-guide clients/codex  # Codex-specific details
+trajectory user-guide clients/copilot # GitHub Copilot CLI beta details
+trajectory user-guide clients/droid  # Factory Droid beta details
 trajectory user-guide install        # Installation methods
 ```
 
@@ -194,10 +253,29 @@ trajectory user-guide install        # Installation methods
 
 Every span and metric emitted by trajectory carries a `trajectory.user` tag set to your Unix username. Override it with the `TRAJECTORY_USER` environment variable.
 
-Use this tag to filter in LLM Obs and Metrics Explorer:
+Trajectory can also emit `trajectory.user_email` when configured. Resolution
+uses the first successful value: `TRAJECTORY_USER_EMAIL`, then
+`identity.user_email`, then `identity.user_email_command`, then
+`identity.user_email_suffix` appended to `trajectory.user`.
+
+```bash
+trajectory config set identity.user_email_suffix example.com
+```
+
+GitHub identity tags are optional. `github.email` resolves from
+`TRAJECTORY_GITHUB_EMAIL`, then `identity.github_email`, then
+`identity.github_email_command`, then repo-local `git config user.email`, then
+global `git config user.email`. `github.username` resolves from
+`TRAJECTORY_GITHUB_USERNAME`, then `identity.github_username`, then
+`identity.github_username_command`, then repo-local `git config github.user` or
+`github.username`, then global Git config. Repo-local values win over global
+values, and commands win over Git config when they return valid values.
+
+Use these tags to filter in LLM Obs and Metrics Explorer:
 
 - **LLM Obs**: filter traces by `@trajectory.user:<your-name>`
 - **Metrics Explorer**: scope dashboards with `trajectory.user:<your-name>`
+- **GitHub identity**: filter with `github.username:<your-gh-login>` or `github.email:<your-gh-email>` when configured or resolved from Git config
 
 This is useful on shared machines or CI where multiple users generate sessions.
 
@@ -205,8 +283,8 @@ This is useful on shared machines or CI where multiple users generate sessions.
 
 Trajectory automatically tags every DD metric with repository metadata extracted from the git remote:
 
-- `repo` - repository name (e.g., `example-service`)
-- `owner` - org or user (e.g., `example-org`)
+- `repo` - repository name (e.g., `trajectory`)
+- `owner` - org or user (e.g., `datadog-labs`)
 - `git_remote_host` - host (e.g., `github.com`)
 
 These tags appear on all metric series, so you can filter and group by repository in Metrics Explorer without any configuration.
