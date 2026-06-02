@@ -26,6 +26,7 @@ set -e
 
 INSTALL_DIR="$HOME/.trajectory"
 BIN_DIR="$INSTALL_DIR/bin"
+INTERCEPT_DIR="$INSTALL_DIR/intercepts"
 # BINARY and BINARY_SUFFIX are finalised after detect_platform() runs - they
 # become trajectory.exe on Windows (Git Bash / MSYS / Cygwin) and trajectory
 # on darwin/linux.
@@ -217,9 +218,32 @@ TRAJECTORY_SELF_UPDATE_URL=https://raw.githubusercontent.com/datadog-labs/trajec
 EOF
 }
 
+install_intercept_assets() {
+    local asset src dest tmp
+    mkdir -p "$INTERCEPT_DIR"
+
+    for asset in intercept-shared.mjs bun-llm-intercept.mjs node-llm-spy.cjs; do
+        src="$SCRIPT_DIR/intercepts/$asset"
+        dest="$INTERCEPT_DIR/$asset"
+        if [ -f "$src" ]; then
+            cp "$src" "$dest"
+        else
+            tmp="${dest}.tmp.$$"
+            if ! curl -sfL -o "$tmp" "https://raw.githubusercontent.com/$REPO/main/intercepts/$asset"; then
+                rm -f "$tmp"
+                fail "Could not install Claude intercept asset: $asset"
+            fi
+            mv "$tmp" "$dest"
+        fi
+        chmod 0644 "$dest" 2>/dev/null || true
+    done
+}
+
 info ""
 info "=== Trajectory Installer ==="
 info ""
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 PLATFORM="$(detect_platform)"
 case "$PLATFORM" in
@@ -271,6 +295,7 @@ else
 fi
 
 write_selfupdate_policy
+install_intercept_assets
 
 if [ "$NON_INTERACTIVE" = "1" ]; then
     info "[4/5] Running setup (non-interactive)..."
@@ -287,7 +312,6 @@ fi
 
 "$BINARY" setup "${SETUP_ARGS[@]+"${SETUP_ARGS[@]}"}"
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_INSTALLED=0
 
 # Claude Code plugin

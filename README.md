@@ -17,7 +17,7 @@ This repository contains:
 bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main/install.sh)
 ```
 
-The installer downloads the latest Trajectory release asset for your platform, installs it under `~/.trajectory/bin/trajectory`, runs `trajectory setup`, and registers detected coding-agent plugins.
+The installer downloads the latest Trajectory release asset for your platform, installs it under `~/.trajectory/bin/trajectory`, stages the Claude wrapper intercept runtime, runs `trajectory setup`, and registers detected coding-agent plugins.
 
 To upgrade an install from this repository, rerun the installer.
 
@@ -61,6 +61,7 @@ plugin/trajectory-codex/  Codex plugin
 plugin/trajectory-gemini/ Gemini context assets
 plugin/trajectory-pi/     Pi extension
 plugin/trajectory-opencode/ OpenCode plugin
+intercepts/               Claude wrapper intercept runtime
 skills/                   Shared skill assets
 RELEASES.json             Release-channel selector
 install.sh                Installer
