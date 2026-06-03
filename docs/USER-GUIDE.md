@@ -39,6 +39,10 @@ trajectory config set-secret <name>  # Store a secret in the OS keychain
 trajectory config get <key>          # Read a single value
 ```
 
+Most users edit `~/.trajectory/config.yaml` through `trajectory config set`. Installers or administrators may provide `~/.trajectory/config.defaults.yaml` to seed managed defaults, and environment variables can override specific values for the current shell or launched process.
+
+See [CONFIGURATION.md](CONFIGURATION.md) for the full config file model, examples, `config.defaults.yaml` behavior, environment overrides, and common settings.
+
 Common settings:
 
 ```bash
@@ -54,7 +58,7 @@ Trace export is off by default. Set `export.traces` explicitly when you want ses
 
 Set `export.placeholder_llm_span: false` in `~/.trajectory/config.yaml`, or `placeholder_llm_span: false` on a managed/trusted `publish.trajectory.yaml` destination, to stop publishing Trajectory's synthetic LLM child span for turn-level token/cost enrichment. The turn span still carries `metrics.estimated_total_cost` plus cost fallback metadata and the `trajectory.cost_source:turn_metrics` tag, so cost remains queryable without the placeholder child span. Project configs may disable this for a trusted destination, but cannot re-enable it if the trusted or managed destination disabled it.
 
-For fleet-wide local-ui auto-start rollback, deploy `local_ui.auto_start: false` in managed `~/.trajectory/config.defaults.yaml`. A managed false value disables automatic local-ui startup and cannot be overridden from user `config.yaml`; explicit `trajectory local-ui` and `trajectory view` commands still work.
+For managed local-ui auto-start rollback, deploy `local_ui.auto_start: false` in `~/.trajectory/config.defaults.yaml`. A managed false value disables automatic local-ui startup and cannot be overridden from user `config.yaml`; explicit `trajectory local-ui` and `trajectory view` commands still work.
 
 ## Capture server
 
