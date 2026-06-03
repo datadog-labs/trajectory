@@ -6,6 +6,7 @@ Trajectory captures sessions from AI coding agents and exports them to Datadog L
 
 ```bash
 trajectory status                    # Terminal dashboard with session metrics
+trajectory cost                      # Local cost summary and top sessions
 trajectory view                      # Open the local browser viewer
 trajectory doctor                    # Diagnose issues (binary, config, hooks, data)
 trajectory diagnose publish          # Explain capture, local mapping, and publish expectations
@@ -56,6 +57,11 @@ trajectory config set-secret dd-api-key             # prompts for the key secure
 
 Trace export is off by default. Set `export.traces` explicitly when you want sessions published to LLM Observability.
 
+Secret writes are defensive: `trajectory setup` and `trajectory config
+set-secret` snapshot an existing keychain value before updating it and attempt
+to restore the old value if the write fails. Recover a missing Datadog key with
+`trajectory config set-secret dd-api-key` or a temporary `DD_API_KEY`.
+
 Set `export.placeholder_llm_span: false` in `~/.trajectory/config.yaml`, or `placeholder_llm_span: false` on a managed/trusted `publish.trajectory.yaml` destination, to stop publishing Trajectory's synthetic LLM child span for turn-level token/cost enrichment. The turn span still carries `metrics.estimated_total_cost` plus cost fallback metadata and the `trajectory.cost_source:turn_metrics` tag, so cost remains queryable without the placeholder child span. Project configs may disable this for a trusted destination, but cannot re-enable it if the trusted or managed destination disabled it.
 
 For managed local-ui auto-start rollback, deploy `local_ui.auto_start: false` in `~/.trajectory/config.defaults.yaml`. A managed false value disables automatic local-ui startup and cannot be overridden from user `config.yaml`; explicit `trajectory local-ui` and `trajectory view` commands still work.
@@ -76,8 +82,12 @@ The server starts automatically when your agent launches a session (via plugin h
 ```bash
 trajectory status                    # Overview of recent sessions
 trajectory status --session <id> --json
+trajectory cost inspect --session <id>
+trajectory cost observations --session <id>
+trajectory cost validate
 trajectory view --session <id>
 trajectory user-guide query          # Local data and safe MCP query workflow
+trajectory user-guide costs          # Cost tracking commands and fidelity checks
 ```
 
 The current OSS binary does not expose a general-purpose `trajectory query`
@@ -85,6 +95,11 @@ CLI. Use `trajectory status`, `trajectory view`, `get_session_trajectory`, and
 the MCP `trajectory_schema` / `trajectory_query` tools for local inspection.
 The embedded query guide documents the schema-first workflow and
 `TRAJECTORY_CACHE_DB` handling.
+
+Use `trajectory cost` for local cost tracking. It reads the local SQLite cache
+in read-only mode, shows recent cost totals, inspects turn-level cost evidence,
+reports objective cost observations without causal claims, and validates recent
+cost fidelity for supported clients. See [COSTS.md](COSTS.md).
 
 ## MCP tools
 
@@ -109,12 +124,18 @@ trajectory user-guide mcp
 
 ```bash
 trajectory setup                     # Interactive setup (site, API key, agents)
-trajectory setup --clients codex     # Register one client integration
-trajectory setup --clients copilot   # Register GitHub Copilot CLI beta live capture
-trajectory setup --clients droid     # Register Factory Droid beta live capture
-trajectory setup --clients all       # Register all setup-managed clients
+trajectory setup --clients codex     # Add or refresh one client integration
+trajectory setup --clients copilot   # Add or refresh GitHub Copilot CLI beta live capture
+trajectory setup --clients droid     # Add or refresh Factory Droid beta live capture
+trajectory setup --clients all       # Add or refresh all setup-managed clients
 trajectory setup --uninstall codex   # Remove one client integration
 ```
+
+`trajectory setup --clients ...` updates only client wiring. It skips Datadog
+site, service name, and API key prompts, and leaves existing export config
+unchanged. If no config file exists yet, it creates a capture-only config so
+local session capture can start; run `trajectory setup` later to configure
+Datadog export.
 
 ### Feature coverage matrix
 
@@ -139,7 +160,7 @@ trajectory publish preview           # Preview what would be published
 trajectory diagnose publish          # Explain whether traces/metrics should publish
 ```
 
-`trajectory publish validate` checks configuration, trust policy, and credentials. `trajectory publish status` shows the effective mode, including metrics-only and trace-off states. Neither command verifies Datadog intake or readback.
+`trajectory publish validate` checks configuration, trust policy, and credentials, including credential source and non-secret value-shape diagnostics. `trajectory publish status` shows the effective mode, including metrics-only and trace-off states. Neither command verifies Datadog intake or readback.
 
 For the publish operations runbook covering validate/status/preview, missing
 Datadog data, `publish sync`, and publish ledger repair:
@@ -331,7 +352,10 @@ Trajectory automatically tags every DD metric with repository metadata extracted
 - `owner` - org or user (e.g., `DataDog`)
 - `git_remote_host` - host (e.g., `github.com`)
 
-These tags appear on all metric series, so you can filter and group by repository in Metrics Explorer without any configuration.
+These tags appear on all metric series, so you can filter and group by
+repository in Metrics Explorer without any configuration. When a remote origin
+is unavailable, Trajectory falls back to the project directory basename for
+`repo` when possible and uses `unknown` for unavailable owner or host values.
 
 ## Completed-sample distributions
 

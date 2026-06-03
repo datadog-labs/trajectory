@@ -80,11 +80,13 @@ unattributed.
 | `ml_app` | Destination ML app | Omitted |
 | `gen_ai.request.model` | Model name | Omitted |
 | `trajectory.client_version` | Client or harness version | Omitted |
+| `repo` | Git repository name from the remote origin, or project directory basename when the origin is unavailable | `unknown` |
+| `owner` | Git repository owner from the remote origin | `unknown` |
+| `git_remote_host` | Git remote host from the remote origin | `unknown` |
 | `project_dir` | Project directory basename | Omitted |
 | `trajectory.trace_type` | Metric grain: `turn`, `session`, `task`, `commit`, or `pr` | Set by emitter |
 
-Destination tags and repo-derived tags such as `repo`, `owner`, and
-`git_remote_host` may also be present. Keep custom tags low-cardinality and
+Destination tags may also be present. Keep custom tags low-cardinality and
 non-sensitive.
 
 ## Per-Turn Metrics
@@ -190,7 +192,7 @@ Built-in and setup-default metrics include:
 | `trajectory.session.skill_invocations` | gauge | session | Skill activity grouped by `skill_name` |
 | `trajectory.session.subagents` | gauge | session | Setup-default subagent count |
 | `trajectory.session.tests_written` | gauge | session | Setup-default new-test count |
-| `trajectory.session.test_success_rate` | gauge | session | Setup-default Bazel retry success ratio |
+| `trajectory.session.test_success_rate` | gauge | session | Setup-default test retry success ratio |
 | `trajectory.session.force_pushes` | gauge | session | Setup-default force-push count |
 | `trajectory.session.ci_iterations` | gauge | session | Setup-default CI feedback ranges |
 | `trajectory.session.code_added` | gauge | session | Setup-default code-change count |

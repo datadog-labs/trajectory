@@ -42,9 +42,19 @@ trajectory user-guide clients/codex
 | Pi | Yes, TypeScript extension | Yes | Yes | Native tool plus MCP | Pi/OMP session backfill | Yes |
 | OpenCode | Yes, plugin SDK events | Yes | Yes | Yes | SQLite backfill | Yes |
 
+For local cost readback and supported-agent fidelity checks, run `trajectory
+cost`, `trajectory cost inspect --session <id>`, and `trajectory cost
+validate`. The validation command reports recent cost coverage for supported
+clients, including token-positive turns that recorded zero cost.
+
 ## Recommended vs Manual Installs
 
-`trajectory setup --clients ...` is the recommended path for normal installs because it wires the plugin together with the companion config each client expects: hooks, MCP entries, skills, commands, local binaries, and local marketplace metadata.
+`trajectory setup --clients ...` is the recommended path for normal installs
+and refreshes because it wires the plugin together with the companion config
+each client expects: hooks, MCP entries, skills, commands, local binaries, and
+local marketplace metadata. It skips Datadog site, service name, and API key
+prompts, so it is also the right path when you only want to add, repair, or
+update one client integration.
 
 Direct or local plugin installs remain supported for development and manual recovery. When using a manual path, copy or install the plugin from a stable local location and mirror the companion config that setup would have written. A plugin-only install may load the extension but miss MCP tools, incognito controls, command assets, or the capture hooks needed for complete telemetry.
 
