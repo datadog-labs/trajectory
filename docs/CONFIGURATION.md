@@ -113,7 +113,20 @@ trajectory config set export.metrics true
 trajectory publish validate
 ```
 
-Use OS keychain storage for secrets. Avoid putting API keys or provider keys in YAML files.
+`trajectory publish validate` prints credential source and non-secret
+value-shape diagnostics for each destination. A healthy Datadog API key reports
+`normalized_shape=datadog-api-key` and `valid_format=true`. If
+`valid_format=false`, re-enter the API key with `trajectory config set-secret
+dd-api-key` or fix the `DD_API_KEY` or `api_key_command` source.
+
+Use OS keychain storage for secrets. Avoid putting API keys or provider keys in
+YAML files.
+
+`trajectory config set-secret` updates keychain values defensively: it checks
+for an existing value first, writes the new value, and attempts to restore the
+previous value if the write fails. If setup or `set-secret` reports a keychain
+problem, recover with `trajectory config set-secret dd-api-key`, or set
+`DD_API_KEY` temporarily and run `trajectory publish validate`.
 
 For temporary shells and CI-style runs, environment variables can provide credentials:
 

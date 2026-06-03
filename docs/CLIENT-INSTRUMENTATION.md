@@ -50,7 +50,11 @@ for the client:
   expects one.
 
 Plugin-only manual installs can miss these companion pieces. Use
-`trajectory setup --clients <client>` for normal installs.
+`trajectory setup --clients <client>` for normal installs and refreshes. That
+client-only path updates hooks, MCP entries, skills, commands, local binaries,
+and local marketplace files without prompting for Datadog site, service name,
+or API key values. Run `trajectory setup` without `--clients` when you want to
+change export settings.
 
 The authoritative MCP catalog, including safe query examples, is embedded in
 the binary:
