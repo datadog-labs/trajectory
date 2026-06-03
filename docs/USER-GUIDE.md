@@ -6,6 +6,7 @@ Trajectory captures sessions from AI coding agents and exports them to Datadog L
 
 ```bash
 trajectory status                    # Terminal dashboard with session metrics
+trajectory view                      # Open the local browser viewer
 trajectory doctor                    # Diagnose issues (binary, config, hooks, data)
 trajectory diagnose publish          # Explain capture, local mapping, and publish expectations
 trajectory logs [-f] [--grep PAT]   # View capture server logs
@@ -13,6 +14,8 @@ trajectory version                   # Print version
 ```
 
 `trajectory doctor` is the first thing to run if something isn't working. It checks the binary, config, capture server, database, credentials, and hook registration.
+
+Use `trajectory view --session <id>` to inspect one captured session in the local browser viewer. If local-ui is not already running, `view` starts it and opens the session deep link. Use `trajectory user-guide local-ui` for cache repair and Lapdog-compatible local inspection.
 
 Use `trajectory diagnose publish --session <id>` when Datadog data is missing or surprising. It compares local capture and local JSONL-to-span mapping against the transcript, then explains whether traces or metrics are expected from the current config. It does not query Datadog readback.
 
@@ -49,13 +52,9 @@ trajectory config set-secret dd-api-key             # prompts for the key secure
 
 Trace export is off by default. Set `export.traces` explicitly when you want sessions published to LLM Observability.
 
-Set `export.placeholder_llm_span: false` in `~/.trajectory/config.yaml` to stop
-publishing Trajectory's synthetic LLM child span for turn-level token and cost
-enrichment. The turn span still carries cost fallback metadata so cost remains
-queryable without the placeholder child span.
+Set `export.placeholder_llm_span: false` in `~/.trajectory/config.yaml`, or `placeholder_llm_span: false` on a managed/trusted `publish.trajectory.yaml` destination, to stop publishing Trajectory's synthetic LLM child span for turn-level token/cost enrichment. The turn span still carries `metrics.estimated_total_cost` plus cost fallback metadata and the `trajectory.cost_source:turn_metrics` tag, so cost remains queryable without the placeholder child span. Project configs may disable this for a trusted destination, but cannot re-enable it if the trusted or managed destination disabled it.
 
-Set `local_ui.auto_start: false` to disable automatic local-ui startup. Explicit
-`trajectory local-ui` and `trajectory view` commands still work.
+For fleet-wide local-ui auto-start rollback, deploy `local_ui.auto_start: false` in managed `~/.trajectory/config.defaults.yaml`. A managed false value disables automatic local-ui startup and cannot be overridden from user `config.yaml`; explicit `trajectory local-ui` and `trajectory view` commands still work.
 
 ## Capture server
 
@@ -72,10 +71,16 @@ The server starts automatically when your agent launches a session (via plugin h
 
 ```bash
 trajectory status                    # Overview of recent sessions
-trajectory query --schema            # Show database tables
-trajectory query "SELECT * FROM sessions ORDER BY start_time DESC LIMIT 5"
-trajectory query --named list_named_queries   # List built-in queries
+trajectory status --session <id> --json
+trajectory view --session <id>
+trajectory user-guide query          # Local data and safe MCP query workflow
 ```
+
+The current OSS binary does not expose a general-purpose `trajectory query`
+CLI. Use `trajectory status`, `trajectory view`, `get_session_trajectory`, and
+the MCP `trajectory_schema` / `trajectory_query` tools for local inspection.
+The embedded query guide documents the schema-first workflow and
+`TRAJECTORY_CACHE_DB` handling.
 
 ## MCP tools
 
@@ -113,13 +118,17 @@ trajectory setup --uninstall codex   # Remove one client integration
 |--------|--------------|-------------------|------------------|------------------|----------|--------|
 | Claude Code | HTTP hooks | Yes | Yes | Yes | Transcript backfill | Yes |
 | Codex CLI | Command hooks plus rollout watcher fallback | Yes | Yes | Yes | Codex rollout backfill | Yes |
-| GitHub Copilot CLI | Beta command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
 | Gemini CLI | Managed command hooks | Yes | Yes | Yes | Gemini transcript backfill | Yes |
 | Cursor Desktop | Command hooks | Yes | Cursor DB dependent | Yes | Cursor chat backfill | Yes |
 | cursor-agent CLI | Transcript watcher | Tool and turn events | Not exposed by current transcripts | No | Same transcript source | No setup-managed resume |
-| Factory Droid | Beta command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
+| Factory Droid | Beta Factory plugin command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
 | Pi | TypeScript extension | Yes | Yes | Native tool plus MCP | Pi/OMP session backfill | Yes |
 | OpenCode | Plugin SDK events | Yes | Yes | Yes | SQLite backfill | Yes |
+| OpenClaw | Capture beta plugin hooks with optional-client binary | Yes, with conversation access for prompts/responses | Token usage when OpenClaw exposes it; cost estimated downstream or passed through when present | Not yet | Not yet | Not in scope |
+
+OpenClaw is live-capture only in the current beta and is installed through its
+OpenClaw plugin package, not `trajectory setup`. Default Trajectory binaries
+omit this route; use a binary built with `-tags optionalclients`.
 
 ## Publishing and export
 
@@ -132,15 +141,58 @@ trajectory diagnose publish          # Explain whether traces/metrics should pub
 
 `trajectory publish validate` checks configuration, trust policy, and credentials. `trajectory publish status` shows the effective mode, including metrics-only and trace-off states. Neither command verifies Datadog intake or readback.
 
+For the publish operations runbook covering validate/status/preview, missing
+Datadog data, `publish sync`, and publish ledger repair:
+
+```bash
+trajectory user-guide publish
+```
+
+For marker-metric readback, use `trajectory markers canary --keep-home`. It runs an isolated synthetic session, validates local marker/cost/token/assistant-message invariants, and prints Datadog queries for metric destination verification.
+
 `trajectory audit --deep` adds an interpretation block for local capture fidelity, config-driven trace-off states, missing model/cost attribution, and the 24-hour LLMO trace intake backfill limit.
 
-`trajectory audit --source-data` checks the local SQLite cache contracts used by
-local-ui, including completed-session finalization, session and turn aggregate
-consistency, tool-call parentage, model and cost attribution, sparse turn IDs,
-and contentless active turns. Use `--json` for machine-readable output or
-`--db <path>` to inspect a non-default cache.
+`trajectory audit --source-data` checks the local SQLite cache contracts used by local-ui, including completed-session finalization, session/turn aggregate consistency, tool-call parentage, model/cost attribution, sparse turn IDs, and contentless active turns. Use `--json` for machine-readable output or `--db <path>` to inspect a non-default cache.
+
+For a cleaner troubleshooting flow across doctor, diagnose, audit, validate-spans, and support bundles:
+
+```bash
+trajectory user-guide diagnostics
+```
 
 For the full metric catalog, see [METRICS-REFERENCE.md](METRICS-REFERENCE.md).
+
+## Local UI and resume
+
+Open the local viewer:
+
+```bash
+trajectory view
+trajectory view --session <id>
+```
+
+Run local-ui manually when you need a stable port or Lapdog-compatible local
+inspection:
+
+```bash
+trajectory local-ui --port 8890
+trajectory local-ui --lapdog
+```
+
+Reconstruct a captured session into another supported client:
+
+```bash
+trajectory resume --list-targets
+trajectory resume --session <id> --target codex --dry-run
+trajectory resume --session <id> --target codex
+```
+
+Read the embedded guides for details:
+
+```bash
+trajectory user-guide local-ui
+trajectory user-guide resume
+```
 
 ## Datadog dashboards
 
@@ -167,7 +219,7 @@ Customer details, HR/legal content, credentials, or private investigation notes.
 
 These tags are a convention, not a redaction boundary. Trajectory may capture the tags and enclosed text locally. If ordinary publish should be suppressed, enable `/incognito` before sharing the content, and keep sensitive values out of metric tags and marker dimensions.
 
-The embedded `privacy` topic gives the full privacy-controls guide:
+The embedded `privacy` topic gives the managed-install and sensitivity-scanning version of this guidance:
 
 ```bash
 trajectory user-guide privacy
@@ -175,31 +227,22 @@ trajectory user-guide privacy
 
 ## Backfill
 
-Import sessions from before trajectory was installed:
+Use backfill when you need to import historical sessions, refresh the local UI
+cache, or repair historical dashboard metrics.
 
 ```bash
-trajectory backfill --from-claude-code                 # Claude Code transcripts
+trajectory backfill --from-claude-code --republish-local  # Claude Code transcripts + local UI
+trajectory backfill --republish-local                  # Refresh local UI from cached sessions
 trajectory backfill --from-codex-sessions --limit 100  # Codex rollout files, newest first
-trajectory backfill --from-codex-sessions --continue   # Continue the previous Codex page
-trajectory backfill --index-local --limit 100          # Index trajectory JSONL into local-ui cache
-trajectory backfill --republish-local --all            # Re-forward cached sessions to local-ui
-trajectory backfill --status                           # Show saved paged backfill status
+trajectory backfill-my-metrics                         # Dry-run historical dashboard metrics
 ```
 
-Paged backfills are manual maintenance commands. They do not run during agent startup. Codex rollout repair and local-ui cache indexing process newest files first and skip active files whose modification time is less than 2 minutes old. Rerun the same command after active sessions are quiet if doctor still reports missing data.
-
-`trajectory doctor` detects recent Codex rollout files that have not been converted and recent trajectory JSONL files that are missing from the local-ui cache. It prints the matching `trajectory backfill ...` command instead of running repair automatically.
-
-Re-publish historical dashboard and marker metrics from local records:
+Read the full embedded guide for modes, local UI repair, historical metric
+readback, and structured record backfill:
 
 ```bash
-trajectory backfill-metrics --dry-run
-trajectory backfill-metrics --since YYYY-MM-DD --destination NAME
+trajectory user-guide backfill
 ```
-
-This reconstructs the known dashboard metric suite from the local SQLite cache, including session, turn, cost, tool-call, and marker metrics. Use `--since YYYY-MM-DD`, `--until YYYY-MM-DD`, or `--destination NAME` when you need a narrower repair.
-
-Historical metric backfill only works when Datadog Historical Metrics Ingestion is enabled for the destination org and metric types. Without that Datadog-side setting, old points may be dropped even when `backfill-metrics` submits successfully. LLMO trace intake is stricter: historical trace backfill is only accepted for recent data, so sessions older than 24 hours should be treated as local-fidelity evidence rather than a promise that missing LLMO traces can be repaired.
 
 ## Viewing logs
 
@@ -236,16 +279,27 @@ The binary includes a full user guide with detailed topics:
 ```bash
 trajectory user-guide                # List all topics
 trajectory user-guide config         # Configuration deep-dive
+trajectory user-guide llm-capacity   # LLM capacity and expense controls
+trajectory user-guide backfill       # Historical import, local UI repair, and metric backfill
+trajectory user-guide local-ui       # Browser viewer, local-ui, and cache repair
 trajectory user-guide publish        # Per-repo publish config
 trajectory user-guide dashboards     # Datadog dashboard export and MCP import
 trajectory user-guide markers        # Marker authoring and metrics
 trajectory user-guide metrics        # Metric gates, names, tags, and queries
 trajectory user-guide mcp            # MCP tools, resources, and SQL query workflow
+trajectory user-guide query          # Local cache data and guarded MCP SQL workflow
 trajectory user-guide privacy        # Incognito, sensitive tags, and sensitivity scanning
+trajectory user-guide diagnostics    # Doctor, diagnose, audit, validate-spans, support bundles
+trajectory user-guide resume         # Reconstruct captured sessions into other clients
 trajectory user-guide clients        # All supported clients
+trajectory user-guide clients/claude-code # Claude Code-specific details
 trajectory user-guide clients/codex  # Codex-specific details
 trajectory user-guide clients/copilot # GitHub Copilot CLI beta details
+trajectory user-guide clients/cursor # Cursor-specific details
 trajectory user-guide clients/droid  # Factory Droid beta details
+trajectory user-guide clients/gemini # Gemini-specific details
+trajectory user-guide clients/pi     # Pi-specific details
+trajectory user-guide clients/opencode # OpenCode-specific details
 trajectory user-guide install        # Installation methods
 ```
 
@@ -253,23 +307,13 @@ trajectory user-guide install        # Installation methods
 
 Every span and metric emitted by trajectory carries a `trajectory.user` tag set to your Unix username. Override it with the `TRAJECTORY_USER` environment variable.
 
-Trajectory can also emit `trajectory.user_email` when configured. Resolution
-uses the first successful value: `TRAJECTORY_USER_EMAIL`, then
-`identity.user_email`, then `identity.user_email_command`, then
-`identity.user_email_suffix` appended to `trajectory.user`.
+Trajectory can also emit `trajectory.user_email` when configured. Resolution uses the first successful value: `TRAJECTORY_USER_EMAIL`, then `identity.user_email`, then `identity.user_email_command`, then `identity.user_email_suffix` appended to `trajectory.user`. Config values follow normal layering first (`config.defaults.yaml`, then `config.yaml`). If both command and suffix are set, the command wins when it returns a valid email; otherwise Trajectory falls through to the suffix.
 
 ```bash
-trajectory config set identity.user_email_suffix example.com
+trajectory config set identity.user_email_suffix datadoghq.com
 ```
 
-GitHub identity tags are optional. `github.email` resolves from
-`TRAJECTORY_GITHUB_EMAIL`, then `identity.github_email`, then
-`identity.github_email_command`, then repo-local `git config user.email`, then
-global `git config user.email`. `github.username` resolves from
-`TRAJECTORY_GITHUB_USERNAME`, then `identity.github_username`, then
-`identity.github_username_command`, then repo-local `git config github.user` or
-`github.username`, then global Git config. Repo-local values win over global
-values, and commands win over Git config when they return valid values.
+GitHub identity tags are optional. `github.email` resolves from `TRAJECTORY_GITHUB_EMAIL`, then `identity.github_email`, then `identity.github_email_command`, then repo-local `git config user.email`, then global `git config user.email`. `github.username` resolves from `TRAJECTORY_GITHUB_USERNAME`, then `identity.github_username`, then `identity.github_username_command`, then repo-local `git config github.user` or `github.username`, then global Git config. Repo-local values win over global values, and commands win over Git config when they return valid values.
 
 Use these tags to filter in LLM Obs and Metrics Explorer:
 
@@ -284,7 +328,7 @@ This is useful on shared machines or CI where multiple users generate sessions.
 Trajectory automatically tags every DD metric with repository metadata extracted from the git remote:
 
 - `repo` - repository name (e.g., `trajectory`)
-- `owner` - org or user (e.g., `datadog-labs`)
+- `owner` - org or user (e.g., `DataDog`)
 - `git_remote_host` - host (e.g., `github.com`)
 
 These tags appear on all metric series, so you can filter and group by repository in Metrics Explorer without any configuration.
@@ -316,4 +360,4 @@ Marker compute blocks (`sum` and `count` over turn windows) enable per-commit co
 
 This powers the `trajectory.commit.cost.usd.total` and `trajectory.commit.attributed_turns.total` distribution metrics, letting you answer "how much did this commit cost?" and percentile questions such as p95 cost per commit in Metrics Explorer, optionally split by the `branch` tag.
 
-PR attribution uses metrics only. Trajectory emits `trajectory.pr.cost.usd.attributed.total` for the cost attributed to turns that contributed to a PR, `trajectory.pr.attributed_turns.total` for the number of attributed turns, and `trajectory.pr.containing_session.cost.usd.total` for the total cost of sessions that contained PR activity. These power aggregate dashboards and Metrics Explorer queries without publishing PR URL tables or record/log payloads.
+PR attribution metrics remain aggregate-only. Trajectory emits `trajectory.pr.cost.usd.attributed.total` for the cost attributed to turns that contributed to a PR, `trajectory.pr.attributed_turns.total` for the number of attributed turns, and `trajectory.pr.containing_session.cost.usd.total` for the total cost of sessions that contained PR activity. Managed installs may separately enable `pr_attribution` structured records for PR/MR drilldown; repo configs and security destinations cannot enable those records.

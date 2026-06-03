@@ -2,6 +2,12 @@
 
 Markers are Trajectory's YAML-defined behavioral signals. They turn captured agent sessions into named observations that can be evaluated locally, stored in Trajectory's SQLite database, and exported to Datadog as marker metrics and structured marker context.
 
+A concise version of this guide is built into the binary:
+
+```bash
+trajectory user-guide markers
+```
+
 Use markers when you want durable answers to questions such as:
 
 - Did the agent force-push, run a destructive command, or expose a secret in a shell command?
@@ -27,20 +33,13 @@ Later layers override earlier layers by marker name. An org marker with `enforce
 
 Trajectory always starts with embedded built-ins for common agent outcomes and friction:
 
-- Points such as `user-frustration`, `agent-course-correction`, `git-commit`, `pr-created`, `git-push`, `test-passed`, `test-failed`, `skill-invoked`, workflow lifecycle points, `tool-error`, `permission-denied`, `language-activity`, `code-change`, `files-touched`, `compaction`, `fork-detected`, and `backtrack-detected`.
+- Points such as `user-frustration`, `agent-course-correction`, `git-commit`, `pr-created`, `git-push`, `test-passed`, `test-failed`, `skill-invoked`, skill and workflow lifecycle points, `tool-error`, `permission-denied`, `language-activity`, `code-change`, `files-touched`, `compaction`, `fork-detected`, and `backtrack-detected`.
 - The `test-fix-cycle` multi-turn range.
 - Measures such as `frustration-count`, `commit-count`, `commit-cost-usd`, `commit-attributed-turns`, task metrics, and error/interruption counts.
 
 The setup default profile adds Datadog-oriented signals such as `force-push`, `destructive-command`, `secret-in-command`, `high-cost-turn`, CI and infrastructure touch points, retry ranges, and language/code-change measures.
 
-The built-in `test-passed` and `test-failed` command regexes are intentionally
-examples, not an exhaustive test-runner catalog. They cover common
-high-confidence commands such as `go test`, `cargo test`, `pytest`, JavaScript
-package-manager test scripts, `make test`-style targets, shell scripts under
-`tests/`, and representative language-native runners like Maven/Gradle,
-`dotnet test`, RSpec, PHPUnit/Composer, Swift, and CTest. If your team uses
-more specific commands, override those points in org, user, or project marker
-config:
+The built-in `test-passed` and `test-failed` command regexes are intentionally examples, not an exhaustive test-runner catalog. They cover common high-confidence commands such as `go test`, `cargo test`, `pytest`, JavaScript package-manager test scripts, `make test`-style targets, shell scripts under `tests/`, and representative language-native runners like Maven/Gradle, `dotnet test`, RSpec, PHPUnit/Composer, Swift, and CTest. If your team uses more specific commands, override those points in org, user, or project marker config:
 
 ```yaml
 version: 2
@@ -497,7 +496,15 @@ Examples of the derivation:
 
 Built-in per-turn metrics intentionally publish both gauges and distributions where the questions differ. `trajectory.turn.tool_uses` is a gauge split by `tool_name` for per-tool breakdowns within a turn; `trajectory.turn.tool_uses.total` is a distribution sample of the total tools used by a completed turn and does not carry `tool_name`. Similarly, `trajectory.turn.cost.usd` and `trajectory.turn.duration_ms` are gauges for the latest turn values, while `trajectory.turn.cost.usd.total` and `trajectory.turn.duration_ms.total` are completed-turn distribution samples for percentile queries. `trajectory.turn.permission_wait_ms.total` and `trajectory.turn.duration_ms.excluding_permission_wait.total` break out derivable human approval wait from completed-turn duration. PR attribution metrics are also completed samples: `trajectory.pr.cost.usd.attributed.total` is the cost attributed to turns that contributed to a PR, `trajectory.pr.attributed_turns.total` counts those turns, and `trajectory.pr.containing_session.cost.usd.total` records the cost of sessions containing PR activity. `trajectory.session.last_seen.unix` is a session-scoped gauge whose value is the latest observed session event time as Unix seconds; use it for recency-sorted session tables. Enable Historical Metrics Ingestion for this gauge before replaying sessions older than one hour.
 
-Older `trajectory.marker.measure.<measure_name>` and `trajectory.marker.point.<measure_name>` namespaces are deprecated. Use the current `trajectory.<scope>.<concept>` metric names described in this guide.
+Managed `required_destinations` can opt in to structured `pr_attribution` records for PR/MR drilldown. Those records are derived from persisted `pr-created` marker detail and session summaries. They may include PR/MR URL, owner, repo, number, bounded attributed cost/turns, and containing-session cost; they do not include prompts, tool input/output, commands, diffs, file contents, or local file paths. Repo `publish.trajectory.yaml` files cannot enable records, and security destinations never receive them. Historical replay uses `trajectory backfill-records --kind pr_attribution` for dry-run and `--yes` to submit.
+
+Any marker detail intended to feed a structured record must be durable,
+schema-stable, and safe to publish without reading raw transcript or tool
+payload tables. Marker detail may carry normalized identifiers and numeric
+attribution values; it must not embed prompts, responses, command text, diffs,
+file contents, local paths, or secret-bearing URLs.
+
+Older `trajectory.marker.measure.<measure_name>` and `trajectory.marker.point.<measure_name>` namespaces are deprecated. Use the metric naming convention above for migration guidance.
 
 Range markers are still exported as marker context/evaluation records. To make them easy to graph in dashboards, add a range-backed measure:
 
@@ -547,12 +554,7 @@ trajectory publish validate
 
 ### Dashboard query examples
 
-Trajectory submits marker metrics according to `metric_kind`. Most session
-measures are gauges with completed-session `.completed_count` mirrors for
-dashboard totals; raw per-commit samples are distributions. Use `sum:` on the
-`.completed_count` mirrors for count-like session totals, `avg:` for
-ratios/scores, and percentile aggregators such as `p95:` for distribution
-samples.
+Trajectory submits marker metrics according to `metric_kind`. Most session measures are gauges with completed-session `.completed_count` mirrors for dashboard totals; raw per-commit samples are distributions. Use `sum:` on the `.completed_count` mirrors for count-like session totals, `avg:` for ratios/scores, and percentile aggregators such as `p95:` for distribution samples.
 
 | Widget | Example Datadog query | Notes |
 | --- | --- | --- |
@@ -565,11 +567,11 @@ samples.
 | P95 permission wait per completed turn | `p95:trajectory.turn.permission_wait_ms.total{repo:trajectory}` | Estimated from permission request and matching tool result timing when derivable. |
 | P95 completed-turn duration excluding permission wait | `p95:trajectory.turn.duration_ms.excluding_permission_wait.total{repo:trajectory}` | Subtracts derivable approval wait; missing wait intervals remain part of duration. |
 | Average per-commit cost | `avg:trajectory.commit.cost.usd.total{repo:trajectory} by {branch}` | Uses the built-in commit-cost-usd branch tag; confirm the `branch` point dimension is present in Metrics Explorer. |
-| Total PR-attributed cost | `sum:trajectory.pr.cost.usd.attributed.total{repo:trajectory}` | Metrics-only aggregate; Trajectory does not publish a PR URL table or records/log payload for this dashboard view. |
+| Total PR-attributed cost | `sum:trajectory.pr.cost.usd.attributed.total{repo:trajectory}` | Metrics aggregate. Optional managed `pr_attribution` records provide PR/MR drilldown separately from metric series. |
 | PR-attributed turns | `sum:trajectory.pr.attributed_turns.total{repo:trajectory}` | Counts turns attributed to PR activity. |
 | Average containing-session cost for PRs | `avg:trajectory.pr.containing_session.cost.usd.total{repo:trajectory}` | Compares attributed PR cost with the broader session cost that contained PR activity. |
 | P95 range duration | `p95:trajectory.session.test_fix_cycle.duration.ms{*}` | Backed by a range distribution using `@range_duration_ms` and `metric_kind: distribution`. |
-| Test success ratio | `avg:trajectory.session.test_success_rate{repo:trajectory}` | Ratio measures are session-level gauges; graph with `avg:`. |
+| Range success ratio | `avg:trajectory.session.test_success_rate{repo:trajectory}` | Ratio measures are session-level gauges; graph with `avg:`. |
 | Marker density formula | `sum:trajectory.session.force_pushes.completed_count{*}.rollup(sum, 86400) / count_not_null(avg:trajectory.session.turns.total{*} by {gen_ai.conversation.id})` | Use a formula widget to normalize marker counts by completed sessions. |
 
 ### Monitor examples
@@ -579,8 +581,8 @@ Adapt scopes and thresholds to your org. These are metric monitor query shapes, 
 - Page on high-risk security markers in production:
   `sum(last_15m):sum:trajectory.session.security_risky_shell_secret_exfils{env:prod}.rollup(sum) > 0`
 - Alert when force pushes happen outside a break-glass repo/team:
-  `sum(last_1h):sum:trajectory.session.force_pushes{team:agent-platform,!repo:release-tools}.rollup(sum) > 0`
-- Watch test success rate after defining a ratio measure:
+  `sum(last_1h):sum:trajectory.session.force_pushes.completed_count{team:agent-platform,!repo:release-tools}.rollup(sum) > 0`
+- Watch range-backed retry health:
   `avg(last_4h):avg:trajectory.session.test_success_rate{team:agent-platform} < 0.8`
 - Catch unusually long range cycles after defining a duration distribution:
   `max(last_1h):max:trajectory.session.test_fix_cycle.duration.ms{team:agent-platform} > 1800000`
@@ -609,7 +611,7 @@ measures:
 
 Useful starter widgets are a 24-hour query value for total security markers, a toplist by `repo` or `team`, and a timeseries split by the specific count metric. Keep extracted security details out of metric tags unless they are normalized to a bounded, non-sensitive category.
 
-The packaged Datadog dashboard templates are embedded in the binary. For one-off analysis, prefer ad hoc dashboard queries like the examples above.
+Packaged Datadog dashboard templates are embedded in the binary. For one-off analysis, prefer ad hoc dashboard queries like the examples above.
 
 ## CLI commands
 
@@ -633,11 +635,42 @@ trajectory reevaluate [--db PATH] [--session SESSION_ID] [--since YYYY-MM-DD] [-
 # Validate captured marker expectations in a DB fixture/session.
 trajectory validate-markers [--db PATH] [--session SESSION_ID] [--corpus] [--self-test]
 
+# Run the isolated marker canary and print Datadog query examples.
+trajectory markers canary [--source-home PATH] [--home PATH] [--keep-home]
+
 # Validate publish destinations and marker metric settings.
 trajectory publish validate
 ```
 
 `trajectory markers validate` checks all resolved marker layers; pass `--config PATH` to validate a specific marker YAML file. Validation reports the file, schema path, and message for each error.
+
+## Marker canary
+
+Use `trajectory markers canary --keep-home` after marker, publish, or client-capture changes that could affect marker fidelity. The command copies the current Trajectory config into an isolated `TRAJECTORY_HOME`, disables ambient Codex/Cursor transcript watchers, disables segmentation/self-update/token backfill, starts a local capture server on an ephemeral port, and posts a synthetic Pi session.
+
+The synthetic session intentionally exercises:
+
+- Three interleaved assistant-message turns so `assistant_messages_json` must be present for every turn.
+- Skill detection through a `Skill` tool call, a `SKILL.md` file read, and tool provenance.
+- Failed test, code edit, passed test, commit, push, PR, compaction, tool error, permission denial, language activity, cost, and token metrics.
+- Session, commit, and PR cost attribution from per-turn cost rather than cumulative turn totals.
+
+Local `PASS` means the SQLite cache contains the expected session/turn shape, non-null assistant-message data, marker points, grouped measures, cost, token totals, and commit/PR distribution point dimensions. When the copied config contains a Datadog metrics destination with marker metrics enabled, the command can publish to that destination and print Metrics Explorer query examples.
+
+Expected readback includes:
+
+```text
+trajectory.session.skill_invocations by skill_name: setup-markers=1, integ-validate=1, e2e-test=1
+trajectory.session.tool_errors by category: command-failed=1
+trajectory.session.language_activity by language: go=2, markdown=1
+trajectory.session.cost.usd.total: 0.0343
+trajectory.commit.cost.usd.total by branch: feature/marker-canary=0.0343
+trajectory.pr.cost.usd.attributed.total: 0.0343
+gen_ai.usage.input_tokens: 4300
+gen_ai.usage.output_tokens: 1240
+```
+
+The expected metric tags include `environment:test`, `session_id:<id>`, `trajectory.client_source:pi`, `trajectory.client_version:marker-canary/dev`, `gen_ai.request.model:openai/gpt-5.1`, and `project_dir:trajectory-marker-canary-fixture`. Marker detail fields such as `detected_from` and `source_scope` are validated locally; they are not Datadog metric tags unless a measure explicitly maps them to bounded dimensions.
 
 ## End-to-end authoring workflow
 
