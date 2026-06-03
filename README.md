@@ -1,15 +1,51 @@
 # Trajectory
 
-Trajectory is Datadog's observability tooling for AI coding agents. It captures
-local agent sessions, evaluates them for operational signals, and exports
-telemetry to Datadog LLM Observability.
+Trajectory is Datadog's observability layer for AI coding agents. It turns local
+agent sessions into inspectable timelines, behavioral signals, operational
+metrics, and Datadog LLM Observability traces so teams can understand what their
+agents are doing, how much they cost, where they get stuck, and which workflows
+are working.
 
-This repository contains:
+Trajectory instruments coding-agent workflows at the client boundary: hooks,
+watchers, plugin runtimes, and MCP surfaces capture session lifecycle, turns,
+tool calls, model usage, token and cost signals, repository context, and
+attribution metadata. You get a local record first, then optional Datadog export
+when configured.
 
-- install and release metadata
-- Claude Code, Codex, Gemini, Pi, and OpenCode plugin assets
-- public skills and commands such as incognito mode
-- setup, client, marker, and troubleshooting docs
+## Why Trajectory
+
+AI coding agents are becoming part of the software delivery loop, but their work
+is often hard to inspect after the terminal scrolls away. Trajectory gives that
+work an observability model:
+
+- What did the agent do during the session?
+- Which tools, files, repositories, commits, and pull requests were involved?
+- How much did the session cost, and where did time go?
+- Did the workflow show signs of retries, confusion, repeated failures, or
+  successful task completion?
+- Which behavior patterns are improving or regressing across users and teams?
+
+## Feature Highlights
+
+- **Markers**: a flagship YAML-based signal layer for detecting workflow
+  patterns across turns, sessions, tasks, commits, and pull requests. Marker
+  results can be inspected locally and exported as Datadog metrics, making
+  qualitative agent behavior measurable over time.
+- **Multi-client instrumentation**: capture from Claude Code, Codex CLI, Gemini
+  CLI, Cursor, Pi, OpenCode, GitHub Copilot CLI beta, and Factory Droid beta
+  with client-specific hooks, watchers, plugins, and backfill paths.
+- **Datadog-native export**: publish configurable LLM Observability traces and
+  operational metrics for tokens, cost, duration, tool use, capture health,
+  marker results, and attribution workflows.
+- **Local investigation loop**: inspect sessions with `trajectory status`,
+  `trajectory view`, diagnostics, support bundles, MCP tools, and historical
+  backfill before deciding what to export.
+- **Privacy and capacity controls**: use `/incognito`, local-only capture,
+  sensitivity scanning, configurable trace detail, and controls for
+  Trajectory-owned LLM calls.
+- **Workflow attribution**: connect agent activity to repositories, commits,
+  pull requests, and completed-session samples so agent impact can be explored
+  alongside delivery outcomes.
 
 ## Install
 
@@ -75,7 +111,10 @@ This repository accepts changes to public docs, marketplace metadata, plugin ass
 
 - [docs/USER-GUIDE.md](docs/USER-GUIDE.md): CLI workflows and day-to-day operation
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md): config files, managed defaults, environment overrides, and common settings
+- [docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md): supported coding-agent clients and version requirements
+- [docs/CLIENT-INSTRUMENTATION.md](docs/CLIENT-INSTRUMENTATION.md): per-client hook, watcher, MCP, and backfill surfaces
 - [docs/PRIVACY.md](docs/PRIVACY.md): incognito, sensitive tags, and sensitivity scanning
+- [docs/LLM-CAPACITY.md](docs/LLM-CAPACITY.md): which features use additional LLM capacity and how to control them
 - [docs/METRICS-REFERENCE.md](docs/METRICS-REFERENCE.md): emitted metric names, types, tags, and query guidance
 - [docs/MARKERS.md](docs/MARKERS.md): marker authoring and marker-derived metrics
 
