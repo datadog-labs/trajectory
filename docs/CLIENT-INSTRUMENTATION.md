@@ -26,7 +26,6 @@ trajectory user-guide clients
 | Factory Droid | `trajectory setup --clients droid` | Beta Factory command hooks plus MCP | None |
 | Pi | `trajectory setup --clients pi` | TypeScript extension plus eager MCP | Pi/OMP session backfill |
 | OpenCode | `trajectory setup --clients opencode` | OpenCode plugin SDK events plus MCP | SQLite backfill |
-| OpenClaw | Plugin package plus optional-client binary | Beta OpenClaw plugin SDK hooks | None |
 
 ## Shared Local Flow
 
@@ -186,16 +185,6 @@ directory.
 The plugin SDK events cover chat messages, tool execution before/after events,
 and lifecycle events. Historical import uses OpenCode SQLite databases. OpenCode
 does not install a `hooks.json` file.
-
-## OpenClaw
-
-OpenClaw support is a live-capture beta. It is not included in default
-Trajectory binaries; build with `-tags optionalclients` and install the
-`plugin/trajectory-openclaw` package through OpenClaw's plugin system.
-
-The plugin maps OpenClaw lifecycle, model, tool, compaction, and session hooks
-to `/capture/openclaw/...`. Backfill, resume, MCP, and setup-managed install are
-out of scope for the current beta.
 
 ## Troubleshooting
 

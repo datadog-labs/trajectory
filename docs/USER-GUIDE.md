@@ -122,17 +122,13 @@ trajectory setup --uninstall codex   # Remove one client integration
 |--------|--------------|-------------------|------------------|------------------|----------|--------|
 | Claude Code | HTTP hooks | Yes | Yes | Yes | Transcript backfill | Yes |
 | Codex CLI | Command hooks plus rollout watcher fallback | Yes | Yes | Yes | Codex rollout backfill | Yes |
+| GitHub Copilot CLI | Beta Copilot plugin command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
 | Gemini CLI | Managed command hooks | Yes | Yes | Yes | Gemini transcript backfill | Yes |
 | Cursor Desktop | Command hooks | Yes | Cursor DB dependent | Yes | Cursor chat backfill | Yes |
 | cursor-agent CLI | Transcript watcher | Tool and turn events | Not exposed by current transcripts | No | Same transcript source | No setup-managed resume |
 | Factory Droid | Beta Factory plugin command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
 | Pi | TypeScript extension | Yes | Yes | Native tool plus MCP | Pi/OMP session backfill | Yes |
 | OpenCode | Plugin SDK events | Yes | Yes | Yes | SQLite backfill | Yes |
-| OpenClaw | Capture beta plugin hooks with optional-client binary | Yes, with conversation access for prompts/responses | Token usage when OpenClaw exposes it; cost estimated downstream or passed through when present | Not yet | Not yet | Not in scope |
-
-OpenClaw is live-capture only in the current beta and is installed through its
-OpenClaw plugin package, not `trajectory setup`. Default Trajectory binaries
-omit this route; use a binary built with `-tags optionalclients`.
 
 ## Publishing and export
 
