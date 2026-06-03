@@ -27,7 +27,6 @@ trajectory user-guide clients/codex
 | Factory Droid | `trajectory setup --clients droid` | Beta | Factory plugin command hooks + MCP |
 | Pi | `trajectory setup --clients pi` | Beta | TypeScript extension + MCP |
 | OpenCode | `trajectory setup --clients opencode` | Beta | Plugin SDK events + MCP |
-| OpenClaw | OpenClaw plugin package + optional-client binary | Beta | Plugin SDK hooks + runtime binary resolver |
 
 ## Feature Coverage Matrix
 
@@ -35,29 +34,19 @@ trajectory user-guide clients/codex
 |--------|--------------|-------------------|------------------|------------------|----------|--------|
 | Claude Code | Yes, HTTP hooks | Yes | Yes | Yes | Transcript backfill | Yes |
 | Codex CLI | Yes, command hooks plus rollout watcher fallback | Yes | Yes | Yes | Codex rollout backfill | Yes |
+| GitHub Copilot CLI | Yes, beta plugin command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
 | Gemini CLI | Yes, managed command hooks | Yes | Yes | Yes | Gemini transcript backfill | Yes |
 | Cursor Desktop | Yes, command hooks | Yes | Cursor DB dependent | Yes | Cursor chat backfill | Yes |
 | cursor-agent CLI | Yes, transcript watcher | Tool and turn events | Not exposed by current transcripts | No | Same transcript source | No setup-managed resume |
+| Factory Droid | Yes, beta Factory plugin command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
 | Pi | Yes, TypeScript extension | Yes | Yes | Native tool plus MCP | Pi/OMP session backfill | Yes |
 | OpenCode | Yes, plugin SDK events | Yes | Yes | Yes | SQLite backfill | Yes |
-| OpenClaw | Capture beta, plugin SDK hooks | Yes, with conversation access for prompts/responses | Token usage when OpenClaw hook payloads expose it; cost is estimated downstream or passed through when present | Not yet | Not yet | Not in scope |
-
-OpenClaw support in this repository is intentionally scoped to live capture for
-now. The server-side endpoint is excluded from default Trajectory binaries and
-compiled only with the neutral `optionalclients` build tag. It adds a
-Trajectory `/capture/openclaw` endpoint and a plugin package that maps OpenClaw
-hooks into canonical Trajectory events; it does not add OpenClaw historical
-import, setup-managed install, or resume support.
 
 ## Recommended vs Manual Installs
 
 `trajectory setup --clients ...` is the recommended path for normal installs because it wires the plugin together with the companion config each client expects: hooks, MCP entries, skills, commands, local binaries, and local marketplace metadata.
 
 Direct or local plugin installs remain supported for development and manual recovery. When using a manual path, copy or install the plugin from a stable local location and mirror the companion config that setup would have written. A plugin-only install may load the extension but miss MCP tools, incognito controls, command assets, or the capture hooks needed for complete telemetry.
-
-OpenClaw is the current exception: its plugin package plus a Trajectory binary
-built with `-tags optionalclients` is the supported beta install surface for
-live capture until setup-managed install is added.
 
 ## Codex CLI
 
@@ -245,44 +234,6 @@ Manual fallback: copy `plugin/trajectory-opencode` to `~/.config/opencode/plugin
 
 **Source:** [github.com/anomalyco/opencode](https://github.com/anomalyco/opencode)
 
-## OpenClaw
-
-**Status: Capture beta** (live capture path: OpenClaw plugin hooks)
-
-OpenClaw uses a plugin SDK with typed lifecycle, model, tool, compaction, and
-session hooks. The Trajectory plugin lives in `plugin/trajectory-openclaw` and
-maps those hooks into `/capture/openclaw/...` so events are attributed as
-`client_source=openclaw`.
-
-The npm or ClawHub package installs the JavaScript plugin; the Go `trajectory`
-binary remains a separate executable and must include the optional-client build
-tag. At runtime, the plugin prefers a configured `captureUrl`, then a
-configured or existing binary, then `~/.trajectory/bin/trajectory`, then
-`trajectory` on `PATH`. `binaryInstallMode=auto` is explicit opt-in and should
-only target a release channel that publishes optional-client binaries.
-
-For full prompt, response, token, and cost capture, external OpenClaw installs
-must opt in to raw conversation hooks:
-
-```json
-{
-  "plugins": {
-    "entries": {
-      "trajectory-openclaw": {
-        "hooks": {
-          "allowConversationAccess": true
-        }
-      }
-    }
-  }
-}
-```
-
-Backfill and resume are intentionally out of scope for this plugin. The
-OpenClaw plugin is scoped to live capture; historical OpenClaw session import,
-sidecar import, and any future resume adapter should be implemented under
-Trajectory CLI packages rather than hidden in plugin startup.
-
 ## Version Check
 
 To verify your client version:
@@ -296,5 +247,4 @@ cursor --version          # Cursor (desktop) / cursor-agent --version (CLI)
 droid --version           # Factory Droid
 pi --version              # Pi
 opencode --version        # OpenCode (note: takes cwd as argument)
-openclaw --version        # OpenClaw
 ```

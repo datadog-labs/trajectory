@@ -3,7 +3,6 @@ actions/checkout@v4,https://github.com/actions/checkout,MIT,See upstream license
 @types/node@^22.19.0,https://www.npmjs.com/package/@types/node,MIT,See upstream license notice
 fastmcp>=3.2.4,https://pypi.org/project/fastmcp/,Apache-2.0,See upstream license notice
 mcp>=1.26.0,https://pypi.org/project/mcp/,MIT,See upstream license notice
-openclaw>=2026.5.21,https://www.npmjs.com/package/openclaw,MIT,See upstream license notice
 PyYAML>=6.0,https://pypi.org/project/PyYAML/,MIT,See upstream license notice
 typescript@^5.9.0,https://www.npmjs.com/package/typescript,Apache-2.0,See upstream license notice
 cel.dev/expr@v0.25.1,https://cel.dev/expr,Apache-2.0,See upstream license notice

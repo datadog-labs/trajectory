@@ -1,51 +1,97 @@
 # Trajectory
 
-Trajectory is Datadog's observability layer for AI coding agents. It turns local
-agent sessions into inspectable timelines, behavioral signals, operational
-metrics, and Datadog LLM Observability traces so teams can understand what their
-agents are doing, how much they cost, where they get stuck, and which workflows
-are working.
+Observe AI coding agents like production systems.
 
-Trajectory instruments coding-agent workflows at the client boundary: hooks,
-watchers, plugin runtimes, and MCP surfaces capture session lifecycle, turns,
-tool calls, model usage, token and cost signals, repository context, and
-attribution metadata. You get a local record first, then optional Datadog export
-when configured.
+See the whole run. Measure the behavior. Improve the workflow.
 
-## Why Trajectory
+Trajectory captures coding-agent sessions across Claude Code, Codex, Gemini,
+Cursor, Pi, OpenCode, GitHub Copilot CLI, and Factory Droid, then turns them
+into local timelines, Datadog LLM Observability traces, operational metrics,
+and Markers: programmable signals for how agents work.
 
-AI coding agents are becoming part of the software delivery loop, but their work
-is often hard to inspect after the terminal scrolls away. Trajectory gives that
-work an observability model:
+## What It Answers
 
-- What did the agent do during the session?
-- Which tools, files, repositories, commits, and pull requests were involved?
-- How much did the session cost, and where did time go?
-- Did the workflow show signs of retries, confusion, repeated failures, or
-  successful task completion?
-- Which behavior patterns are improving or regressing across users and teams?
+- What happened in this session?
+- Where did time, tokens, and cost go?
+- Which repos, files, commits, and pull requests were involved?
+- Did the agent make progress, loop, retry, or stall?
+- Which agent workflows are improving across users and teams?
 
-## Feature Highlights
+## Markers
 
-- **Markers**: a flagship YAML-based signal layer for detecting workflow
-  patterns across turns, sessions, tasks, commits, and pull requests. Marker
-  results can be inspected locally and exported as Datadog metrics, making
-  qualitative agent behavior measurable over time.
-- **Multi-client instrumentation**: capture from Claude Code, Codex CLI, Gemini
-  CLI, Cursor, Pi, OpenCode, GitHub Copilot CLI beta, and Factory Droid beta
-  with client-specific hooks, watchers, plugins, and backfill paths.
-- **Datadog-native export**: publish configurable LLM Observability traces and
-  operational metrics for tokens, cost, duration, tool use, capture health,
-  marker results, and attribution workflows.
-- **Local investigation loop**: inspect sessions with `trajectory status`,
-  `trajectory view`, diagnostics, support bundles, MCP tools, and historical
-  backfill before deciding what to export.
-- **Privacy and capacity controls**: use `/incognito`, local-only capture,
+Markers are Trajectory's signature feature: YAML-defined measurements for agent
+behavior. Write a rule once, then evaluate it across turns, sessions, tasks,
+commits, and pull requests.
+
+Example: add this to `.trajectory/markers.yaml` in a repo to turn an agent
+force-push into a measurable signal.
+
+```yaml
+version: 2
+
+points:
+  - name: force-push
+    description: Agent force-pushed to a remote
+    severity: warn
+    confidence: high
+    emit: metric
+    scope: session
+    match:
+      tool: [Bash, Shell, exec_command, run_shell]
+      command: '(?i)^git\s+push\b.*--force'
+      not_input: '--force-with-lease'
+
+measures:
+  - name: force-pushes
+    scope: session
+    count:
+      point: force-push
+```
+
+How it works:
+
+- `points` define behavior to detect. This point watches shell-like tool calls
+  for `git push --force`.
+- `not_input` excludes the safer `--force-with-lease` path.
+- `emit: metric` makes the point eligible for marker metric export.
+- `scope: session` says the signal describes the session, not just one turn.
+- `measures` turns point hits into a count named `force-pushes`.
+
+When the command appears in a captured session, Trajectory records a
+`force-push` marker and can publish `trajectory.session.force_pushes` plus a
+completed-session count metric. Raw behavior becomes something you can query by
+repo, team, environment, or release workflow.
+
+Use Markers to detect patterns such as:
+
+- retry loops
+- repeated failures
+- tool thrash
+- context churn
+- approval friction
+- cost spikes
+- task progress
+- pull-request attribution
+
+Marker results are available locally and can be exported as Datadog metrics, so
+agent behavior becomes something you can graph, alert on, compare, and improve.
+
+## Core Capabilities
+
+- **Multi-client instrumentation** for Claude Code, Codex CLI, Gemini CLI,
+  Cursor, Pi, OpenCode, GitHub Copilot CLI beta, and Factory Droid beta.
+- **Local-first timelines** for session lifecycle, turns, tool calls, model
+  usage, cost signals, and repository context.
+- **Datadog-native export** for configurable LLM Observability traces and
+  operational metrics for tokens, cost, duration, tool use, capture health, and
+  attribution workflows.
+- **Investigation tools** including `trajectory status`, `trajectory view`,
+  diagnostics, support bundles, MCP tools, and historical backfill.
+- **Privacy and capacity controls** including `/incognito`, local-only capture,
   sensitivity scanning, configurable trace detail, and controls for
   Trajectory-owned LLM calls.
-- **Workflow attribution**: connect agent activity to repositories, commits,
-  pull requests, and completed-session samples so agent impact can be explored
-  alongside delivery outcomes.
+- **Workflow attribution** across repositories, commits, pull requests, and
+  completed-session samples.
 
 ## Install
 
