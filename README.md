@@ -74,6 +74,7 @@ This repository accepts changes to public docs, marketplace metadata, plugin ass
 ## Reference
 
 - [docs/USER-GUIDE.md](docs/USER-GUIDE.md): CLI workflows and day-to-day operation
+- [docs/CONFIGURATION.md](docs/CONFIGURATION.md): config files, managed defaults, environment overrides, and common settings
 - [docs/PRIVACY.md](docs/PRIVACY.md): incognito, sensitive tags, and sensitivity scanning
 - [docs/METRICS-REFERENCE.md](docs/METRICS-REFERENCE.md): emitted metric names, types, tags, and query guidance
 - [docs/MARKERS.md](docs/MARKERS.md): marker authoring and marker-derived metrics
