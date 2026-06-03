@@ -1,11 +1,14 @@
 # Metrics Reference
 
-This page catalogs the metric surface emitted by the current Trajectory binary.
-Metric names, types, and tags are treated as part of the public distribution
-contract.
+This page catalogs the metric surface emitted by the current Trajectory binary. Metric names, types, and tags are treated as part of the public distribution contract.
 
 For marker syntax and dashboard examples, see [MARKERS.md](MARKERS.md). For
 configuration and destination trust, see [USER-GUIDE.md](USER-GUIDE.md).
+For the built-in metric guide, run:
+
+```bash
+trajectory user-guide metrics
+```
 
 ## Naming Model
 
@@ -156,7 +159,10 @@ Session-end metrics:
 
 Task metrics come from closed task segments. They are emitted with
 `trajectory.trace_type:task` and the dimensions `task_type`, `outcome_label`,
-and `task_id` when task metric publishing is enabled for the destination.
+and `task_id` when `segmentation.publish_metrics` is enabled. The legacy
+`segmentation.publish_traces` gate also enables these metrics for existing
+trace-publish opt-ins. Destinations can suppress all task-segmentation-derived
+publish outputs with `segmentation.enabled: false`.
 
 | Metric | Type | Unit |
 |---|---|---|
@@ -184,22 +190,23 @@ Built-in and setup-default metrics include:
 | `trajectory.session.skill_invocations` | gauge | session | Skill activity grouped by `skill_name` |
 | `trajectory.session.subagents` | gauge | session | Setup-default subagent count |
 | `trajectory.session.tests_written` | gauge | session | Setup-default new-test count |
+| `trajectory.session.test_success_rate` | gauge | session | Setup-default Bazel retry success ratio |
 | `trajectory.session.force_pushes` | gauge | session | Setup-default force-push count |
 | `trajectory.session.ci_iterations` | gauge | session | Setup-default CI feedback ranges |
 | `trajectory.session.code_added` | gauge | session | Setup-default code-change count |
 | `trajectory.session.files_modified` | gauge | session | Setup-default files-touched count |
-| `trajectory.session.tasks` | gauge | session | Task segment count when task metrics publishing is enabled |
-| `trajectory.session.task_outcome_mean` | gauge | session | Mean task outcome score when task metrics publishing is enabled |
-| `trajectory.session.task_autonomy_mean` | gauge | session | Mean task autonomy score when task metrics publishing is enabled |
-| `trajectory.session.high_risk_tasks` | gauge | session | Tasks with high risk score when task metrics publishing is enabled |
+| `trajectory.session.tasks` | gauge | session | Task segment count when `segmentation.publish_metrics` or `segmentation.publish_traces` is enabled and destination segmentation is enabled |
+| `trajectory.session.task_outcome_mean` | gauge | session | Mean task outcome score when task-segmentation publish is enabled for the destination |
+| `trajectory.session.task_autonomy_mean` | gauge | session | Mean task autonomy score when task-segmentation publish is enabled for the destination |
+| `trajectory.session.high_risk_tasks` | gauge | session | Tasks with high risk score when task-segmentation publish is enabled for the destination |
 
 Count-like session gauges that represent one final value per completed session
 also publish a `.completed_count` mirror, for example
 `trajectory.session.force_pushes.completed_count`,
 `trajectory.session.language_activity.completed_count`, and
-`trajectory.session.prs.completed_count`. Datadog gauge rollups can repeat final
-values across dashboard buckets, so dashboards that ask "how many?" should sum
-the `.completed_count` mirror rather than summing the gauge.
+`trajectory.session.prs.completed_count`. Datadog gauge rollups can repeat final values
+across dashboard buckets, so dashboards that ask "how many?" should sum the
+`.completed_count` mirror rather than summing the gauge.
 
 Commit and PR attribution metrics are distribution samples:
 
@@ -229,11 +236,18 @@ privacy/publish diagnostics.
 | `trajectory.serve.publish.sensitivity_held` | count | `client_source`, `destination`, `reason` | Spans held while classification is pending or unresolved |
 | `trajectory.serve.publish.spans_suppressed_total` | count | `client_source`, `destination`, `category`, `label` | Number of spans suppressed by sensitivity policy |
 | `trajectory.serve.publish.spans_held_total` | count | `client_source`, `destination` | Number of spans held pending sensitivity classification |
+| `trajectory.serve.llm_capacity.calls.total` | count | `feature`, `backend`, `gen_ai.request.model`, `pass`, `cost_source` | Successful Trajectory-owned background LLM calls for segmentation or sensitivity classification |
+| `trajectory.serve.llm_capacity.cost.usd.total` | count | `feature`, `backend`, `gen_ai.request.model`, `pass`, `cost_source` | Estimated USD cost for priced Trajectory-owned background LLM calls |
 | `trajectory.serve.sensitivity.classifier_unavailable` | count | `client_source`, `reason` | No classifier path was available; rate-limited |
 | `trajectory.serve.sensitivity.classifier_backend_error` | count | `backend`, `error_class` | One classifier backend failed before fallback |
 | `trajectory.serve.sensitivity.watermark_write_error` | count | `error_class` | Sensitivity watermark write failed |
 | `trajectory.serve.sensitivity.watermark_parse_error` | count | `error_class` | Sensitivity watermark read/parse failed |
 | `trajectory.serve.sensitivity.sensitivity_held_at_session_end` | count | `reason` | Session ended while sensitivity was still held |
+
+LLM-capacity cost is estimated from prompt/output size and the existing model
+pricing table. It is useful for directional spend dashboards, not provider
+invoice reconciliation. Calls whose model is not visible or priced still emit
+the call count with `cost_source:pricing_unknown`.
 
 ## Companion Metrics
 
@@ -309,17 +323,16 @@ in-progress spend.
 
 Use `.completed_count` mirrors for count-like session markers such as
 `trajectory.session.commits.completed_count` and
-`trajectory.session.force_pushes.completed_count`. The unsuffixed gauges remain
-available for latest-value inspection, but Datadog gauge rollups can repeat
-final session values across buckets and are not trustworthy for dashboard
-totals. For running gauges such as `trajectory.session.turns.elapsed`, use
-last-value or max-style views instead of summing repeated updates for the same
-session.
+`trajectory.session.force_pushes.completed_count`. The unsuffixed gauges remain available
+for latest-value inspection, but Datadog gauge rollups can repeat final session
+values across buckets and are not trustworthy for dashboard totals. For running
+gauges such as `trajectory.session.turns.elapsed`, use last-value or max-style
+views instead of summing repeated updates for the same session.
 
 For active users and recent activity, do not use
 `trajectory.session.evaluated`. That metric is a marker-evaluation heartbeat
-for absence monitoring and can be sparse when marker evaluation or marker metric
-publishing is not enabled for a user. Use
+for absence monitoring and can be sparse when marker evaluation or marker
+metric publishing is not enabled for a user. Use
 `max:trajectory.session.last_seen.unix{...} by {trajectory.user}` with
 `count_nonzero(query1)` for active-user counts, and use
 `trajectory.session.turns.total` grouped by `session_id` when counting
@@ -332,8 +345,8 @@ non-token metrics when the model tag is absent. Prefer model as a grouping on
 intentionally require model-tagged data.
 
 Use max-style queries for `trajectory.publish.active_destinations` when asking
-"how many destinations were active?" It is a per-session gauge; averaging it can
-produce fractional destination counts that are not meaningful.
+"how many destinations were active?" It is a per-session gauge; averaging it
+can produce fractional destination counts that are not meaningful.
 
 Serve-side counters are not uniformly tagged with the canonical tag set.
 `trajectory.serve.incognito.enabled` and `trajectory.serve.publish.*` use the
