@@ -2,7 +2,10 @@
 Trajectory captures local JSONL first, then publishes according to config and destination policy. Use the controls below when a session may involve sensitive content.
 
 ## Incognito
-Use `/incognito` when ordinary observability destinations should not receive the current session. Local JSONL capture continues, publish to non-exempt remote destinations is suppressed, and the toggle resets when the session ends.
+Use `/incognito` when ordinary observability destinations should not receive
+the current session. Local JSONL capture continues, publish to non-exempt remote
+destinations is suppressed, active-session sensitivity scans are skipped, and
+the toggle resets when the session ends.
 
 Clients with the Trajectory skill installed accept:
 
@@ -49,6 +52,10 @@ privacy:
 ```
 
 Sensitivity gating applies to span publish. Metrics, marker evaluations, and some event logs can still flow depending on destination policy. Keep metric tags and marker details low-cardinality and non-sensitive.
+
+Incognito sessions skip active-session sensitivity classifier calls.
+`TRAJECTORY_DISABLED=1` is stronger: it prevents local capture for the launched
+process, so there is no local session for the sensitivity scanner to read.
 
 ## Disable All Capture
 For a one-off process where local capture should also stop, use:

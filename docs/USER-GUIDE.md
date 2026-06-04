@@ -60,7 +60,23 @@ Trace export is off by default. Set `export.traces` explicitly when you want ses
 Secret writes are defensive: `trajectory setup` and `trajectory config
 set-secret` snapshot an existing keychain value before updating it and attempt
 to restore the old value if the write fails. Recover a missing Datadog key with
-`trajectory config set-secret dd-api-key` or a temporary `DD_API_KEY`.
+`trajectory config set-secret dd-api-key` or a temporary `DD_API_KEY` /
+`DATADOG_API_KEY`.
+
+Standard Datadog credential resolution uses `auto`: env var for the configured
+key ref, `DD_API_KEY`, `DATADOG_API_KEY`, the default key provider, keychain,
+then destination `api_key_command`. If an environment variable contains a
+secret-manager reference instead of the Datadog API key, pin the intended
+source:
+
+```bash
+trajectory config set auth.credential_source keychain  # auto | env | key_provider | keychain | api_key_command
+trajectory doctor
+```
+
+Managed `auth.mode: managed_keychain` policy uses exact keychain refs only.
+`trajectory serve` logs an early warning when `auto` would select a malformed
+Datadog env var, before the first publish attempt.
 
 Set `export.placeholder_llm_span: false` in `~/.trajectory/config.yaml`, or `placeholder_llm_span: false` on a managed/trusted `publish.trajectory.yaml` destination, to stop publishing Trajectory's synthetic LLM child span for turn-level token/cost enrichment. The turn span still carries `metrics.estimated_total_cost` plus cost fallback metadata and the `trajectory.cost_source:turn_metrics` tag, so cost remains queryable without the placeholder child span. Project configs may disable this for a trusted destination, but cannot re-enable it if the trusted or managed destination disabled it.
 
@@ -115,6 +131,12 @@ read-only SQLite access.
 
 For SQLite queries, call `trajectory_schema` first so the agent uses the live
 database path and schema before calling `trajectory_query`.
+
+`trajectory_incognito` can be called with only `enable` when the MCP server can
+resolve the active session from environment variables or the active-session
+registry. Responses include `resolved_session_id` and `resolution_source`. If
+resolution fails, call `list_active_sessions` and retry with an explicit
+`session_id`.
 
 ```bash
 trajectory user-guide mcp
@@ -228,7 +250,7 @@ Use the default `raw` format for Datadog dashboard API workflows. Use `--format 
 
 ## Privacy Controls
 
-Use `/incognito` when the current session should not publish to ordinary Datadog observability destinations. Local JSONL capture continues, publish to non-exempt Datadog destinations is suppressed, and the toggle resets when the session ends. Org-managed destinations configured with `incognito_exempt: true` may still receive events for approved security or audit use cases.
+Use `/incognito` when the current session should not publish to ordinary Datadog observability destinations. Local JSONL capture continues, publish to non-exempt Datadog destinations is suppressed, active-session sensitivity scans are skipped, and the toggle resets when the session ends. Org-managed destinations configured with `incognito_exempt: true` may still receive events for approved security or audit use cases.
 
 Use `<sensitive>...</sensitive>` blocks as an explicit signal to the agent and to human readers:
 

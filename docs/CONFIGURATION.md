@@ -117,7 +117,8 @@ trajectory publish validate
 value-shape diagnostics for each destination. A healthy Datadog API key reports
 `normalized_shape=datadog-api-key` and `valid_format=true`. If
 `valid_format=false`, re-enter the API key with `trajectory config set-secret
-dd-api-key` or fix the `DD_API_KEY` or `api_key_command` source.
+dd-api-key` or fix the `DD_API_KEY`, `DATADOG_API_KEY`, or `api_key_command`
+source.
 
 Use OS keychain storage for secrets. Avoid putting API keys or provider keys in
 YAML files.
@@ -126,13 +127,37 @@ YAML files.
 for an existing value first, writes the new value, and attempts to restore the
 previous value if the write fails. If setup or `set-secret` reports a keychain
 problem, recover with `trajectory config set-secret dd-api-key`, or set
-`DD_API_KEY` temporarily and run `trajectory publish validate`.
+`DD_API_KEY` or `DATADOG_API_KEY` temporarily and run `trajectory publish
+validate`.
 
 For temporary shells and CI-style runs, environment variables can provide credentials:
 
 ```bash
 DD_API_KEY=... trajectory publish validate
+DATADOG_API_KEY=... trajectory publish validate
 ```
+
+Standard publish credential lookup order:
+
+1. Environment variable derived from the configured key ref, then `DD_API_KEY`,
+   then `DATADOG_API_KEY`.
+2. Default key provider from `auth.key_command`, for the default Datadog ref.
+3. OS keychain account matching the key ref.
+4. Destination `api_key_command`.
+
+Set `auth.credential_source` when you need to force one standard source and
+stop fallback. Valid values are `auto`, `env`, `key_provider`, `keychain`, and
+`api_key_command`:
+
+```bash
+trajectory config set auth.credential_source keychain
+trajectory config set auth.credential_source auto
+```
+
+`trajectory doctor`, `trajectory publish validate`, and serve logs report the
+active policy, resolved source, and non-secret value shape. Serve also warns at
+startup when `auto` mode would select a malformed Datadog env var, before the
+first publish attempt.
 
 ## Local Capture Without Remote Export
 
@@ -189,6 +214,7 @@ Environment variables are best for temporary overrides, CI jobs, or one launched
 | `TRAJECTORY_PORT` | Override `server.port` |
 | `DD_SITE` | Override `export.site` |
 | `DD_API_KEY` | Provide a Datadog API key without editing config |
+| `DATADOG_API_KEY` | Provide a Datadog API key without editing config |
 | `TRAJECTORY_SEGMENTATION_DISABLED=1` | Disable segmentation for the current runtime |
 | `TRAJECTORY_ROOT` | Change where trajectory JSONL files are written |
 | `TRAJECTORY_DEBUG=1` | Enable verbose logging |
@@ -204,6 +230,7 @@ Environment variables are best for temporary overrides, CI jobs, or one launched
 | Key | Default | What it controls |
 |---|---|---|
 | `deployment.ring` | `stable` | Release channel for updates, usually `stable` or `beta` |
+| `auth.credential_source` | `auto` | Pin standard Datadog credential resolution to `env`, `key_provider`, `keychain`, or `api_key_command`; `auto` uses the fallback chain |
 | `server.port` | `19222` | Local capture server port |
 | `local_ui.auto_start` | `true` | Automatic local-ui startup from non-manual flows |
 | `capture.redact_pii` | `true` | PII redaction in captured content |

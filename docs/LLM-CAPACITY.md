@@ -90,7 +90,8 @@ Scanning modes:
   segmentation: about every 10 completed turns, plus a final session-end scan on
   the non-incognito publish path.
 - `near_realtime` scans active sessions on a time window when new content
-  exists. The default interval is 30 minutes.
+  exists. The default interval is 30 minutes, and the durable per-session window
+  is enforced across concurrent serve processes.
 - `off` disables sensitivity classifier calls and disables the sensitivity
   publish gate.
 
@@ -145,10 +146,10 @@ near_realtime: active windows with new content / interval + at most 1 session-en
 off:           0 calls
 ```
 
-Incognito is a privacy control, not a capacity control. It suppresses publish
-for ordinary destinations and skips the final non-incognito publish-drain scan,
-but active-session sensitivity scanning can still run while the session is
-active. Use `scanning_mode: off` for a capacity guarantee.
+Incognito is a privacy control, not a global capacity control. It suppresses
+publish for ordinary destinations and skips active-session and final sensitivity
+scans for that session. Use `scanning_mode: off` when you want a
+configuration-wide guarantee of zero sensitivity-classifier calls.
 
 ## Cost reporting
 
@@ -164,6 +165,10 @@ The cost metric uses estimated token counts from prompt and output size, then
 prices those counts with Trajectory's existing model pricing table. It is not a
 provider invoice. Calls whose model is not visible or not priced still emit
 `trajectory.serve.llm_capacity.calls.total` with `cost_source:pricing_unknown`.
+Classifier backend errors can also represent attempted calls that consumed
+provider-side capacity before failing or returning unparseable output. Check
+`trajectory.serve.sensitivity.classifier_backend_error` alongside the capacity
+metrics when investigating unexpected spend.
 
 Useful queries:
 
