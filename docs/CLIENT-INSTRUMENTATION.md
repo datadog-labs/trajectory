@@ -80,12 +80,18 @@ cache path.
 
 Setup writes a local Claude Code marketplace under
 `~/.trajectory/claude-marketplace`, registers it, refreshes it, and installs or
-updates `trajectory@trajectory` at user scope.
+updates `trajectory@trajectory` at user scope. Claude Code caches installed
+plugins by plugin version, so setup generates the local marketplace and plugin
+manifest with Trajectory's bundled Claude plugin version. `trajectory update`
+can also refresh an already installed Claude plugin after the binary is current
+when it detects stale cached plugin metadata.
 
-The plugin registers Claude lifecycle hooks that post to the local capture
-server. Claude Code supports native HTTP hook entries, so most lifecycle events
-use HTTP hooks. The plugin also carries MCP configuration and skills, including
-`/incognito`.
+The plugin ships Claude `hooks/hooks.json`, which Claude Code loads
+automatically from that standard path. Those lifecycle hooks post to the local
+capture server. Claude Code supports native HTTP hook entries, so most lifecycle
+events use HTTP hooks. The plugin manifest intentionally omits a `hooks` entry
+for `hooks/hooks.json` to avoid duplicate hook-file loading. The plugin also
+carries MCP configuration and skills, including `/incognito`.
 
 Verify:
 

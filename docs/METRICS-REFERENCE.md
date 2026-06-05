@@ -38,8 +38,15 @@ gauges for that reason.
 ## Emission Gates
 
 Base telemetry is emitted when `export.metrics: true` is enabled for an active
-Datadog or OTLP destination. Trace export can still be off; metrics-only mode is
-valid and common.
+Datadog or OTLP destination. For normal `~/.trajectory/config.yaml` Datadog
+config, `export.site` plus `export.metrics: true` creates the built-in
+`_config_datadog` destination even when `export.traces: off`. In that mode
+metrics publish and LLM Observability trace spans do not.
+
+Destination `type` is the backend or transport selector, not the metrics
+switch. For `type: datadog`, metrics use Datadog Metrics v2 when the metric
+gates are enabled. Legacy `type: dd_llmobs` is accepted as an alias for
+`datadog`.
 
 Marker-derived metrics require both marker evaluation and destination marker
 metrics:
@@ -86,8 +93,14 @@ unattributed.
 | `project_dir` | Project directory basename | Omitted |
 | `trajectory.trace_type` | Metric grain: `turn`, `session`, `task`, `commit`, or `pr` | Set by emitter |
 
-Destination tags may also be present. Keep custom tags low-cardinality and
-non-sensitive.
+Top-level config `tags:` are included on Trajectory-published Datadog metric
+series for Datadog destinations, including base, marker, heartbeat, and task
+metrics. User and managed tag maps are additive; managed `config.defaults.yaml`
+values win on key conflicts. They are not written to local JSONL, and they are
+not added to OTLP exports, Claude native OTLP proxy metrics, or process-level
+health/privacy counters. Destination tags and marker dimensions may also be
+present where those publish paths support them. Keep custom tags low-cardinality
+and non-sensitive.
 
 ## Per-Turn Metrics
 
@@ -102,6 +115,10 @@ Per-turn metrics are emitted on completed turn events.
 | `trajectory.turn.number` | gauge | turn | One-indexed turn number when known |
 | `trajectory.turn.cost.usd` | gauge | USD | Point-in-time turn cost; zero is valid |
 | `trajectory.turn.cost.usd.total` | distribution | USD | Completed-turn cost sample; use `p95:`/`avg:` queries |
+| `trajectory.turn.web_search.requests` | gauge | request | WebSearch requests in the completed turn |
+| `trajectory.turn.web_search.requests.total` | distribution | request | Completed-turn WebSearch request sample |
+| `trajectory.turn.web_search.cost.usd` | gauge | USD | WebSearch cost in the completed turn at $0.01 per request |
+| `trajectory.turn.web_search.cost.usd.total` | distribution | USD | Completed-turn WebSearch cost sample |
 | `trajectory.turn.duration_ms` | gauge | ms | Point-in-time completed-turn duration when derivable |
 | `trajectory.turn.duration_ms.total` | distribution | ms | Completed-turn duration sample |
 | `trajectory.turn.permission_wait_ms.total` | distribution | ms | Derivable human approval wait inside the turn |
@@ -137,6 +154,8 @@ Running session gauges:
 | `trajectory.session.turns.elapsed` | gauge | turn | Running turn count, refreshed on turn end |
 | `trajectory.session.tool_uses.elapsed` | gauge | call | Running tool-use count, refreshed on turn end |
 | `trajectory.session.cost.usd.accumulated` | gauge | USD | Running and final observed session cost |
+| `trajectory.session.web_search.requests` | gauge | request | Running and final observed WebSearch request count when present |
+| `trajectory.session.web_search.cost.usd.accumulated` | gauge | USD | Running and final observed WebSearch cost at $0.01 per request |
 | `trajectory.session.compactions.elapsed` | gauge | compaction | Running compaction count |
 | `trajectory.session.last_seen.unix` | gauge | second | Latest observed source event timestamp as Unix seconds |
 
@@ -148,6 +167,8 @@ Session-end metrics:
 | `trajectory.session.turns.total` | distribution | turn | Completed-session turn count |
 | `trajectory.session.tool_uses.total` | distribution | call | Completed-session tool-use count |
 | `trajectory.session.cost.usd.total` | distribution | USD | Completed-session cost sample; not an active-session coverage metric |
+| `trajectory.session.web_search.requests.total` | distribution | request | Completed-session WebSearch request sample |
+| `trajectory.session.web_search.cost.usd.total` | distribution | USD | Completed-session WebSearch cost sample |
 | `trajectory.session.compactions.total` | distribution | compaction | Completed-session compaction sample |
 | `trajectory.session.lines_changed` | gauge | line | Added plus removed lines when known |
 | `trajectory.session.yield_commit_count` | gauge | commit | Real git commits found in the session window by the yield tracker |
@@ -231,7 +252,7 @@ privacy/publish diagnostics.
 
 | Metric | Type | Tags | Notes |
 |---|---|---|---|
-| `trajectory.publish.active_destinations` | gauge | Canonical tags plus destination tags | Number of active destinations seen for a session |
+| `trajectory.publish.active_destinations` | gauge | Canonical tags plus top-level and destination tags on Datadog destinations | Number of active destinations seen for a session |
 | `trajectory.publish.turns` | count | OTLP publish path tags | Internal publish turn counter |
 | `trajectory.serve.incognito.enabled` | count | `client_source` | User or tool enabled incognito; intentionally not tagged by session ID |
 | `trajectory.serve.publish.sensitivity_suppressed` | count | `client_source`, `destination`, `category`, `label` | Sensitive spans dropped for a destination |
