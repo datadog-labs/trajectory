@@ -154,7 +154,7 @@ configuration-wide guarantee of zero sensitivity-classifier calls.
 ## Cost reporting
 
 Trajectory emits best-effort Datadog Metrics v2 points for Trajectory-owned LLM
-capacity when a `dd_llmobs` metrics destination is enabled:
+capacity when a `datadog` metrics destination is enabled:
 
 | Metric | Type | Tags | Notes |
 |---|---|---|---|

@@ -124,7 +124,7 @@ Install with setup:
 trajectory setup --clients cc
 ```
 
-Setup writes a local Claude Code marketplace under `~/.trajectory/claude-marketplace`, registers that local path with Claude, refreshes the marketplace, then installs the plugin at user scope. If `trajectory@trajectory` is already installed, setup refreshes the marketplace and runs `claude plugin update trajectory@trajectory --scope user` so an existing install moves to the bundled plugin version without requiring GitHub SSH or HTTPS credentials.
+Setup writes a local Claude Code marketplace under `~/.trajectory/claude-marketplace`, registers that local path with Claude, refreshes the marketplace, then installs the plugin at user scope. If `trajectory@trajectory` is already installed, setup refreshes the marketplace and runs `claude plugin update trajectory@trajectory --scope user` so an existing install moves to the bundled plugin version without requiring GitHub SSH or HTTPS credentials. Claude Code caches installed plugins by version, so the setup-generated marketplace and plugin manifest use Trajectory's bundled Claude plugin version. `trajectory update` also checks installed Claude plugin metadata and refreshes the plugin when the cached version is stale.
 
 Manual fallback after setup has staged the local marketplace:
 
@@ -136,7 +136,11 @@ claude plugin install trajectory@trajectory --scope user
 
 From a source checkout, use the checkout root instead of `~/.trajectory/claude-marketplace`.
 
-The plugin registers 12 lifecycle hooks, primarily HTTP, with command shims for startup, shutdown, and serve lifecycle handling.
+The plugin ships the standard Claude `hooks/hooks.json` file with 12 lifecycle
+hooks, primarily HTTP, with command shims for startup, shutdown, and serve
+lifecycle handling. Claude Code loads that standard hook file automatically; the
+plugin manifest intentionally does not list `hooks/hooks.json`, because doing so
+would load the same file twice.
 
 ## Gemini CLI
 

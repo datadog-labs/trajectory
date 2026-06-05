@@ -59,6 +59,34 @@ Trace export is off by default. Set `export.traces` explicitly when you want ses
 
 Metrics export defaults to `true`, but still needs a working Datadog destination and credentials before points can be submitted.
 
+For metrics-only Datadog export, leave traces off and keep metrics enabled:
+
+```yaml
+export:
+  site: datadoghq.com
+  ml_app: coding-agents
+  traces: off
+  metrics: true
+```
+
+No `type:` field is needed in normal `~/.trajectory/config.yaml`. Trajectory
+uses `export.site`, `export.ml_app`, `export.traces`, and `export.metrics` to
+create the built-in Datadog destination named `_config_datadog`. With
+`traces: off` and `metrics: true`, Datadog metrics publish and LLM Observability
+trace spans do not.
+
+For explicit managed destinations, `type` chooses the backend or transport:
+`datadog`, `datadog_agent`, or `otlp`. Trace export is controlled by `level` on
+that destination. Metrics export is controlled by `export.metrics` and
+destination metric settings. Legacy aliases `dd_llmobs` and
+`dd_llmobs_via_agent` are still accepted.
+
+Trace export is off by default. Rerunning `trajectory setup` preserves an
+existing non-off trace setting and prints the effective level. If the existing
+setting is `full`, interactive setup asks before preserving it; the safe default
+is to switch back to `off`. Non-interactive setup cannot prompt, so it warns
+loudly when it preserves `full`.
+
 ## Example User Config
 
 This is a typical `~/.trajectory/config.yaml` for a user who wants local capture, Datadog metrics, and standard LLM Observability traces:
@@ -81,6 +109,34 @@ segmentation:
 ```
 
 Prefer `trajectory config set` for routine edits so Trajectory preserves the expected shape and validates values.
+
+## Global Publish Tags
+
+Use a top-level `tags:` map in `~/.trajectory/config.yaml` or managed
+`~/.trajectory/config.defaults.yaml` when every published Datadog coding-agent
+signal from that machine should carry the same deployment or fleet tags:
+
+```yaml
+tags:
+  team: platform
+  environment: development
+  workspace: cloud
+```
+
+These tags are added at publish time to Datadog LLM Observability spans and
+Trajectory Datadog metric series for base, marker, heartbeat, and task metrics.
+They are not written to local JSONL. They are not added to OTLP exports, Claude
+native OTLP proxy metrics, or process-level health/privacy counters.
+
+User and managed `tags:` maps are additive. When the same key appears in both,
+the managed `config.defaults.yaml` value wins. Destination-level `tags:` from
+trusted destinations or `publish.trajectory.yaml` remain destination-scoped, but
+managed top-level tags are reapplied for shared keys.
+
+Keep global tags low-cardinality and non-sensitive. Use stable values such as
+`team`, `environment`, `deployment`, or `workspace`; avoid prompts, file paths,
+URLs, arbitrary emails, SHAs, random IDs, and secrets. Use the `identity.*`
+settings for user/email/GitHub attribution instead of custom tag keys.
 
 ## Example Managed Defaults
 
@@ -229,6 +285,7 @@ Environment variables are best for temporary overrides, CI jobs, or one launched
 
 | Key | Default | What it controls |
 |---|---|---|
+| `tags` | `{}` | Low-cardinality deployment tags added to published Datadog spans and Trajectory Datadog metrics; managed defaults win on shared keys |
 | `deployment.ring` | `stable` | Release channel for updates, usually `stable` or `beta` |
 | `auth.credential_source` | `auto` | Pin standard Datadog credential resolution to `env`, `key_provider`, `keychain`, or `api_key_command`; `auto` uses the fallback chain |
 | `server.port` | `19222` | Local capture server port |

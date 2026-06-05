@@ -525,9 +525,9 @@ measures:
 
 ### Tags and dimensions
 
-Marker metric series include destination `tags:` from publish config, `session_id`, optional `ml_app`, best-effort repo tags (`git_remote_host`, `owner`, `repo`), and `trajectory.trace_type:session`. Per-emission dimensions from `dimensions` or legacy `tag_keys` are merged into point metric tags only. Add dashboard template variables only for tags that are present on the marker series you are querying; for example, `team`, `env`, `repo`, `owner`, or a bounded point dimension such as `branch`.
+Marker metric series include top-level Datadog publish `tags:`, destination `tags:` from publish config, `session_id`, optional `ml_app`, best-effort repo tags (`git_remote_host`, `owner`, `repo`), and `trajectory.trace_type:session`. Per-emission dimensions from `dimensions` or legacy `tag_keys` are merged into point metric tags only. Add dashboard template variables only for tags that are present on the marker series you are querying; for example, `team`, `env`, `repo`, `owner`, or a bounded point dimension such as `branch`.
 
-Keep metric tags low-cardinality. Avoid full prompts, command lines, paths, URLs, emails, SHAs, random IDs, and secret-looking values. If you need filters such as `trajectory.client_source` or `trajectory.user` on marker metrics, add them as destination tags or confirm they are present in Metrics Explorer before wiring dashboards or monitors to them.
+Keep metric tags low-cardinality. Avoid full prompts, command lines, paths, URLs, emails, SHAs, random IDs, and secret-looking values. Confirm tag presence in Metrics Explorer before wiring dashboards or monitors to them.
 
 To publish marker metrics, enable markers for a Datadog destination in publish config and validate the destination:
 
@@ -535,7 +535,7 @@ To publish marker metrics, enable markers for a Datadog destination in publish c
 # trajectory-doc-snippet: publish-config
 destinations:
   - name: team-llmobs
-    type: dd_llmobs
+    type: datadog
     site: us5.datadoghq.com
     ml_app: coding-agents
     service: trajectory

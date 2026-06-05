@@ -55,7 +55,34 @@ trajectory config set local_ui.auto_start false    # disable automatic local-ui 
 trajectory config set-secret dd-api-key             # prompts for the key securely
 ```
 
-Trace export is off by default. Set `export.traces` explicitly when you want sessions published to LLM Observability.
+For metrics-only Datadog export, keep `export.traces` off and set
+`export.metrics` true:
+
+```yaml
+export:
+  site: datadoghq.com
+  ml_app: coding-agents
+  traces: off
+  metrics: true
+```
+
+Do not add `type` under `export:` in normal `~/.trajectory/config.yaml`.
+Trajectory creates the built-in `_config_datadog` destination from the
+`export.*` fields. Destination `type` is only used in explicit `destinations:`
+or managed `required_destinations:` lists.
+
+These controls are separate: destination `type` chooses the backend/transport,
+`export.traces` or destination `level` controls LLM Observability trace spans,
+and `export.metrics` plus destination metric settings control metrics. Use
+`type: datadog` for direct Datadog destinations in new explicit configs. Legacy
+`type: dd_llmobs` still works.
+
+Trace export is off by default. Set `export.traces` explicitly when you want
+sessions published to LLM Observability. Rerunning `trajectory setup` preserves
+an existing non-off trace setting and prints the effective level. If the
+existing setting is `full`, interactive setup asks before preserving it; the
+safe default is to switch back to `off`. Non-interactive setup cannot prompt, so
+it warns loudly when it preserves `full`.
 
 Secret writes are defensive: `trajectory setup` and `trajectory config
 set-secret` snapshot an existing keychain value before updating it and attempt
@@ -366,6 +393,33 @@ Use these tags to filter in LLM Obs and Metrics Explorer:
 
 This is useful on shared machines or CI where multiple users generate sessions.
 
+## Custom publish tags
+
+Add a top-level `tags:` map to `~/.trajectory/config.yaml` or managed
+`~/.trajectory/config.defaults.yaml` when every published Datadog coding-agent
+signal from that machine should carry the same low-cardinality deployment tags:
+
+```yaml
+tags:
+  team: platform
+  environment: development
+  workspace: cloud
+```
+
+These tags are applied at publish time to Datadog LLM Observability spans and
+Trajectory Datadog metric series for base, marker, heartbeat, and task metrics.
+They are not written to local JSONL, and they are not added to OTLP exports,
+Claude native OTLP proxy metrics, or process-level health/privacy counters.
+
+User and managed `tags:` maps are additive. When the same key appears in both,
+the managed `config.defaults.yaml` value wins. Destination-level `tags:` in
+trusted destinations or `publish.trajectory.yaml` remain destination-scoped, but
+managed top-level tags are reapplied for shared keys.
+
+Keep custom tags stable and non-sensitive. Avoid prompts, paths, URLs,
+arbitrary emails, SHAs, random IDs, and secrets. Use `identity.*` settings for
+user/email/GitHub attribution instead of custom keys.
+
 ## Repo tags on metrics
 
 Trajectory automatically tags every DD metric with repository metadata extracted from the git remote:
@@ -385,10 +439,12 @@ Trajectory publishes distribution metrics for completed samples that are useful 
 
 - `trajectory.turn.tool_uses.total` - total tool calls in a completed turn. This is intentionally separate from the `trajectory.turn.tool_uses` gauge, which is split by `tool_name` for per-tool breakdowns.
 - `trajectory.turn.cost.usd.total` - estimated USD cost of a completed turn.
+- `trajectory.turn.web_search.requests.total` and `trajectory.turn.web_search.cost.usd.total` - completed-turn WebSearch request and cost samples.
 - `trajectory.turn.duration_ms.total` - duration of a completed turn when the client provides or Trajectory can derive it.
 - `trajectory.turn.permission_wait_ms.total` - estimated human approval wait inside a completed turn, emitted when Trajectory can derive a permission wait interval.
 - `trajectory.turn.duration_ms.excluding_permission_wait.total` - completed-turn duration minus derivable permission wait, useful when you want agent elapsed time with approval waits removed.
-- `trajectory.session.turns.total`, `trajectory.session.tool_uses.total`, `trajectory.session.cost.usd.total`, and `trajectory.session.compactions.total` - completed-session samples.
+- `trajectory.session.turns.total`, `trajectory.session.tool_uses.total`, `trajectory.session.cost.usd.total`, `trajectory.session.web_search.requests.total`, `trajectory.session.web_search.cost.usd.total`, and `trajectory.session.compactions.total` - completed-session samples.
+- `trajectory.session.web_search.requests` and `trajectory.session.web_search.cost.usd.accumulated` - running and final observed WebSearch request and cost gauges.
 - `trajectory.pr.cost.usd.attributed.total`, `trajectory.pr.attributed_turns.total`, and `trajectory.pr.containing_session.cost.usd.total` - completed-PR samples for PR cost attribution dashboards.
 - `trajectory.session.last_seen.unix` - latest observed session event time as Unix seconds, useful for recency-sorted session tables. Enable Historical Metrics Ingestion for this gauge before replaying sessions older than one hour.
 
