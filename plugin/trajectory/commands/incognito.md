@@ -10,4 +10,4 @@ Interpret command arguments this way:
 - "toggle" means invert the current state.
 - Empty arguments, "on", "enable", "private", or "pause capture" means enable incognito.
 
-Run `bash ${CLAUDE_PLUGIN_ROOT}/skills/incognito/scripts/toggle.sh "$ARGUMENTS"` and report the result.
+Run `TRAJECTORY_CLIENT_HINT=claude-code TRAJECTORY_PROJECT_ROOT="${TRAJECTORY_PROJECT_ROOT:-$PWD}" bash ${CLAUDE_PLUGIN_ROOT}/skills/incognito/scripts/toggle.sh "$ARGUMENTS"` and report the result.

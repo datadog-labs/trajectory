@@ -211,9 +211,11 @@ trajectory config set auth.credential_source auto
 ```
 
 `trajectory doctor`, `trajectory publish validate`, and serve logs report the
-active policy, resolved source, and non-secret value shape. Serve also warns at
-startup when `auto` mode would select a malformed Datadog env var, before the
-first publish attempt.
+active policy, resolved source, and non-secret value shape. In `auto` mode,
+malformed Datadog env vars are reported early and real Datadog publish
+destinations fall through to later sources such as the key provider, keychain,
+or destination command. Pin `auth.credential_source` when you want that source
+to fail closed instead.
 
 ## Local Capture Without Remote Export
 

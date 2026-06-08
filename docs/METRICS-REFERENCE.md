@@ -211,6 +211,7 @@ Built-in and setup-default metrics include:
 | `trajectory.session.permissions_denied` | gauge | session | Permission denial points |
 | `trajectory.session.language_activity` | gauge | session | Tool activity grouped by `language` |
 | `trajectory.session.skill_invocations` | gauge | session | Skill activity grouped by `skill_name` |
+| `trajectory.session.cli_tool_count` | gauge | session | Recognized shell command-line tool invocations grouped by normalized `tool`; use the `.completed_count` mirror for toplists |
 | `trajectory.session.subagents` | gauge | session | Setup-default subagent count |
 | `trajectory.session.tests_written` | gauge | session | Setup-default new-test count |
 | `trajectory.session.test_success_rate` | gauge | session | Setup-default test retry success ratio |
@@ -230,6 +231,12 @@ also publish a `.completed_count` mirror, for example
 `trajectory.session.prs.completed_count`. Datadog gauge rollups can repeat final values
 across dashboard buckets, so dashboards that ask "how many?" should sum the
 `.completed_count` mirror rather than summing the gauge.
+
+For command-line usage toplists, query
+`sum:trajectory.session.cli_tool_count.completed_count by {tool}`. The `tool`
+tag is normalized from an allowlist of command families such as `git`, `gh`,
+`go`, `pytest`, `npm`, `docker`, and `kubectl`; unknown command names are
+skipped instead of being emitted as raw tag values.
 
 Commit and PR attribution metrics are distribution samples:
 

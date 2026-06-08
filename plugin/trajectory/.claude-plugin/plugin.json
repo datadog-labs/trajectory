@@ -1,13 +1,12 @@
 {
   "name": "trajectory",
   "description": "Turnkey observability for AI coding agents - captures sessions and exports to Datadog LLM Observability",
-  "version": "1.2.3",
+  "version": "1.2.5",
   "author": {
     "name": "Datadog",
     "email": "no-reply@datadoghq.com"
   },
   "commands": "./commands",
-  "hooks": "./hooks/hooks.json",
   "mcpServers": {
     "trajectory": {
       "command": "/bin/sh",

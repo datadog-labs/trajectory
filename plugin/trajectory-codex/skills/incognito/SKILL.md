@@ -22,12 +22,12 @@ When a user seems confused or hesitant:
 
 ## Toggle
 
-1. Resolve the current session ID.
-   - Prefer `TRAJECTORY_SESSION_ID` if it is set and not `unknown`.
-   - Otherwise call the `list_active_sessions` MCP tool and choose the active Codex session matching the current workspace. If there is exactly one active session, use it. If there are multiple plausible sessions, ask the user which one to toggle.
-2. Decide the requested state.
+1. Decide the requested state.
    - For `/incognito`, "go incognito", "pause capture", "stop recording", or "private mode", enable incognito unless it is already enabled.
    - For "turn off incognito", "resume capture", or "resume publish", disable incognito.
-   - If the user explicitly asks to toggle, check whether `$HOME/.trajectory/state/incognito-${session_id}` exists and invert it.
-3. Call the `trajectory_incognito` MCP tool with `session_id` and `enable`.
-4. Tell the user whether incognito is now enabled or disabled, using the explanation above.
+   - If the user explicitly asks to toggle, call the `trajectory_incognito` MCP tool with `enable: true` unless you have already confirmed the active session is incognito, then call it with `enable: false`.
+2. Call the `trajectory_incognito` MCP tool with `enable`, `client: codex`, and `project_dir` set to the current working directory; omit `session_id` so the tool resolves the active session from Trajectory's active-session registry.
+3. If the tool reports multiple matching active sessions, call `list_active_sessions`, choose the active Codex session matching the current workspace, and retry with that `session_id`.
+4. Worst-case fast lookup: check `TRAJECTORY_SESSION_ID`, `CODEX_SESSION_ID`, `GEMINI_SESSION_ID`, `CLAUDE_SESSION_ID`, `OPENCODE_SESSION_ID`, `PI_SESSION_ID`, `DROID_SESSION_ID`, or `COPILOT_SESSION_ID`; otherwise call `list_active_sessions` or run `trajectory mcp sessions --active --json` from the workspace, select the row matching the current client/workspace with the newest `last_event`, and retry with `session_id`.
+5. If MCP is not available, run the bundled fallback script with `TRAJECTORY_CLIENT_HINT=codex` and `TRAJECTORY_PROJECT_ROOT` set to the current working directory. If a skill directory variable is available, run `TRAJECTORY_CLIENT_HINT=codex TRAJECTORY_PROJECT_ROOT="${CODEX_PROJECT_DIR:-$PWD}" bash ${CODEX_SKILL_DIR}/scripts/toggle.sh`; otherwise run the `scripts/toggle.sh` located next to this `SKILL.md`.
+6. Tell the user whether incognito is now enabled or disabled, using the explanation above.
