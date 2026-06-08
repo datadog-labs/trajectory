@@ -256,7 +256,9 @@ points:
 
 The first capture group is stored when present; otherwise the full regex match is stored.
 
-Structured `extract_fields` entries support only `name`, `path`, and `regex`.
+Structured `extract_fields` entries support `name`, `path`, `regex`, and
+`normalizer`. Marker YAML is parsed strictly; unknown fields are rejected so a
+typo cannot silently change marker behavior.
 
 Structured extraction:
 
@@ -276,6 +278,12 @@ points:
 ```
 
 Keep extracted details low-cardinality and non-sensitive. They are persisted locally and may be exported as metric tags when referenced by dimensions or `tag_keys`.
+If a count or distribution measure uses `group_by` over a detail extracted from
+`path: command`, the extraction must use either `regex` or a supported
+`normalizer` first. Raw shell command strings cannot be used directly as metric
+dimensions. For command-line tool toplists, use `normalizer: cli_tool`; publish
+also suppresses `trajectory.session.cli_tool_count` rows whose `tool` value is
+not one of Trajectory's recognized normalized CLI labels.
 
 ## Same-turn correlation with `within_turn`
 
@@ -450,6 +458,9 @@ Guidelines:
 
 - Use dimensions for bounded sets such as branch type, language, tool, outcome, or team.
 - Do not use raw prompts, full paths, URLs with query strings, user IDs, emails, secrets, or commit SHAs as metric dimensions.
+- Do not use raw shell commands as metric dimensions. Extract a bounded category
+  with `regex`, or use `normalizer: cli_tool` when grouping recognized command
+  families.
 - Prefer `regex` and `max_length` on dimension definitions to normalize values before export.
 - Set `cardinality_limit`, `max_dimensions`, `max_dimension_value_length`, and per-dimension `max_values` when adding dimensions.
 
@@ -642,7 +653,7 @@ trajectory markers canary [--source-home PATH] [--home PATH] [--keep-home]
 trajectory publish validate
 ```
 
-`trajectory markers validate` checks all resolved marker layers; pass `--config PATH` to validate a specific marker YAML file. Validation reports the file, schema path, and message for each error.
+`trajectory markers validate` checks all resolved marker layers; pass `--config PATH` to validate a specific marker YAML file. Validation reports the file, schema path, and message for each error. Unknown marker YAML fields fail validation instead of being ignored.
 
 ## Marker canary
 
@@ -663,6 +674,7 @@ Expected readback includes:
 trajectory.session.skill_invocations by skill_name: setup-markers=1, integ-validate=1, e2e-test=1
 trajectory.session.tool_errors by category: command-failed=1
 trajectory.session.language_activity by language: go=2, markdown=1
+trajectory.session.cli_tool_count.completed_count by tool: go=1, make=1, git=2, gh=1
 trajectory.session.cost.usd.total: 0.0343
 trajectory.commit.cost.usd.total by branch: feature/marker-canary=0.0343
 trajectory.pr.cost.usd.attributed.total: 0.0343

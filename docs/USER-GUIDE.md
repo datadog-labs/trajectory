@@ -93,8 +93,9 @@ to restore the old value if the write fails. Recover a missing Datadog key with
 Standard Datadog credential resolution uses `auto`: env var for the configured
 key ref, `DD_API_KEY`, `DATADOG_API_KEY`, the default key provider, keychain,
 then destination `api_key_command`. If an environment variable contains a
-secret-manager reference instead of the Datadog API key, pin the intended
-source:
+secret-manager reference instead of the Datadog API key, `auto` reports it and
+real Datadog publish destinations continue to later sources. Pin the intended
+source when you want that source to fail closed:
 
 ```bash
 trajectory config set auth.credential_source keychain  # auto | env | key_provider | keychain | api_key_command
@@ -102,8 +103,8 @@ trajectory doctor
 ```
 
 Managed `auth.mode: managed_keychain` policy uses exact keychain refs only.
-`trajectory serve` logs an early warning when `auto` would select a malformed
-Datadog env var, before the first publish attempt.
+`trajectory serve` logs an early warning when `auto` sees a malformed Datadog
+env var, before the first publish attempt.
 
 Set `export.placeholder_llm_span: false` in `~/.trajectory/config.yaml`, or `placeholder_llm_span: false` on a managed/trusted `publish.trajectory.yaml` destination, to stop publishing Trajectory's synthetic LLM child span for turn-level token/cost enrichment. The turn span still carries `metrics.estimated_total_cost` plus cost fallback metadata and the `trajectory.cost_source:turn_metrics` tag, so cost remains queryable without the placeholder child span. Project configs may disable this for a trusted destination, but cannot re-enable it if the trusted or managed destination disabled it.
 
