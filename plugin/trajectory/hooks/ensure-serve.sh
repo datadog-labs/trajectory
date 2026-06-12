@@ -1,12 +1,9 @@
 #!/bin/bash
-# Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
-# This product includes software developed at Datadog (https://www.datadoghq.com/) Copyright 2026 Datadog, Inc.
-
 # ensure-serve.sh - Restart trajectory capture server if it is down.
 #
-# UserPromptSubmit hook: fires before HTTP capture hooks to ensure
-# the server is alive. If down, spawns a rescue serve process tied
-# to the coding agent's lifecycle via PPID monitoring.
+# Used by capture-with-serve.sh before prompt capture. If down, spawns
+# a rescue serve process tied to the coding agent's lifecycle via PPID
+# monitoring.
 #
 # Concurrency: uses lock-based leader election (flock on Linux, atomic
 # mkdir on macOS) so that when many agents fire hooks simultaneously
@@ -20,14 +17,53 @@
 set -e
 
 PORT="${TRAJECTORY_PORT:-19222}"
-BINARY="${HOME}/.trajectory/bin/trajectory"
+BINARY="${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}"
+EXPECTED_HOME="${TRAJECTORY_HOME:-${HOME}/.trajectory}"
 STATE_DIR="${TRAJECTORY_HOME:-${HOME}/.trajectory}/state"
 HEALTH_CONNECT_TIMEOUT="${TRAJECTORY_HEALTH_CONNECT_TIMEOUT:-0.2}"
 HEALTH_MAX_TIME="${TRAJECTORY_HEALTH_MAX_TIME:-0.3}"
 RESTART_WAIT_SECONDS="${TRAJECTORY_SERVE_RESTART_WAIT_SECONDS:-4}"
 
 health_check() {
-    curl -sf --connect-timeout "$HEALTH_CONNECT_TIMEOUT" --max-time "$HEALTH_MAX_TIME" "http://localhost:${PORT}/health" >/dev/null 2>&1
+    local body actual_home
+    body="$(curl -sf --connect-timeout "$HEALTH_CONNECT_TIMEOUT" --max-time "$HEALTH_MAX_TIME" "http://localhost:${PORT}/health" 2>/dev/null)" || return 1
+    case "$body" in
+        *'"status":"ok"'*|*'"status": "ok"'*)
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    if command -v jq >/dev/null 2>&1; then
+        actual_home="$(printf '%s' "$body" | jq -r '.trajectory_home // empty' 2>/dev/null || true)"
+    else
+        actual_home="$(printf '%s' "$body" | sed -n 's/.*"trajectory_home"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+    fi
+    [ -n "$actual_home" ] || return 1
+    [ "$actual_home" = "$EXPECTED_HOME" ]
+}
+
+is_valid_pid() {
+    case "${1:-}" in
+        ''|*[!0-9]*)
+            return 1
+            ;;
+    esac
+    [ "$1" -gt 1 ] 2>/dev/null
+}
+
+atomic_write_file() {
+    local target="$1"
+    local dir base tmp
+    dir="$(dirname "$target")" || return 1
+    base="$(basename "$target")" || return 1
+    mkdir -p "$dir" || return 1
+    tmp="$(mktemp "${dir}/.${base}.tmp.XXXXXX")" || return 1
+    if cat >"$tmp" && mv -f "$tmp" "$target"; then
+        return 0
+    fi
+    rm -f "$tmp"
+    return 1
 }
 
 # Quick health check - if server is healthy, nothing to do.
@@ -40,8 +76,7 @@ if [ ! -x "$BINARY" ]; then
     # Warn once per session (keyed on PPID) so the user knows why capture is inactive.
     WARN_STAMP="${STATE_DIR}/no-binary-warned.${PPID}"
     if [ ! -f "$WARN_STAMP" ]; then
-        mkdir -p "$STATE_DIR"
-        touch "$WARN_STAMP"
+        : | atomic_write_file "$WARN_STAMP" || true
         echo '[trajectory] Binary not found. Reload your shell or run: export PATH="$HOME/.trajectory/bin:$PATH"' >&2
     fi
     exit 0
@@ -64,18 +99,18 @@ else
     # mkdir-based lock with staleness detection (30s timeout).
     if mkdir "$LOCKDIR" 2>/dev/null; then
         _lock_acquired=1
-        echo $$ > "$LOCKDIR/pid"
         # Ensure lock is cleaned up on exit (normal or error).
         trap 'rm -rf "$LOCKDIR"' EXIT
+        printf '%s\n' "$$" | atomic_write_file "$LOCKDIR/pid"
     else
         # Check for stale lock - if the holder died, reclaim it.
         LOCK_PID=$(cat "$LOCKDIR/pid" 2>/dev/null)
-        if [ -n "$LOCK_PID" ] && ! kill -0 "$LOCK_PID" 2>/dev/null; then
+        if ! is_valid_pid "$LOCK_PID" || ! kill -0 "$LOCK_PID" 2>/dev/null; then
             rm -rf "$LOCKDIR"
             if mkdir "$LOCKDIR" 2>/dev/null; then
                 _lock_acquired=1
-                echo $$ > "$LOCKDIR/pid"
                 trap 'rm -rf "$LOCKDIR"' EXIT
+                printf '%s\n' "$$" | atomic_write_file "$LOCKDIR/pid"
             fi
         fi
     fi
@@ -97,7 +132,7 @@ fi
 PIDFILE="${STATE_DIR}/rescue-serve.pid"
 if [ -f "$PIDFILE" ]; then
     OLD_PID=$(cat "$PIDFILE" 2>/dev/null)
-    if [ -n "$OLD_PID" ] && ! kill -0 "$OLD_PID" 2>/dev/null; then
+    if ! is_valid_pid "$OLD_PID" || ! kill -0 "$OLD_PID" 2>/dev/null; then
         rm -f "$PIDFILE"
     fi
 fi
@@ -115,17 +150,22 @@ GRANDPARENT_PID=$(ps -p "$PPID" -o ppid= 2>/dev/null | tr -d ' ')
     RESCUE_LOG="${TRAJECTORY_HOME:-${HOME}/.trajectory}/logs/rescue-serve.log"
     mkdir -p "$(dirname "$RESCUE_LOG")"
     echo "[ensure-serve] $(date): starting serve on port $PORT, binary=$BINARY" >>"$RESCUE_LOG"
-    "$BINARY" serve --port "$PORT" >>"$RESCUE_LOG" 2>&1 &
+    unset CLAUDE_SESSION_ID GEMINI_SESSION_ID TRAJECTORY_SESSION_ID TRAJECTORY_CLIENT_SOURCE
+    TRAJECTORY_DISABLE_CLIENT_WATCHERS=1 TRAJECTORY_SERVE_START_SOURCE=rescue_hook "$BINARY" serve --port "$PORT" >>"$RESCUE_LOG" 2>&1 &
     SERVE_PID=$!
-    echo "$SERVE_PID" > "$PIDFILE"
+    if ! printf '%s\n' "$SERVE_PID" | atomic_write_file "$PIDFILE"; then
+        kill "$SERVE_PID" 2>/dev/null || true
+        wait "$SERVE_PID" 2>/dev/null || true
+        exit 0
+    fi
 
     # Timing heuristic: wait 5s for the hook to finish. If $PPID is still
     # alive, it is the long-lived agent process (case A). If it died, it
     # was the ephemeral sh wrapper and we fall back to grandparent (case B).
     sleep 5
-    if kill -0 "$PPID_PID" 2>/dev/null; then
+    if is_valid_pid "$PPID_PID" && kill -0 "$PPID_PID" 2>/dev/null; then
         AGENT_PID="$PPID_PID"
-    elif [ -n "$GRANDPARENT_PID" ] && [ "$GRANDPARENT_PID" -gt 1 ] 2>/dev/null && kill -0 "$GRANDPARENT_PID" 2>/dev/null; then
+    elif is_valid_pid "$GRANDPARENT_PID" && kill -0 "$GRANDPARENT_PID" 2>/dev/null; then
         AGENT_PID="$GRANDPARENT_PID"
     else
         # Cannot determine agent PID - serve will rely on inactivity timeout.
@@ -151,7 +191,11 @@ disown
 _wait_start=$SECONDS
 while [ $((SECONDS - _wait_start)) -lt "$RESTART_WAIT_SECONDS" ]; do
     if health_check; then
-        echo "[trajectory] serve restarted (PID $(cat "$PIDFILE" 2>/dev/null))" >&2
+        RESTARTED_PID=$(cat "$PIDFILE" 2>/dev/null || true)
+        if ! is_valid_pid "$RESTARTED_PID"; then
+            RESTARTED_PID="unknown"
+        fi
+        echo "[trajectory] serve restarted (PID $RESTARTED_PID)" >&2
         exit 0
     fi
     sleep 0.25
