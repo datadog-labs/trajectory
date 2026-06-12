@@ -14,7 +14,7 @@ trajectory logs [-f] [--grep PAT]   # View capture server logs
 trajectory version                   # Print version
 ```
 
-`trajectory doctor` is the first thing to run if something isn't working. It checks the binary, config, capture server, database, credentials, and hook registration.
+`trajectory doctor` is the first thing to run if something isn't working. It checks the binary, config, capture server, local-ui/Lapdog contract, database, credentials, and hook registration.
 
 Use `trajectory view --session <id>` to inspect one captured session in the local browser viewer. If local-ui is not already running, `view` starts it and opens the session deep link. Use `trajectory user-guide local-ui` for cache repair and Lapdog-compatible local inspection.
 
@@ -90,12 +90,12 @@ to restore the old value if the write fails. Recover a missing Datadog key with
 `trajectory config set-secret dd-api-key` or a temporary `DD_API_KEY` /
 `DATADOG_API_KEY`.
 
-Standard Datadog credential resolution uses `auto`: env var for the configured
-key ref, `DD_API_KEY`, `DATADOG_API_KEY`, the default key provider, keychain,
-then destination `api_key_command`. If an environment variable contains a
-secret-manager reference instead of the Datadog API key, `auto` reports it and
-real Datadog publish destinations continue to later sources. Pin the intended
-source when you want that source to fail closed:
+Standard Datadog credential resolution uses `auto`: env var for the
+`api_key_ref`, `DD_API_KEY`, `DATADOG_API_KEY`, the configured credential-provider
+command from `auth.key_command`, keychain, then destination `api_key_command`.
+If an env var is a secret-manager ID rather than the Datadog key, `auto` reports
+it and real Datadog publish destinations continue to later sources. Pin the
+intended source when you want that source to fail closed:
 
 ```bash
 trajectory config set auth.credential_source keychain  # auto | env | key_provider | keychain | api_key_command

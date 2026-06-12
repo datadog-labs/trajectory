@@ -262,6 +262,10 @@ privacy/publish diagnostics.
 | `trajectory.publish.active_destinations` | gauge | Canonical tags plus top-level and destination tags on Datadog destinations | Number of active destinations seen for a session |
 | `trajectory.publish.turns` | count | OTLP publish path tags | Internal publish turn counter |
 | `trajectory.serve.incognito.enabled` | count | `client_source` | User or tool enabled incognito; intentionally not tagged by session ID |
+| `trajectory.serve.process.start_total` | count | `start_source` | Capture server listener started; `start_source:rescue_hook` identifies hook-driven recovery after a dead listener |
+| `trajectory.serve.process.exit_total` | count | `exit_reason`, optional `signal` | Capture server observed a graceful or error exit path before publish shutdown; hard kills are inferred from later rescue starts |
+| `trajectory.serve.capture.request_error_total` | count | `client`, `event_type`, `error_kind`, `http_status_class` | Capture HTTP request returned 4xx/5xx or hit a handler error |
+| `trajectory.serve.goroutine.panic_recovered_total` | count | `goroutine`, `action` | Serve background goroutine panic was recovered; `action` is `restart` or `give_up` |
 | `trajectory.serve.publish.sensitivity_suppressed` | count | `client_source`, `destination`, `category`, `label` | Sensitive spans dropped for a destination |
 | `trajectory.serve.publish.sensitivity_held` | count | `client_source`, `destination`, `reason` | Spans held while classification is pending or unresolved |
 | `trajectory.serve.publish.spans_suppressed_total` | count | `client_source`, `destination`, `category`, `label` | Number of spans suppressed by sensitivity policy |
