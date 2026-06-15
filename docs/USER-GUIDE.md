@@ -18,7 +18,7 @@ trajectory version                   # Print version
 
 Use `trajectory view --session <id>` to inspect one captured session in the local browser viewer. If local-ui is not already running, `view` starts it and opens the session deep link. Use `trajectory user-guide local-ui` for cache repair and Lapdog-compatible local inspection.
 
-Use `trajectory diagnose publish --session <id>` when Datadog data is missing or surprising. It compares local capture and local JSONL-to-span mapping against the transcript, then explains whether traces or metrics are expected from the current config. It does not query Datadog readback.
+Use `trajectory diagnose publish --session <id>` when Datadog data is missing or surprising. It compares local capture and local JSONL-to-span mapping against the transcript, then adds a metric publish plan from the local SQLite cache: expected metric counts, durable outbox row counts, missing expected rows, and the exact readback follow-up command. It does not query Datadog readback.
 
 Use `trajectory doctor --support-bundle` to write a redacted JSON support bundle under `~/.trajectory/` with doctor output, publish diagnosis, recent publish-related serve logs, and pricing status.
 
@@ -65,6 +65,25 @@ export:
   traces: off
   metrics: true
 ```
+
+### Forward finished sessions to a local sink
+
+To stream finished sessions to a local HTTP endpoint instead of, or in addition
+to, Datadog, set a forward URL:
+
+```bash
+trajectory setup --clients cc --forward-url http://localhost:4997/api/v1/sessions/ingest
+# or, on an existing install:
+trajectory config set export.local_forward_url http://localhost:4997/api/v1/sessions/ingest
+```
+
+When `export.local_forward_url` is set, `trajectory serve` POSTs each finished
+session's complete event stream as NDJSON (one canonical JSONL event per line -
+the same schema written to `session.jsonl`) to that URL at session end. This is
+independent of the Datadog publish path and requires no Datadog credentials, so
+it works in capture-only setups. Delivery is best-effort: a sink that is down
+simply drops the delivery (the durable `session.jsonl` remains on disk). Leave
+it empty to disable forwarding.
 
 Do not add `type` under `export:` in normal `~/.trajectory/config.yaml`.
 Trajectory creates the built-in `_config_datadog` destination from the
@@ -178,6 +197,7 @@ trajectory setup --clients codex     # Add or refresh one client integration
 trajectory setup --clients copilot   # Add or refresh GitHub Copilot CLI beta live capture
 trajectory setup --clients droid     # Add or refresh Factory Droid beta live capture
 trajectory setup --clients all       # Add or refresh all setup-managed clients
+trajectory setup --clients cc --forward-url URL  # Also forward finished sessions to a local sink
 trajectory setup --uninstall codex   # Remove one client integration
 ```
 
@@ -186,6 +206,11 @@ site, service name, and API key prompts, and leaves existing export config
 unchanged. If no config file exists yet, it creates a capture-only config so
 local session capture can start; run `trajectory setup` later to configure
 Datadog export.
+
+`--forward-url <url>` records `export.local_forward_url`, making `trajectory
+serve` POST each finished session as NDJSON to that local endpoint at session
+end with no Datadog credentials required. See "Forward finished sessions to a
+local sink" above.
 
 ### Feature coverage matrix
 
@@ -208,6 +233,8 @@ trajectory publish validate          # Verify publish config and credentials
 trajectory publish status            # Show effective mode and active sessions
 trajectory publish preview           # Preview what would be published
 trajectory diagnose publish          # Explain whether traces/metrics should publish
+trajectory publish metrics audit --latest
+                                    # Audit expected metrics from local cache
 ```
 
 `trajectory publish validate` checks configuration, trust policy, and credentials, including credential source and non-secret value-shape diagnostics. `trajectory publish status` shows the effective mode, including metrics-only and trace-off states. Neither command verifies Datadog intake or readback.
@@ -217,6 +244,26 @@ Datadog data, `publish sync`, and publish ledger repair:
 
 ```bash
 trajectory user-guide publish
+```
+
+`trajectory diagnose publish --session <id>` includes a compact metric publish
+plan for that session. Use it first when one session is missing data: it shows
+whether the local cache expects metric points, whether the durable metric
+outbox has matching rows, and what readback command to run next.
+
+`trajectory publish metrics audit --latest` is the deeper read-only metric
+audit. It reconstructs the Datadog metric points Trajectory should publish from
+the local SQLite cache and correlates those expected points with the durable
+metric outbox when session-end publish has run, showing recorded, pending,
+sent, failed, and dropped rows for the selected session and destination.
+Outbox matches are exact to the expected metric payload, including tags,
+timestamp, and value. Add `--builtin-details` to account for every built-in
+metric and show whether each one is `observed`, `not_observed`, or
+`out_of_scope` for the selected local data. To query Datadog for the stable
+dashboard mirrors, run:
+
+```bash
+DD_APP_KEY=... trajectory publish metrics audit --latest --readback
 ```
 
 For marker-metric readback, use `trajectory markers canary --keep-home`. It runs an isolated synthetic session, validates local marker/cost/token/assistant-message invariants, and prints Datadog queries for metric destination verification.
