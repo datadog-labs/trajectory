@@ -87,6 +87,7 @@ unattributed.
 | `ml_app` | Destination ML app | Omitted |
 | `gen_ai.request.model` | Model name | Omitted |
 | `trajectory.client_version` | Client or harness version | Omitted |
+| `trajectory.turn_id` | Stable turn ordinal on turn-scoped metrics; prevents same-second turn samples from collapsing into one Datadog point | Omitted when the turn cannot be resolved |
 | `repo` | Git repository name from the remote origin, or project directory basename when the origin is unavailable | `unknown` |
 | `owner` | Git repository owner from the remote origin | `unknown` |
 | `git_remote_host` | Git remote host from the remote origin | `unknown` |

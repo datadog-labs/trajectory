@@ -1,40 +1,40 @@
 {
   "hooks": {
     "SessionStart": [{ "matcher": "", "hooks": [
-      { "type": "command", "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/codex/SessionStart >/dev/null 2>&1 || true", "timeout": 5 }
+      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s SessionStart >/dev/null 2>&1 || true", "timeout": 8 }
     ] }],
     "UserPromptSubmit": [{ "matcher": "", "hooks": [
-      { "type": "command", "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/codex/UserPromptSubmit >/dev/null 2>&1 || true", "timeout": 5 }
+      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s UserPromptSubmit >/dev/null 2>&1 || true", "timeout": 8 }
     ] }],
     "PreToolUse": [{ "matcher": "", "hooks": [
-      { "type": "command", "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/codex/PreToolUse >/dev/null 2>&1 || true", "timeout": 5 }
+      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PreToolUse >/dev/null 2>&1 || true", "timeout": 8 }
     ] }],
     "PostToolUse": [{ "matcher": "", "hooks": [
-      { "type": "command", "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/codex/PostToolUse >/dev/null 2>&1 || true", "timeout": 5 }
+      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PostToolUse >/dev/null 2>&1 || true", "timeout": 8 }
     ] }],
     "PostToolUseFailure": [{ "matcher": "", "hooks": [
-      { "type": "command", "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/codex/PostToolUseFailure >/dev/null 2>&1 || true", "timeout": 5 }
+      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PostToolUseFailure >/dev/null 2>&1 || true", "timeout": 8 }
     ] }],
     "Stop": [{ "matcher": "", "hooks": [
-      { "type": "command", "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/codex/Stop >/dev/null 2>&1 || true", "timeout": 10 }
+      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s Stop >/dev/null 2>&1 || true", "timeout": 10 }
     ] }],
     "PreCompact": [{ "matcher": "", "hooks": [
-      { "type": "command", "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/codex/PreCompact >/dev/null 2>&1 || true", "timeout": 5 }
+      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PreCompact >/dev/null 2>&1 || true", "timeout": 8 }
     ] }],
     "PostCompact": [{ "matcher": "", "hooks": [
-      { "type": "command", "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/codex/PostCompact >/dev/null 2>&1 || true", "timeout": 5 }
+      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PostCompact >/dev/null 2>&1 || true", "timeout": 8 }
     ] }],
     "PermissionRequest": [{ "matcher": "", "hooks": [
-      { "type": "command", "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/codex/PermissionRequest >/dev/null 2>&1 || true", "timeout": 5 }
+      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PermissionRequest >/dev/null 2>&1 || true", "timeout": 8 }
     ] }],
     "SubagentStart": [{ "matcher": "", "hooks": [
-      { "type": "command", "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/codex/SubagentStart >/dev/null 2>&1 || true", "timeout": 5 }
+      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s SubagentStart >/dev/null 2>&1 || true", "timeout": 8 }
     ] }],
     "SubagentStop": [{ "matcher": "", "hooks": [
-      { "type": "command", "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/codex/SubagentStop >/dev/null 2>&1 || true", "timeout": 5 }
+      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s SubagentStop >/dev/null 2>&1 || true", "timeout": 8 }
     ] }],
     "SessionEnd": [{ "matcher": "", "hooks": [
-      { "type": "command", "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/codex/SessionEnd >/dev/null 2>&1 || true", "timeout": 15 }
+      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s SessionEnd >/dev/null 2>&1 || true", "timeout": 15 }
     ] }]
   }
 }

@@ -1,6 +1,3 @@
-// Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
-// This product includes software developed at Datadog (https://www.datadoghq.com/) Copyright 2026 Datadog, Inc.
-
 /**
  * Trajectory Capture Extension for Pi
  *
@@ -18,6 +15,7 @@ import { Type } from "@sinclair/typebox";
 import { spawn, execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { buildTrajectorySchema, runTrajectoryQuery } from "./query-tools.js";
 
 const DEFAULT_PORT = 19222;
 const POST_TIMEOUT_MS = 2000;
@@ -404,6 +402,48 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 
+	pi.registerTool({
+		name: "trajectory_schema",
+		label: "Trajectory Schema",
+		description: "Introspects the local Trajectory SQLite cache schema. Call this before trajectory_query so SQL matches the live cache.",
+		parameters: Type.Object({
+			include_row_counts: Type.Optional(Type.Boolean({ description: "Include SELECT COUNT(*) per table. Defaults to false." })),
+		}),
+		async execute(_toolCallId, params) {
+			const result = buildTrajectorySchema(Boolean((params as { include_row_counts?: boolean }).include_row_counts));
+			return {
+				content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+				details: { result },
+				isError: !result.ok,
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "trajectory_query",
+		label: "Trajectory Query",
+		description: "Runs a guarded read-only SQL query against the local Trajectory SQLite cache. Call trajectory_schema first unless the schema was already fetched. Only SELECT, WITH, and PRAGMA are allowed after stripping comments.",
+		parameters: Type.Object({
+			query: Type.String({ description: "SQL query. First keyword after comments must be SELECT, WITH, or PRAGMA." }),
+			params: Type.Optional(Type.Record(Type.String(), Type.Any(), { description: "Optional named SQL parameters. Use placeholders such as :session_id." })),
+			limit: Type.Optional(Type.Number({ description: "Maximum rows to return. Defaults to 100, max 1000." })),
+			row_limit: Type.Optional(Type.Number({ description: "Alias for limit." })),
+		}),
+		async execute(_toolCallId, params) {
+			const result = runTrajectoryQuery(params as {
+				query: string;
+				params?: Record<string, string | number | boolean | null>;
+				limit?: number;
+				row_limit?: number;
+			});
+			return {
+				content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
+				details: { result },
+				isError: !result.ok,
+			};
+		},
+	});
+
 	// ── CLI fallback for session lifecycle events ───────────────────
 	// Session lifecycle events (start/end) use CLI fallback to write directly
 	// to JSONL, independent of serve availability. Matches CC plugin pattern.
@@ -434,6 +474,38 @@ export default function (pi: ExtensionAPI) {
 		}
 	}
 
+	function toTrajectoryUsage(usage: any): Record<string, unknown> | undefined {
+		if (!usage) {
+			return undefined;
+		}
+		const cost = usage.cost;
+		const out: Record<string, unknown> = {
+			input: usage.input,
+			output: usage.output,
+			cacheRead: usage.cacheRead,
+			cacheWrite: usage.cacheWrite,
+			totalTokens: usage.totalTokens,
+		};
+		if (cost !== undefined && cost !== null) {
+			out.cost = typeof cost === "object" ? cost : { total: cost };
+		}
+		return out;
+	}
+
+	function contentBlockTypes(blocks: any): string[] {
+		if (!Array.isArray(blocks)) {
+			return [];
+		}
+		const out = new Set<string>();
+		for (const block of blocks) {
+			if (block?.type === "text") out.add("text");
+			else if (block?.type === "thinking") out.add("thinking");
+			else if (block?.type === "toolCall") out.add("tool_use");
+			else if (typeof block?.type === "string" && block.type) out.add(block.type);
+		}
+		return Array.from(out);
+	}
+
 	// ── Event subscriptions ──────────────────────────────────────────
 
 	pi.on("session_start", async (_event, ctx) => {
@@ -456,7 +528,7 @@ export default function (pi: ExtensionAPI) {
 		// CLI writes directly to JSONL (always works)
 		captureHookCLI("SessionStart", body);
 
-		// Also start serve for mid-session HTTP hooks
+		// Also start serve for mid-session extension event capture
 		await ensureTrajectoryServe();
 
 		// Notify serve of the session start (best-effort)
@@ -468,7 +540,7 @@ export default function (pi: ExtensionAPI) {
 		fetchSensitivityPrompt();
 	});
 
-	pi.on("message_end", async (event, _ctx) => {
+	pi.on("message_end", async (event, ctx) => {
 
 		const msg = event.message;
 
@@ -510,14 +582,16 @@ export default function (pi: ExtensionAPI) {
 				}
 			}
 
-			post("AgentMessage", {
+			await post("AgentMessage", {
 				session_id: sessionId,
 				text: textParts.join("\n"),
 				has_thinking: hasThinking,
 				thinking_text: thinkingParts.join("\n"),
 				tool_use_ids: toolCallIds,
 				model: msg.model,
+				provider: ctx.model?.provider,
 				usage: msg.usage,
+				content_blocks: contentBlockTypes(msg.content),
 				timestamp: Date.now(),
 			});
 		}
@@ -584,15 +658,7 @@ export default function (pi: ExtensionAPI) {
 		const body: Record<string, unknown> = {
 			session_id: sessionId,
 			turn_id: turnCounter,
-			usage: usage
-				? {
-						input: usage.input,
-						output: usage.output,
-						cacheRead: usage.cacheRead,
-						cacheWrite: usage.cacheWrite,
-						cost: usage.cost?.total,
-					}
-				: undefined,
+			usage: toTrajectoryUsage(usage),
 			timestamp: Date.now(),
 		};
 

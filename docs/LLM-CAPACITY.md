@@ -48,6 +48,16 @@ floor(N / 10) incremental calls + 1 final call
 For example, a 23-turn session normally means about 3 segmentation calls: turn
 10, turn 20, and final session end. Adaptive backoff can reduce that.
 
+Headless coding-agent sessions are included in capture and publish by default
+when export is configured. Sensitivity/classification and segmentation always
+skip headless sessions. To opt out of capture/publish for headless agent sessions:
+
+```bash
+trajectory config set capture.include_headless_agents false
+```
+
+Trajectory-owned classifier and segmenter subprocesses remain suppressed.
+
 Segmentation uses a headless CLI provider. The default model is
 `claude-haiku-4-5-20251001`; set `segmentation.model` to override it when the
 selected provider supports a model flag.

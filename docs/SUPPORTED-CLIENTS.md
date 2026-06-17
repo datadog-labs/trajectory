@@ -75,13 +75,17 @@ Earlier versions may have partial support (marketplace without hook discovery, o
 
 Codex uses two capture mechanisms:
 
-1. **Command hooks (primary)** - the plugin's `hooks.json` registers 12 lifecycle hooks that use `curl` to POST stdin to the trajectory capture server. Codex accepts `type: "command"` hook entries; it does not accept Claude-style `type: "http"` hook entries.
+1. **Command hooks (primary)** - the plugin's `hooks.json` registers 12 lifecycle hooks using Codex's documented PascalCase hook keys, and each hook invokes the installed `trajectory capture-hook --client codex --ensure-serve` binary path with the same event name. The hook command verifies or starts the matching local capture server before forwarding stdin. For Codex, it also ensures a watcher-capable rescue `serve` process is present, overrides Codex watcher-disable variables for that rescue process, and suppresses unrelated client watchers so the rollout watcher fallback stays available. `TRAJECTORY_DISABLED=1` remains the all-capture suppression switch. Codex accepts `type: "command"` hook entries; it does not accept Claude-style `type: "http"` hook entries.
 
 2. **Rollout watcher (fallback)** - the trajectory binary tails `~/.codex/sessions/` for rollout JSONL files. This captures sessions that started before the plugin was installed, or if hooks aren't firing.
 
-A file-based sentinel system (`~/.trajectory/state/codex-hook-active/`) prevents the watcher from duplicating events that hooks are already capturing. If the hook process dies, the sentinel goes stale (>30s) and the watcher takes over automatically.
+A file-based sentinel system (`~/.trajectory/state/codex-hook-active/`) prevents the watcher from duplicating events that hooks are already capturing. Because Codex command hooks are one-shot processes, the sentinel stays fresh for the serve inactivity window (10 minutes by default, minimum 30 seconds) before the watcher is allowed to take over.
 
 The watcher's quiescence timeout (how long to wait after last activity before declaring a session ended) defaults to 7 days, configurable via `CODEX_WATCHER_QUIESCENCE_TIMEOUT`.
+
+For local development validation, start capture with `trajectory dev serve`. It writes a dev override sentinel so older non-dev serve processes yield the Codex watcher lock, ensuring the rebuilt binary under test owns rollout capture.
+
+`codex exec --ephemeral` disables Codex's session rollout files. Trajectory can still capture those sessions when Codex command hooks are firing, but the rollout watcher fallback cannot recover an ephemeral exec session after the fact.
 
 The Codex marketplace plugin also ships the `/incognito` skill. It uses the `trajectory_incognito` MCP tool to suppress publish to non-exempt Datadog destinations for the current session while local JSONL capture continues.
 
@@ -141,6 +145,17 @@ hooks, primarily HTTP, with command shims for startup, shutdown, and serve
 lifecycle handling. Claude Code loads that standard hook file automatically; the
 plugin manifest intentionally does not list `hooks/hooks.json`, because doing so
 would load the same file twice.
+
+Claude `--print` sessions omit `transcript_path`, so Trajectory marks them as
+headless. Headless coding-agent sessions are collected and published by default
+when export is configured, while sensitivity/classification and segmentation
+always skip headless sessions. To opt out for headless agent sessions:
+
+```bash
+trajectory config set capture.include_headless_agents false
+```
+
+Trajectory-owned classifier and segmenter subprocesses remain suppressed.
 
 ## Gemini CLI
 
@@ -203,7 +218,7 @@ cp -R /path/to/trajectory/plugin/trajectory-pi ~/.pi/agent/extensions/trajectory
 
 Then point `~/.pi/agent/mcp.json` at `~/.pi/agent/extensions/trajectory/bin/trajectory mcp`.
 
-Setup writes `~/.pi/agent/extensions/trajectory/` and points `~/.pi/agent/mcp.json` at the extension-local `bin/trajectory mcp` command. Pi uses a TypeScript extension API (`pi.on("event", handler)`) that subscribes to lifecycle events (session_start, turn_end, tool_call, tool_result, etc.) and POSTs them to the capture server. Pi also writes key lifecycle events through `capture-hook` for robustness and emits `PostCompact`. Pi supports multiple LLM providers - use any provider API key for testing.
+Setup writes `~/.pi/agent/extensions/trajectory/` and points `~/.pi/agent/mcp.json` at the extension-local `bin/trajectory mcp` command. Pi uses a TypeScript extension API (`pi.on("event", handler)`) that subscribes to lifecycle events (session_start, turn_end, tool_call, tool_result, etc.) and POSTs them to the capture server. Pi also writes key lifecycle events through `capture-hook` for robustness and emits `PostCompact`. The native extension registers `trajectory_status`, `trajectory_flush`, `trajectory_incognito`, `trajectory_schema`, and `trajectory_query`; MCP exposes the shared cross-client tool surface in environments where Pi routes MCP tools. Pi supports multiple LLM providers - use any provider API key for testing.
 
 Pi does not currently consume the Codex/Claude-style `skills/` plugin directory. The Trajectory Pi extension vends incognito through its native `trajectory_incognito` tool; environments that expose MCP can also use the shared `trajectory_incognito` MCP tool.
 

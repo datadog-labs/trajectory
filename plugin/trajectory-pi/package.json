@@ -4,7 +4,10 @@
   "description": "Trajectory capture and skills for Pi - AI coding agent observability by Datadog",
   "type": "module",
   "main": "src/index.ts",
-  "scripts": {},
+  "scripts": {
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
