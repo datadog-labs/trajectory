@@ -93,6 +93,17 @@ events use HTTP hooks. The plugin manifest intentionally omits a `hooks` entry
 for `hooks/hooks.json` to avoid duplicate hook-file loading. The plugin also
 carries MCP configuration and skills, including `/incognito`.
 
+Claude `--print` sessions omit `transcript_path`, so Trajectory marks them as
+headless. Headless coding-agent sessions are collected and published by default
+when export is configured, while sensitivity/classification and segmentation
+always skip headless sessions. To opt out for headless agent sessions:
+
+```bash
+trajectory config set capture.include_headless_agents false
+```
+
+Trajectory-owned classifier and segmenter subprocesses remain suppressed.
+
 Verify:
 
 ```bash
@@ -103,12 +114,17 @@ trajectory doctor
 ## Codex CLI
 
 Setup writes a local Codex marketplace under `~/.trajectory/codex-marketplace`
-and registers it with Codex. The plugin provides command hooks that use `curl`
-to post to the local capture server, MCP configuration, and the `/incognito`
-skill. Codex hook configs must use `type: "command"`; `type: "http"` is not a
-supported Codex hook variant.
+and registers it with Codex. The plugin provides command hooks that invoke the
+installed `trajectory capture-hook --client codex --ensure-serve` binary path,
+MCP configuration, and the `/incognito` skill. Codex hook configs must use
+`type: "command"`; `type: "http"` is not a supported Codex hook variant.
 
 Codex also has a rollout watcher fallback that tails `~/.codex/sessions/`.
+When `capture-hook --ensure-serve` runs for Codex, it ensures a
+watcher-capable rescue `serve` process is present so the rollout fallback stays
+available. For that rescue process only, it overrides Codex watcher-disable
+environment variables and suppresses unrelated client watchers;
+`TRAJECTORY_DISABLED=1` still suppresses all capture.
 Hook-active sentinels under `~/.trajectory/state/codex-hook-active/` prevent
 the watcher from duplicating events while live hooks are firing.
 

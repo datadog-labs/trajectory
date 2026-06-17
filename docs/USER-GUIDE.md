@@ -93,7 +93,10 @@ or managed `required_destinations:` lists.
 These controls are separate: destination `type` chooses the backend/transport,
 `export.traces` or destination `level` controls LLM Observability trace spans,
 and `export.metrics` plus destination metric settings control metrics. Use
-`type: datadog` for direct Datadog destinations in new explicit configs. Legacy
+`type: datadog` for direct Datadog destinations, `type: datadog_agent` for
+Agent-managed publishing, or `type: otlp` for OpenTelemetry collectors in new
+explicit configs. OTLP destinations set a base collector `endpoint`; Trajectory
+derives `/v1/traces`, `/v1/metrics`, and `/v1/logs` from it. Legacy
 `type: dd_llmobs` still works.
 
 Trace export is off by default. Set `export.traces` explicitly when you want
@@ -108,6 +111,15 @@ set-secret` snapshot an existing keychain value before updating it and attempt
 to restore the old value if the write fails. Recover a missing Datadog key with
 `trajectory config set-secret dd-api-key` or a temporary `DD_API_KEY` /
 `DATADOG_API_KEY`.
+
+Environment variables are process-local. If a long-running `trajectory serve`
+process was started before `DD_API_KEY` was exported, that process cannot see
+the later shell variable. Setup-managed Codex hooks invoke the installed
+`trajectory capture-hook --client codex --ensure-serve` binary path so they can
+verify or start a matching local capture server, but stored credentials are
+still the durable option for agent sessions. Store the key once with
+`trajectory config set-secret dd-api-key`, configure `auth.key_command`, or
+rerun setup with `DD_API_KEY` present.
 
 Standard Datadog credential resolution uses `auto`: env var for the
 `api_key_ref`, `DD_API_KEY`, `DATADOG_API_KEY`, the configured credential-provider
@@ -155,9 +167,10 @@ trajectory user-guide costs          # Cost tracking commands and fidelity check
 
 The current OSS binary does not expose a general-purpose `trajectory query`
 CLI. Use `trajectory status`, `trajectory view`, `get_session_trajectory`, and
-the MCP `trajectory_schema` / `trajectory_query` tools for local inspection.
-The embedded query guide documents the schema-first workflow and
-`TRAJECTORY_CACHE_DB` handling.
+the `trajectory_schema` / `trajectory_query` tools for local inspection. Pi
+registers those as native extension tools; setup-managed MCP clients get the
+same schema-first workflow through `trajectory mcp`. The embedded query guide
+documents schema-first inspection and `TRAJECTORY_CACHE_DB` handling.
 
 Use `trajectory cost` for local cost tracking. It reads the local SQLite cache
 in read-only mode, shows recent cost totals, inspects turn-level cost evidence,
@@ -256,15 +269,39 @@ audit. It reconstructs the Datadog metric points Trajectory should publish from
 the local SQLite cache and correlates those expected points with the durable
 metric outbox when session-end publish has run, showing recorded, pending,
 sent, failed, and dropped rows for the selected session and destination.
-Outbox matches are exact to the expected metric payload, including tags,
-timestamp, and value. Add `--builtin-details` to account for every built-in
-metric and show whether each one is `observed`, `not_observed`, or
-`out_of_scope` for the selected local data. To query Datadog for the stable
-dashboard mirrors, run:
+Outbox matches use a semantic payload identity: transport, metric kind,
+normalized value, and stable tag hash. They intentionally do not compare point
+timestamps, and they ignore volatile diagnostic tags such as version,
+repository, owner, and user. Metric-specific dimensions such as source and
+language remain part of the semantic identity. Add `--builtin-details` to
+account for every built-in metric and show whether each one is `observed`,
+`not_observed`, or `out_of_scope` for the selected local data. To query Datadog
+for the stable dashboard mirrors, run:
 
 ```bash
-DD_APP_KEY=... trajectory publish metrics audit --latest --readback
+trajectory config set-secret dd-app-key --stdin
+trajectory publish metrics audit --latest --readback
 ```
+
+The app key must belong to the destination Datadog org and include Metrics
+query permission (`timeseries_query`). Managed destinations can set
+`required_destinations[].app_key_ref` so readback uses the same destination
+identity as publish. You can also pass it for one command with `DD_APP_KEY=...`
+or use `--readback-app-key-ref <secret-name>` for a custom Trajectory keychain
+secret.
+
+For full built-in publish fidelity across spoofed coding-agent sources, use the
+synthetic canary:
+
+```bash
+trajectory publish metrics canary --clients all --runs-per-client 2 --submit --readback
+```
+
+The canary generates one expected point for every session-auditable built-in
+metric, tags each run with `trajectory.canary_run`, submits through the same
+MetricRecord-to-Datadog path, and polls Datadog Metrics until every expected
+metric group reads back exactly. Use `--destination <name>` when multiple
+Datadog metric destinations are configured.
 
 For marker-metric readback, use `trajectory markers canary --keep-home`. It runs an isolated synthetic session, validates local marker/cost/token/assistant-message invariants, and prints Datadog queries for metric destination verification.
 
