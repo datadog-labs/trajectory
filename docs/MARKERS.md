@@ -1,6 +1,6 @@
 # Marker Usage Guide
 
-Markers are Trajectory's YAML-defined behavioral signals. They turn captured agent sessions into named observations that can be evaluated locally, stored in Trajectory's SQLite database, and exported to Datadog as marker metrics and structured marker context.
+Markers are Trajectory's YAML-defined behavioral signals. They turn captured agent sessions into named observations that can be evaluated locally, stored in Trajectory's SQLite database, and exported to Datadog as marker metrics and structured marker context. LLM Observability marker evaluations are a separate experimental output path and stay off unless a destination explicitly sets `markers.evaluations: true`.
 
 A concise version of this guide is built into the binary:
 
@@ -517,7 +517,7 @@ file contents, local paths, or secret-bearing URLs.
 
 Older `trajectory.marker.measure.<measure_name>` and `trajectory.marker.point.<measure_name>` namespaces are deprecated. Use the metric naming convention above for migration guidance.
 
-Range markers are still exported as marker context/evaluation records. To make them easy to graph in dashboards, add a range-backed measure:
+Range markers can be published as marker context and, when explicitly enabled, LLM Observability evaluation records. To make them easy to graph in dashboards, add a range-backed measure:
 
 ```yaml
 measures:
@@ -558,6 +558,11 @@ destinations:
       enabled: true
       metrics: true
 ```
+
+To opt in to experimental LLM Observability marker evaluations for a Datadog
+destination, set `markers.evaluations: true` explicitly. Keep this off unless
+the destination is prepared to consume marker results as LLM Observability
+evaluations.
 
 ```bash
 trajectory publish validate

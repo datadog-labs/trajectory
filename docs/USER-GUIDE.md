@@ -124,6 +124,9 @@ rerun setup with `DD_API_KEY` present.
 Standard Datadog credential resolution uses `auto`: env var for the
 `api_key_ref`, `DD_API_KEY`, `DATADOG_API_KEY`, the configured credential-provider
 command from `auth.key_command`, keychain, then destination `api_key_command`.
+For standard Datadog API-key resolution, `dd-api-key` and `dd_api_key` are
+accepted aliases for the same default key. Managed keychain deployments use
+exact refs only and do not alias, read env vars, or run key commands.
 If an env var is a secret-manager ID rather than the Datadog key, `auto` reports
 it and real Datadog publish destinations continue to later sources. Pin the
 intended source when you want that source to fail closed:
@@ -288,7 +291,20 @@ query permission (`timeseries_query`). Managed destinations can set
 `required_destinations[].app_key_ref` so readback uses the same destination
 identity as publish. You can also pass it for one command with `DD_APP_KEY=...`
 or use `--readback-app-key-ref <secret-name>` for a custom Trajectory keychain
-secret.
+secret. Application-key lookup is shared by readback and sync: explicit
+command ref, destination `app_key_ref`, then `dd-app-key`, `dd_app_key`, or
+`DD_APP_KEY`. Managed keychain mode uses the same order but reads each ref
+exactly from the keychain.
+
+`trajectory publish sync` creates log-based metric definitions through the
+Datadog Logs configuration API. That path needs the Datadog API key used for
+publish plus a Datadog application key. `publish validate` can accept the API
+key while sync still fails if `DD_APP_KEY` / `dd-app-key` / `dd_app_key` is
+missing or lacks log configuration write permission. Store the app key with:
+
+```bash
+trajectory config set-secret dd-app-key --stdin
+```
 
 For full built-in publish fidelity across spoofed coding-agent sources, use the
 synthetic canary:
@@ -411,7 +427,7 @@ trajectory logs -f --grep error      # Follow errors only
 
 ## Markers
 
-Markers are YAML-defined behavioral signals that Trajectory evaluates against captured sessions. They produce points, multi-turn ranges, and measures that can be exported to Datadog as `trajectory.<scope>.<concept>` metrics (where `<scope>` is one of `turn`, `session`, `task`, `commit`, `pr`).
+Markers are YAML-defined behavioral signals that Trajectory evaluates against captured sessions. They produce points, multi-turn ranges, and measures that can be exported to Datadog as `trajectory.<scope>.<concept>` metrics (where `<scope>` is one of `turn`, `session`, `task`, `commit`, or `pr`). LLM Observability marker evaluations are separate and stay off unless a destination explicitly sets `markers.evaluations: true`.
 
 Read the full guide in [MARKERS.md](MARKERS.md), or from the binary:
 
