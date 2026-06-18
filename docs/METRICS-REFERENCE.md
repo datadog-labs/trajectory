@@ -4,6 +4,8 @@ This page catalogs the metric surface emitted by the current Trajectory binary. 
 
 For marker syntax and dashboard examples, see [MARKERS.md](MARKERS.md). For
 configuration and destination trust, see [USER-GUIDE.md](USER-GUIDE.md).
+For cross-agent source contracts, see
+[METRICS-CONSISTENCY-AUDIT.md](METRICS-CONSISTENCY-AUDIT.md).
 For the built-in metric guide, run:
 
 ```bash
@@ -60,7 +62,13 @@ markers:
 If a destination sets `markers.metrics: false`, marker-derived metrics are
 suppressed for that destination. Project `publish.trajectory.yaml` files can add
 metrics-only destinations only when `level: off`, marker metrics are enabled,
-and marker logs are disabled.
+marker logs are disabled, and LLM Observability marker evaluations are
+disabled.
+
+LLM Observability marker evaluations are a separate experimental output path.
+They are not enabled by `markers.enabled` or `markers.metrics`; a Datadog
+destination must set `markers.evaluations: true` explicitly before Trajectory
+submits marker results to the LLM Observability evaluation intake.
 
 Serve-side operational counters such as incognito and sensitivity health are
 best-effort Datadog Metrics API submissions. They are not tied to trace export.
@@ -130,7 +138,7 @@ Per-turn metrics are emitted on completed turn events.
 | `trajectory.turn.files_read` | gauge | file | Read tool activity in the turn |
 | `trajectory.turn.subagent_invocations` | gauge | invocation | Subagent starts observed in the turn |
 | `trajectory.turn.compactions` | gauge | compaction | Compactions observed in the turn |
-| `trajectory.turn.lines_of_code.count` | count | line | Tagged with `type:added` or `type:removed` |
+| `trajectory.turn.lines_of_code.count` | count | line | Per-turn added/removed line deltas; tagged with `type:added` or `type:removed` |
 
 Grouped per-turn metrics emit one data point per dimension value:
 
@@ -141,10 +149,14 @@ Grouped per-turn metrics emit one data point per dimension value:
 | `trajectory.turn.permission_prompts` | gauge | `decision` |
 | `trajectory.turn.tool_decision` | count | `tool_name`, `decision`, `source` |
 | `trajectory.turn.code_edit_tool.decision` | count | `tool_name`, `decision`, `source`, `language` |
-| `trajectory.turn.errors` | gauge | `category` |
+| `trajectory.turn.errors` | gauge | `category`; per-turn failed tool results. Uses explicit `turn_end.tool_error_categories` when an adapter supplies it, otherwise derives categories from completed `tool_use` events with `success:false`. This is not a Trajectory publish/tool-call transport failure metric. |
 
 For dashboard percentile queries, prefer the `.total` distributions. For
 per-tool breakdowns, use `trajectory.turn.tool_uses` grouped by `tool_name`.
+Turn-scoped gauges are completed-turn samples. Do not sum long-window gauge
+rollups as literal event counts unless the dashboard explicitly chooses a
+single point per turn; use `.total` distributions, `.count` metrics, or
+`.completed_count` mirrors where those exist.
 
 ## Per-Session Metrics
 
