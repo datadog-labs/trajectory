@@ -9,12 +9,21 @@ trajectory status                    # Terminal dashboard with session metrics
 trajectory cost                      # Local cost summary and top sessions
 trajectory view                      # Open the local browser viewer
 trajectory doctor                    # Diagnose issues (binary, config, hooks, data)
+trajectory inventory --json          # Refresh local agent and capability inventory
 trajectory diagnose publish          # Explain capture, local mapping, and publish expectations
 trajectory logs [-f] [--grep PAT]   # View capture server logs
 trajectory version                   # Print version
 ```
 
 `trajectory doctor` is the first thing to run if something isn't working. It checks the binary, config, capture server, local-ui/Lapdog contract, database, credentials, and hook registration.
+
+`trajectory inventory --json` refreshes a local inventory artifact under
+`~/.trajectory/inventory/` and prints a structured snapshot of detected agents
+and Trajectory-managed capabilities such as hooks, MCP entries, skills,
+commands, plugins, and settings sources. `current.json` contains the latest
+refresh, while `snapshots/` stores hash-named inventory snapshots for support
+triage or product-pack drift checks. Trajectory does not publish these
+inventory artifacts to Datadog yet.
 
 Use `trajectory view --session <id>` to inspect one captured session in the local browser viewer. If local-ui is not already running, `view` starts it and opens the session deep link. Use `trajectory user-guide local-ui` for cache repair and Lapdog-compatible local inspection.
 
@@ -98,6 +107,17 @@ Agent-managed publishing, or `type: otlp` for OpenTelemetry collectors in new
 explicit configs. OTLP destinations set a base collector `endpoint`; Trajectory
 derives `/v1/traces`, `/v1/metrics`, and `/v1/logs` from it. Legacy
 `type: dd_llmobs` still works.
+
+Managed Datadog destinations can opt in to a security event stream: one
+Datadog log per canonical Trajectory event with
+`ddsource: trajectory-event-stream`. This is configured under
+`required_destinations[].event_stream`, not in repo `publish.trajectory.yaml`
+or ordinary user `export:` config. The default `include_private_fields: false`
+mode keeps structural event metadata for detections while omitting prompts,
+assistant text, thinking text, tool payloads, diffs, file contents, raw
+payloads, error text, summaries, and user email fields. See
+[SECURITY-EVENT-STREAM.md](SECURITY-EVENT-STREAM.md) and
+`trajectory user-guide security-event-stream`.
 
 Trace export is off by default. Set `export.traces` explicitly when you want
 sessions published to LLM Observability. Rerunning `trajectory setup` preserves
@@ -460,6 +480,7 @@ trajectory user-guide metrics        # Metric gates, names, tags, and queries
 trajectory user-guide mcp            # MCP tools, resources, and SQL query workflow
 trajectory user-guide query          # Local cache data and guarded MCP SQL workflow
 trajectory user-guide privacy        # Incognito, sensitive tags, and sensitivity scanning
+trajectory user-guide security-event-stream # Managed security event logs
 trajectory user-guide diagnostics    # Doctor, diagnose, audit, validate-spans, support bundles
 trajectory user-guide resume         # Reconstruct captured sessions into other clients
 trajectory user-guide clients        # All supported clients
