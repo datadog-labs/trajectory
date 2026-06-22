@@ -112,10 +112,12 @@ Managed Datadog destinations can opt in to a security event stream: one
 Datadog log per canonical Trajectory event with
 `ddsource: trajectory-event-stream`. This is configured under
 `required_destinations[].event_stream`, not in repo `publish.trajectory.yaml`
-or ordinary user `export:` config. The default `include_private_fields: false`
-mode keeps structural event metadata for detections while omitting prompts,
-assistant text, thinking text, tool payloads, diffs, file contents, raw
-payloads, error text, summaries, and user email fields. See
+or ordinary user `export:` config. The stream is off unless
+`event_stream.enabled: true` is set. The default
+`privacy_profile: security` mode keeps structural event metadata plus
+pre-tool arguments for detections while omitting prompts, assistant text,
+thinking text, post-tool outputs/results, diffs, file contents, raw payloads,
+error text, summaries, and user email fields. See
 [SECURITY-EVENT-STREAM.md](SECURITY-EVENT-STREAM.md) and
 `trajectory user-guide security-event-stream`.
 

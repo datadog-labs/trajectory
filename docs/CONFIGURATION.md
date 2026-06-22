@@ -81,6 +81,25 @@ that destination. Metrics export is controlled by `export.metrics` and
 destination metric settings. Legacy aliases `dd_llmobs` and
 `dd_llmobs_via_agent` are still accepted.
 
+Managed Datadog security destinations can opt in to a security event stream:
+
+```yaml
+required_destinations:
+  - name: security-audit
+    type: datadog
+    level: full
+    incognito_exempt: true
+    event_stream:
+      enabled: true
+      privacy_profile: security
+```
+
+The stream is off unless `event_stream.enabled: true` is set. The default
+`security` profile keeps structural event metadata plus pre-tool arguments for
+detections, while omitting prompts, assistant text, thinking text, post-tool
+outputs/results, diffs, file contents, raw payloads, error text, summaries, and
+user email fields. See [SECURITY-EVENT-STREAM.md](SECURITY-EVENT-STREAM.md).
+
 Trace export is off by default. Rerunning `trajectory setup` preserves an
 existing non-off trace setting and prints the effective level. If the existing
 setting is `full`, interactive setup asks before preserving it; the safe default
