@@ -26,7 +26,7 @@ required_destinations:
       sensitivity_exempt: true
     event_stream:
       enabled: true
-      include_private_fields: false
+      privacy_profile: security
 ```
 
 `event_stream.enabled` defaults to `false`. When enabled, the destination must
@@ -36,21 +36,31 @@ privacy level.
 
 ## Privacy Shape
 
-`event_stream.include_private_fields` defaults to `false` and should stay false
-for the managed default. In that mode, logs keep structural fields such as
-`event_type`, `session_id`, `sequence_number`, `turn_id`, `tool_name`, `phase`,
-`success`, `duration_ms`, `client_source`, token and cost summaries,
-provenance, and MCP identity.
+`event_stream.privacy_profile` controls field fidelity once the stream is
+enabled:
 
-Default-minimal logs omit prompt, assistant response, thinking text, tool input,
-tool output, command arguments, command output, diffs, file contents, raw
-payloads, error text, summaries, and user email fields. This roughly mirrors
-minimal trace privacy: security detections get the shape of the activity
-without raw conversation or tool payload content.
+| Profile | Behavior |
+|---|---|
+| `security` | Default detection-focused fidelity: structural metadata plus pre-tool input/argument fields; prompts and post-tool outputs are omitted. |
+| `minimal` | Structural metadata only. Pre-tool input, command, and argument fields are also omitted. |
+| `full` | Original event fields are included for explicit managed investigations. |
 
-Set `include_private_fields: true` only for an explicit managed investigation
-scope. In full mode, Trajectory includes the original event fields in the log
-body.
+The stream itself remains off unless `event_stream.enabled: true` is set.
+
+The default `security` profile keeps fields such as `event_type`, `session_id`,
+`sequence_number`, `turn_id`, `tool_name`, `phase`, `success`, `duration_ms`,
+`client_source`, token and cost summaries, provenance, MCP identity, and
+pre-tool input fields such as `input`, `tool_input`, `args`, `arguments`,
+`cmd`, and `command`. Those input fields are omitted outside pre-tool events.
+
+It omits prompt, assistant response, thinking text, post-tool output/result
+payloads, raw payloads, error text, summaries, and user email fields. This is
+the detection-focused middle ground: security detections can see what a tool
+was asked to do without receiving the user's prompt or the tool's returned
+content.
+
+`event_stream.include_private_fields: true` is a deprecated compatibility alias
+for `privacy_profile: full` when `privacy_profile` is omitted.
 
 ## Log Shape
 
