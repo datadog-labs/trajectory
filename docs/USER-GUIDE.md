@@ -164,6 +164,8 @@ env var, before the first publish attempt.
 
 Set `export.placeholder_llm_span: false` in `~/.trajectory/config.yaml`, or `placeholder_llm_span: false` on a managed/trusted `publish.trajectory.yaml` destination, to stop publishing Trajectory's synthetic LLM child span for turn-level token/cost enrichment. The turn span still carries `metrics.estimated_total_cost` plus cost fallback metadata and the `trajectory.cost_source:turn_metrics` tag, so cost remains queryable without the placeholder child span. Project configs may disable this for a trusted destination, but cannot re-enable it if the trusted or managed destination disabled it.
 
+Subagent spans default to `export.subagent_span_mode: semantic`: synchronous subagents attach under the launching Agent or Task tool span, while async background subagents attach under the task-notification join turn. Set `export.subagent_span_mode: links_only`, or destination `subagent_span_mode: links_only`, to suppress the extra parent-side subagent task span and keep only child-trace links and metadata. See [SUBAGENT-TRACE-MODEL.md](SUBAGENT-TRACE-MODEL.md).
+
 For managed local-ui auto-start rollback, deploy `local_ui.auto_start: false` in `~/.trajectory/config.defaults.yaml`. A managed false value disables automatic local-ui startup and cannot be overridden from user `config.yaml`; explicit `trajectory local-ui` and `trajectory view` commands still work.
 
 ## Capture server

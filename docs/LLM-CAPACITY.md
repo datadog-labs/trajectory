@@ -196,6 +196,8 @@ session:
 - `export.metrics`: controls metrics publish.
 - `export.placeholder_llm_span`: controls a synthetic Datadog LLM span for cost
   enrichment; it does not call an LLM.
+- `export.subagent_span_mode`: controls how captured subagent lifecycle events
+  are rendered in trace exports; it does not call an LLM.
 - Marker evaluation: built-in and YAML markers are rule-based over local SQLite
   data.
 - `segmentation.publish_metrics` and `segmentation.publish_traces`: control
