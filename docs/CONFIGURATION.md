@@ -50,6 +50,7 @@ trajectory config set export.site datadoghq.com
 trajectory config set export.traces standard       # off | minimal | standard | full
 trajectory config set export.metrics true
 trajectory config set export.placeholder_llm_span false
+trajectory config set export.subagent_span_mode links_only  # semantic | links_only
 trajectory config set local_ui.auto_start false
 trajectory config set capture.retention_days 30
 trajectory config set-secret dd-api-key            # prompts securely
@@ -116,6 +117,7 @@ export:
   traces: standard
   metrics: true
   placeholder_llm_span: true
+  subagent_span_mode: semantic
 
 local_ui:
   auto_start: true
@@ -318,6 +320,7 @@ Environment variables are best for temporary overrides, CI jobs, or one launched
 | `export.traces` | `off` | LLM Observability trace export level: `off`, `minimal`, `standard`, or `full` |
 | `export.metrics` | `true` | Cost, token, marker, and operations metric export |
 | `export.placeholder_llm_span` | `true` | Synthetic LLM child span for turn-level token and cost enrichment |
+| `export.subagent_span_mode` | `semantic` | Parent-side subagent rendering mode: `semantic` adds readable parent-side task spans, `links_only` keeps only child-trace links and metadata |
 | `export.sensitivity.scanning_mode` | `balanced` | Sensitivity classification mode: `balanced`, `near_realtime`, or `off` |
 | `segmentation.enabled` | `true` | Async task segmentation |
 | `segmentation.interval` | `10` | Number of turns between segmentation passes |

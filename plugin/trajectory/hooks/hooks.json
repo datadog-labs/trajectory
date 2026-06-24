@@ -15,6 +15,6 @@
     "PermissionRequest": [{ "matcher": "", "hooks": [{ "type": "http", "url": "http://localhost:19222/capture/PermissionRequest?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.5", "timeout": 5, "headers": { "X-Trajectory-Home": "${HOME}/.trajectory" }, "allowedEnvVars": ["HOME"] }] }],
     "SubagentStart": [{ "matcher": "", "hooks": [{ "type": "http", "url": "http://localhost:19222/capture/SubagentStart?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.5", "timeout": 5, "headers": { "X-Trajectory-Home": "${HOME}/.trajectory" }, "allowedEnvVars": ["HOME"] }] }],
     "SubagentStop": [{ "matcher": "", "hooks": [{ "type": "http", "url": "http://localhost:19222/capture/SubagentStop?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.5", "timeout": 5, "headers": { "X-Trajectory-Home": "${HOME}/.trajectory" }, "allowedEnvVars": ["HOME"] }] }],
-    "SessionEnd": [{ "matcher": "", "hooks": [{ "type": "command", "command": "\"${HOME}/.trajectory/bin/trajectory\" capture-hook SessionEnd &", "timeout": 2 }] }]
+    "SessionEnd": [{ "matcher": "", "hooks": [{ "type": "command", "command": "\"${HOME}/.trajectory/bin/trajectory\" capture-hook --background-after-read --ensure-serve --ensure-serve-wait 2s --wait-notify 2s SessionEnd", "timeout": 2 }] }]
   }
 }

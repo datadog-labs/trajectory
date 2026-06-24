@@ -165,6 +165,8 @@ This repository accepts changes to public docs, marketplace metadata, plugin ass
 - [docs/LLM-CAPACITY.md](docs/LLM-CAPACITY.md): which features use additional LLM capacity and how to control them
 - [docs/METRICS-REFERENCE.md](docs/METRICS-REFERENCE.md): emitted metric names, types, tags, and query guidance
 - [docs/MARKERS.md](docs/MARKERS.md): marker authoring and marker-derived metrics
+- [docs/DATA-FORMATS.md](docs/DATA-FORMATS.md): materialized session fields and LLM Observability export fields
+- [docs/SUBAGENT-TRACE-MODEL.md](docs/SUBAGENT-TRACE-MODEL.md): semantic subagent trace rendering and span-link behavior
 
 ## License
 
