@@ -34,8 +34,9 @@ must not directly parent child-session turns, tools, or LLM spans.
 | Cursor Desktop | Command-hook `subagentStart` and `subagentStop` payloads. Current Desktop fixtures can be sync or task-notification-style async. | Sync lifecycle without a launch tool falls back to standalone active-turn attachment; async lifecycle attaches to the task-notification join turn when present. |
 | GitHub Copilot CLI | Command-hook lifecycle payloads plus transcript metadata that recovers the real child tool-call id and parent task tool id. | Subagent lifecycle attaches under the launching Agent/Task tool when the normalized hook carries the recovered `tool_use_id`. |
 | Gemini CLI | No native lifecycle hook; Trajectory synthesizes `subagent_start` and `subagent_stop` from `kind:"subagent"` chat artifacts during session end. | Synthetic subagent lifecycle attaches under the synthesized launch tool. |
+| Antigravity CLI (`agy`) | Gemini-compatible hook path; Trajectory synthesizes subagent lifecycle from `kind:"subagent"` chat artifacts during session end when Antigravity emits the same files. | Synthetic subagent lifecycle attaches under the synthesized launch tool. |
 | Factory Droid | Current hook set includes `SubagentStop` but not `SubagentStart`. | Stop-only lifecycle falls back to a standalone active-turn subagent span. |
-| OpenCode | Current plugin SDK path records agent metadata on prompt, tool, and message events but does not expose child-session lifecycle ids. | No semantic subagent parentage is inferred from `agent_id` or `agent_type` alone. |
+| OpenCode | Current plugin SDK path records agent metadata on prompt, tool, and message events but does not expose child-session lifecycle ids. | No semantic subagent parentage is inferred from `agent_id`, `agent_type`, or generic `agent` metadata alone. |
 | Pi | Current extension records normal session, prompt, tool, turn, compaction, model, and fork events but no dedicated child-session subagent lifecycle. | No semantic subagent parentage is inferred from fork or agent metadata alone. |
 
 ## When Adding A Client Pattern

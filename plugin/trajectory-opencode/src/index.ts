@@ -157,6 +157,69 @@ function stringifyError(value: unknown): string | undefined {
     }
 }
 
+function firstString(...values: unknown[]): string | undefined {
+    for (const value of values) {
+        if (isNonEmptyString(value)) return value.trim();
+    }
+    return undefined;
+}
+
+function firstValue(...values: unknown[]): unknown {
+    for (const value of values) {
+        if (value != null) return value;
+    }
+    return undefined;
+}
+
+function normalizePermissionDecision(value: unknown): string | undefined {
+    if (!isNonEmptyString(value)) return undefined;
+    switch (value.trim().toLowerCase()) {
+        case "allow":
+        case "allowed":
+        case "approve":
+        case "approved":
+        case "accept":
+        case "accepted":
+        case "once":
+        case "always":
+            return "allow";
+        case "deny":
+        case "denied":
+        case "reject":
+        case "rejected":
+        case "decline":
+        case "declined":
+        case "cancel":
+        case "canceled":
+        case "cancelled":
+            return "deny";
+        default:
+            return undefined;
+    }
+}
+
+function permissionPayload(properties: OpenCodePayload, event?: OpenCodePayload): OpenCodePayload {
+    const details = payload(firstValue(properties?.permission, properties?.request, properties?.tool, properties?.input, event?.properties, properties));
+    const rawTool = payload(firstValue(properties?.tool, details?.tool));
+    const args = firstValue(properties?.args, properties?.input, details?.args, rawTool?.args, details?.input);
+    return {
+        permission_id: firstString(
+            properties?.permissionID,
+            properties?.permissionId,
+            properties?.permission_id,
+            properties?.id,
+            details?.permissionID,
+            details?.permissionId,
+            details?.id,
+        ),
+        tool_name: firstString(properties?.toolName, properties?.tool_name, properties?.tool, rawTool?.name, rawTool?.id, details?.toolName, details?.name),
+        tool_use_id: firstString(properties?.callID, properties?.callId, properties?.call_id, details?.callID, details?.callId),
+        tool_input: args,
+        permission_mode: firstString(properties?.permission, properties?.mode, properties?.permissionMode, details?.permission, details?.mode),
+        raw_permission: properties,
+    };
+}
+
 export const server = async (input: OpenCodePayload) => {
     const startedSessions = new Set<string>();
     const sessionsWithOpenTurn = new Set<string>();
@@ -286,6 +349,26 @@ export const server = async (input: OpenCodePayload) => {
                     model: properties?.modelID ?? properties?.model?.modelID,
                     provider: properties?.providerID ?? properties?.model?.providerID,
                     message_timestamp: normalizeTimestamp(properties?.time?.completed ?? properties?.time?.created),
+                });
+            }
+
+            if (type === "permission.asked") {
+                markTurnOpen(sessionID);
+                await postEvent("PermissionRequest", {
+                    session_id: sessionID,
+                    ...permissionPayload(payload(properties), event),
+                });
+            }
+
+            if (type === "permission.replied") {
+                markTurnOpen(sessionID);
+                await postEvent("PermissionResult", {
+                    session_id: sessionID,
+                    decision: normalizePermissionDecision(
+                        properties?.decision ?? properties?.status ?? properties?.result ?? properties?.response ?? properties?.action ?? properties?.choice,
+                    ),
+                    reason: firstString(properties?.reason, properties?.message, properties?.error),
+                    ...permissionPayload(payload(properties), event),
                 });
             }
 

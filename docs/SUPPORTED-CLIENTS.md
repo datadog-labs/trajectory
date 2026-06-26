@@ -12,6 +12,7 @@ For the built-in client overview and per-client guides, run:
 ```bash
 trajectory user-guide clients
 trajectory user-guide clients/codex
+trajectory user-guide clients/agy
 ```
 
 ## Quick Reference
@@ -22,6 +23,7 @@ trajectory user-guide clients/codex
 | Codex CLI | `trajectory setup --clients codex` | 0.128.0 | Command hooks (primary) + rollout watcher (fallback) |
 | GitHub Copilot CLI | `trajectory setup --clients copilot` | Beta | Copilot plugin command hooks + MCP |
 | Gemini CLI | `trajectory setup --clients gemini` | 0.30.0+ | Managed command hooks + MCP |
+| Antigravity CLI (`agy`) | `trajectory setup --clients agy` | 1.0.0+ | Antigravity plugin command hooks + MCP |
 | Cursor Desktop | `trajectory setup --clients cursor` | 1.0+ | Command hooks that POST to capture |
 | cursor-agent CLI | Automatic when `cursor-agent` is on PATH | Beta | Transcript watcher |
 | Factory Droid | `trajectory setup --clients droid` | Beta | Factory plugin command hooks + MCP |
@@ -36,6 +38,7 @@ trajectory user-guide clients/codex
 | Codex CLI | Yes, command hooks plus rollout watcher fallback | Yes | Yes | Yes | Codex rollout backfill | Yes |
 | GitHub Copilot CLI | Yes, beta plugin command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
 | Gemini CLI | Yes, managed command hooks | Yes | Yes | Yes | Gemini transcript backfill | Yes |
+| Antigravity CLI (`agy`) | Yes, plugin command hooks | Yes, via Gemini-compatible hook schema | Yes, via Gemini-compatible token fields | Yes | Not yet | No setup-managed resume |
 | Cursor Desktop | Yes, command hooks | Yes | Cursor DB dependent | Yes | Cursor chat backfill | Yes |
 | cursor-agent CLI | Yes, transcript watcher | Tool and turn events | Not exposed by current transcripts | No | Same transcript source | No setup-managed resume |
 | Factory Droid | Yes, beta Factory plugin command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
@@ -172,6 +175,28 @@ Setup writes `~/.gemini/settings.json`, `~/.gemini/hooks/hooks.json`, `~/.gemini
 The repository still includes `hooks/hooks.json` as a legacy extension command-hook template for older manual installs. Manual extension installs remain supported for development and recovery, but they must match Gemini's hook format and wire MCP, skills, and commands separately. Current setup-managed installs should use `trajectory setup --clients gemini`.
 
 The Gemini skill uses `trajectory_incognito` when MCP is available, and falls back to the `/session/incognito` HTTP endpoint.
+
+## Antigravity CLI (`agy`)
+
+**Minimum version: 1.0.0+** (Antigravity CLI plugin manager and migrated Gemini hook support)
+
+Install with setup:
+
+```bash
+trajectory setup --clients agy
+```
+
+Setup writes `~/.gemini/antigravity-cli/settings.json` for the Trajectory MCP server and stages a Trajectory plugin under `~/.gemini/config/plugins/trajectory`. The plugin includes `hooks/hooks.json`, `skills/incognito/SKILL.md`, and `commands/incognito.toml`.
+
+The Antigravity hooks use Gemini-compatible event names (`SessionStart`, `BeforeAgent`, `AfterModel`, `BeforeTool`, `AfterTool`, `AfterAgent`, `PreCompress`, `Notification`, and `SessionEnd`) but post to `/capture/agy/<Event>`. The capture server reuses Gemini parsing and token/cost logic while emitting `client_source=agy`.
+
+Manual validation:
+
+```bash
+agy plugin validate plugin/trajectory-antigravity
+```
+
+Current limitations: no historical Antigravity backfill or setup-managed resume target yet.
 
 ## Cursor
 

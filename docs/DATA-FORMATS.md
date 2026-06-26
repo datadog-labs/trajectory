@@ -40,3 +40,6 @@ Turn spans keep token and cost aggregates on the span itself. When turn metrics 
 The user config setting `export.placeholder_llm_span: false`, or publish destination setting `placeholder_llm_span: false`, disables Trajectory's synthetic LLM child span for turn-cost enrichment. It does not remove real LLM spans, and it does not remove the turn-level cost metric or fallback metadata above.
 
 Subagent spans default to `export.subagent_span_mode: semantic`: synchronous subagents attach under the launching Agent/Task tool span, while async background subagents attach under the task-notification join turn. The child session trace is still preserved through span links and child trace metadata. Set `export.subagent_span_mode: links_only`, or destination `subagent_span_mode: links_only`, to suppress the extra parent-side subagent task span and keep only links on the nearest existing parent span. See [Subagent Trace Model](SUBAGENT-TRACE-MODEL.md) for the client-by-client validation matrix.
+
+The Datadog LLM Observability span tag contract is tracked in
+[LLM Obs Span Tags](LLM-OBS-SPAN-TAGS.md).
