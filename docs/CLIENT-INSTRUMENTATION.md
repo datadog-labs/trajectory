@@ -21,6 +21,7 @@ trajectory user-guide clients
 | Codex CLI | `trajectory setup --clients codex` | Plugin command hooks plus rollout watcher fallback | Codex rollout backfill |
 | GitHub Copilot CLI | `trajectory setup --clients copilot` | Beta plugin command hooks plus MCP | None |
 | Gemini CLI | `trajectory setup --clients gemini` | Managed command hooks plus MCP | Gemini transcript backfill |
+| Antigravity CLI (`agy`) | `trajectory setup --clients agy` | Antigravity plugin command hooks plus MCP | None |
 | Cursor Desktop | `trajectory setup --clients cursor` | Cursor command hooks plus MCP | Cursor chat backfill |
 | cursor-agent CLI | Automatic when `cursor-agent` is on PATH | Transcript watcher | Same transcript source |
 | Factory Droid | `trajectory setup --clients droid` | Beta Factory command hooks plus MCP | None |
@@ -88,7 +89,9 @@ when it detects stale cached plugin metadata.
 
 The plugin ships Claude `hooks/hooks.json`, which Claude Code loads
 automatically from that standard path. Those lifecycle hooks post to the local
-capture server. Claude Code supports native HTTP hook entries, so most lifecycle
+capture server. The registered permission hooks include `PermissionRequest`
+and `PermissionDenied`; `PermissionDenied` records auto-mode classifier denials
+without relying on latency inference. Claude Code supports native HTTP hook entries, so most lifecycle
 events use HTTP hooks. The plugin manifest intentionally omits a `hooks` entry
 for `hooks/hooks.json` to avoid duplicate hook-file loading. The plugin also
 carries MCP configuration and skills, including `/incognito`.
@@ -159,6 +162,23 @@ Setup writes:
 `settings.json` registers Trajectory MCP. `hooks.json` uses command hooks with
 `curl` to post supported Gemini events to the capture server. The skill and
 command expose `/incognito` with an MCP path and HTTP fallback.
+
+## Antigravity CLI
+
+Setup writes:
+
+```text
+~/.gemini/antigravity-cli/settings.json
+~/.gemini/config/plugins/trajectory/plugin.json
+~/.gemini/config/plugins/trajectory/hooks/hooks.json
+~/.gemini/config/plugins/trajectory/skills/incognito/SKILL.md
+~/.gemini/config/plugins/trajectory/commands/incognito.toml
+```
+
+`settings.json` registers Trajectory MCP. The plugin hooks use Antigravity's
+Gemini-compatible hook events and post to `/capture/agy/...`. The server reuses
+Gemini parsing and token/cost handling, but stamps `client_source=agy`.
+Historical Antigravity backfill is not implemented yet.
 
 ## Cursor
 

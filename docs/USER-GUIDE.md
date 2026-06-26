@@ -235,8 +235,12 @@ trajectory user-guide mcp
 trajectory setup                     # Interactive setup (site, API key, agents)
 trajectory setup --clients codex     # Add or refresh one client integration
 trajectory setup --clients copilot   # Add or refresh GitHub Copilot CLI beta live capture
+trajectory setup --clients agy       # Add or refresh Antigravity CLI capture
 trajectory setup --clients droid     # Add or refresh Factory Droid beta live capture
 trajectory setup --clients all       # Add or refresh all setup-managed clients
+trajectory setup auto-instrument --json  # Dry-run managed auto-instrument plan
+trajectory setup auto-instrument apply --yes --json  # Apply when managed mutation is enabled
+trajectory setup auto-instrument status --json  # Last auto-instrument status
 trajectory setup --clients cc --forward-url URL  # Also forward finished sessions to a local sink
 trajectory setup --uninstall codex   # Remove one client integration
 ```
@@ -246,6 +250,8 @@ site, service name, and API key prompts, and leaves existing export config
 unchanged. If no config file exists yet, it creates a capture-only config so
 local session capture can start; run `trajectory setup` later to configure
 Datadog export.
+
+Managed deployments can preview automatic client instrumentation with `trajectory setup auto-instrument`. The dry-run planner only becomes ready when managed defaults explicitly enable `setup.auto_instrument.enabled` with an `allow_clients` list. Mutation requires a second opt-in, `setup.auto_instrument.apply_enabled: true`; without it, auto-instrument reports status only.
 
 `--forward-url <url>` records `export.local_forward_url`, making `trajectory
 serve` POST each finished session as NDJSON to that local endpoint at session
@@ -260,6 +266,7 @@ local sink" above.
 | Codex CLI | Command hooks plus rollout watcher fallback | Yes | Yes | Yes | Codex rollout backfill | Yes |
 | GitHub Copilot CLI | Beta Copilot plugin command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
 | Gemini CLI | Managed command hooks | Yes | Yes | Yes | Gemini transcript backfill | Yes |
+| Antigravity CLI (`agy`) | Antigravity plugin command hooks | Yes | Yes | Yes | Not yet | No setup-managed resume |
 | Cursor Desktop | Command hooks | Yes | Cursor DB dependent | Yes | Cursor chat backfill | Yes |
 | cursor-agent CLI | Transcript watcher | Tool and turn events | Not exposed by current transcripts | No | Same transcript source | No setup-managed resume |
 | Factory Droid | Beta Factory plugin command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |

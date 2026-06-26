@@ -1,7 +1,4 @@
 #!/usr/bin/env bash
-# Unless explicitly stated otherwise all files in this repository are licensed under the Apache-2.0 License.
-# This product includes software developed at Datadog (https://www.datadoghq.com/) Copyright 2026 Datadog, Inc.
-
 # install.sh - Download and install Trajectory (agent observability for AI coding assistants).
 #
 # Usage:
@@ -38,6 +35,41 @@ info()  { echo "[trajectory]  $1"; }
 warn()  { echo "[trajectory]  WARNING: $1" >&2; }
 fail()  { echo "[trajectory]  ERROR: $1" >&2; exit 1; }
 
+# Collect args that pass through to `trajectory setup`. Recognized setup flags:
+# --site, --ml-app, --api-key, --clients (all take a value), --non-interactive.
+# The legacy install-only --add-to-path flag is accepted as a no-op for older
+# scripts. install.sh and `trajectory setup` do not edit shell rc files.
+SETUP_ARGS=()
+NON_INTERACTIVE=0
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --non-interactive)
+            NON_INTERACTIVE=1
+            SETUP_ARGS+=("$1")
+            shift
+            ;;
+        --add-to-path)
+            # Reserved for parity with the older install-trajectory.sh flag.
+            shift
+            ;;
+        --site|--ml-app|--api-key|--clients)
+            if [ "$#" -lt 2 ]; then
+                fail "$1 requires a value"
+            fi
+            SETUP_ARGS+=("$1" "$2")
+            shift 2
+            ;;
+        --site=*|--ml-app=*|--api-key=*|--clients=*)
+            SETUP_ARGS+=("$1")
+            shift
+            ;;
+        *)
+            SETUP_ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
 codex_marketplace_add() {
     local output status marketplace_dir
     marketplace_dir="$1"
@@ -73,41 +105,6 @@ copilot_plugin_command() {
     esac
     return "$status"
 }
-
-# Collect args that pass through to `trajectory setup`. Recognized flags:
-# --site, --ml-app, --api-key, --clients (all take a value), --non-interactive,
-# --add-to-path. Unknown args are forwarded so setup can validate them.
-SETUP_ARGS=()
-NON_INTERACTIVE=0
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --non-interactive)
-            NON_INTERACTIVE=1
-            SETUP_ARGS+=("$1")
-            shift
-            ;;
-        --add-to-path)
-            # Reserved for parity with the legacy install-trajectory.sh flag.
-            # The setup command writes PATH on its own; we just accept and skip.
-            shift
-            ;;
-        --site|--ml-app|--api-key|--clients)
-            if [ "$#" -lt 2 ]; then
-                fail "$1 requires a value"
-            fi
-            SETUP_ARGS+=("$1" "$2")
-            shift 2
-            ;;
-        --site=*|--ml-app=*|--api-key=*|--clients=*)
-            SETUP_ARGS+=("$1")
-            shift
-            ;;
-        *)
-            SETUP_ARGS+=("$1")
-            shift
-            ;;
-    esac
-done
 
 cleanup() {
     if [ -n "${_PARTIAL_INSTALL:-}" ] && [ -f "$BINARY" ]; then
@@ -210,14 +207,6 @@ download_binary() {
     fail "Download failed. Check the release tag, asset name, network connection, or optional GH_TOKEN/GITHUB_TOKEN for authenticated GitHub requests."
 }
 
-write_selfupdate_policy() {
-    cat > "$INSTALL_DIR/selfupdate.conf" <<EOF
-TRAJECTORY_INSTALL_OWNER=datadog-labs
-TRAJECTORY_SELF_UPDATE=disabled
-TRAJECTORY_SELF_UPDATE_URL=https://raw.githubusercontent.com/datadog-labs/trajectory/main/RELEASES.json
-EOF
-}
-
 install_intercept_assets() {
     local asset src dest tmp
     mkdir -p "$INTERCEPT_DIR"
@@ -237,6 +226,42 @@ install_intercept_assets() {
         fi
         chmod 0644 "$dest" 2>/dev/null || true
     done
+}
+
+install_uninstaller() {
+    local src dest tmp
+    src="$SCRIPT_DIR/uninstall.sh"
+    dest="$INSTALL_DIR/uninstall.sh"
+
+    if [ -f "$src" ]; then
+        cp "$src" "$dest"
+    else
+        tmp="${dest}.tmp.$$"
+        if ! curl -sfL -o "$tmp" "https://raw.githubusercontent.com/$REPO/main/uninstall.sh"; then
+            rm -f "$tmp"
+            warn "Could not install uninstall helper. You can remove $INSTALL_DIR manually if needed."
+            return 0
+        fi
+        mv "$tmp" "$dest"
+    fi
+    chmod +x "$dest" 2>/dev/null || true
+}
+
+write_install_metadata() {
+    local metadata="$INSTALL_DIR/selfupdate.conf"
+    mkdir -p "$INSTALL_DIR"
+
+    if ! cat > "$metadata" <<EOF
+# Installer metadata
+TRAJECTORY_INSTALL_OWNER=datadog-labs
+TRAJECTORY_SELF_UPDATE=enabled
+TRAJECTORY_SELF_UPDATE_REPO=$REPO
+EOF
+    then
+        warn "Could not write install metadata to $metadata"
+        return 0
+    fi
+    chmod 0644 "$metadata" 2>/dev/null || true
 }
 
 info ""
@@ -279,7 +304,7 @@ else
     _PARTIAL_INSTALL=1
 
     if ! download_binary "$RELEASE_TAG" "$ASSET" "$BINARY"; then
-        fail "Download failed. Check your network connection and that a release exists for $PLATFORM."
+        fail "Download failed. Check your network connection, optional GitHub token, and that a release exists for $PLATFORM."
     fi
 
     chmod +x "$BINARY"
@@ -294,8 +319,9 @@ else
     _PARTIAL_INSTALL=""
 fi
 
-write_selfupdate_policy
 install_intercept_assets
+install_uninstaller
+write_install_metadata
 
 if [ "$NON_INTERACTIVE" = "1" ]; then
     info "[4/5] Running setup (non-interactive)..."
@@ -350,7 +376,7 @@ if command -v codex >/dev/null 2>&1; then
         PLUGIN_INSTALLED=1
     else
         info "      Codex CLI detected, but Codex setup was not selected - skipping Codex plugin."
-        info "      To install later: ~/.trajectory/bin/trajectory setup --clients codex"
+        info "      To refresh client wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients codex"
         PLUGIN_INSTALLED=1
     fi
 else
@@ -369,7 +395,7 @@ if command -v copilot >/dev/null 2>&1; then
         PLUGIN_INSTALLED=1
     else
         info "      GitHub Copilot CLI detected, but Copilot setup was not selected - skipping Copilot plugin."
-        info "      To install later: ~/.trajectory/bin/trajectory setup --clients copilot"
+        info "      To refresh client wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients copilot"
         PLUGIN_INSTALLED=1
     fi
 else
@@ -388,29 +414,35 @@ if command -v droid >/dev/null 2>&1; then
         PLUGIN_INSTALLED=1
     else
         info "      Factory Droid CLI detected, but Droid setup was not selected - skipping Droid plugin."
-        info "      To install later: ~/.trajectory/bin/trajectory setup --clients droid"
+        info "      To refresh client wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients droid"
         PLUGIN_INSTALLED=1
     fi
 else
     info "      Factory Droid CLI not detected - skipping Droid plugin."
 fi
 
-# Gemini CLI extension
+# Gemini CLI configuration (handled by setup wizard)
 if command -v gemini >/dev/null 2>&1; then
-    info "      Installing Gemini CLI extension..."
-    yes | gemini extensions install "$SCRIPT_DIR" --consent --skip-settings || {
-        warn "Gemini extension install failed. Install manually:"
-            warn "  gemini extensions install datadog-labs/trajectory"
-    }
+    info "      Gemini CLI detected - configuration is handled by the setup wizard."
+    info "      To refresh Gemini wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients gemini"
     PLUGIN_INSTALLED=1
 else
-    info "      Gemini CLI not detected - skipping Gemini extension."
+    info "      Gemini CLI not detected - skipping Gemini configuration guidance."
+fi
+
+# Antigravity CLI configuration (handled by setup wizard)
+if command -v agy >/dev/null 2>&1; then
+    info "      Antigravity CLI detected - configuration is handled by the setup wizard."
+    info "      To refresh Antigravity wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients agy"
+    PLUGIN_INSTALLED=1
+else
+    info "      Antigravity CLI not detected - skipping Antigravity configuration guidance."
 fi
 
 # Cursor configuration (handled by setup wizard)
 if command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1; then
     info "      Cursor detected - configuration is handled by the setup wizard."
-    info "      To re-run Cursor setup later: ~/.trajectory/bin/trajectory setup --clients cursor"
+    info "      To refresh Cursor wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients cursor"
     PLUGIN_INSTALLED=1
 else
     info "      Cursor CLI not detected - skipping Cursor configuration guidance."
@@ -428,7 +460,7 @@ if command -v opencode >/dev/null 2>&1; then
         }
     else
         warn "OpenCode CLI detected, but local plugin directory not found: $OPENCODE_PLUGIN_DIR"
-        warn "Run OpenCode setup later: ~/.trajectory/bin/trajectory setup --clients opencode"
+        warn "Refresh OpenCode wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients opencode"
     fi
     PLUGIN_INSTALLED=1
 else
@@ -447,7 +479,7 @@ if command -v pi >/dev/null 2>&1; then
         }
     else
         warn "Pi CLI detected, but local plugin directory not found: $PI_PLUGIN_DIR"
-        warn "Run Pi setup later: ~/.trajectory/bin/trajectory setup --clients pi"
+        warn "Refresh Pi wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients pi"
     fi
     PLUGIN_INSTALLED=1
 else
@@ -456,12 +488,13 @@ fi
 
 if [ "$PLUGIN_INSTALLED" = "0" ]; then
     info ""
-    info "  No coding assistant CLIs detected. Install plugins later:"
+    info "  No coding assistant CLIs detected. Refresh client wiring later without Datadog prompts:"
     info "    Claude Code: claude plugin marketplace add https://github.com/datadog-labs/trajectory.git && claude plugin install trajectory@trajectory --scope user"
     info "    Codex:       ~/.trajectory/bin/trajectory setup --clients codex"
     info "    Copilot beta: ~/.trajectory/bin/trajectory setup --clients copilot"
     info "    Droid beta:  ~/.trajectory/bin/trajectory setup --clients droid"
-    info "    Gemini:      gemini extensions install datadog-labs/trajectory"
+    info "    Gemini:      ~/.trajectory/bin/trajectory setup --clients gemini"
+    info "    Antigravity: ~/.trajectory/bin/trajectory setup --clients agy"
     info "    Cursor:      ~/.trajectory/bin/trajectory setup --clients cursor"
     info "    OpenCode:    ~/.trajectory/bin/trajectory setup --clients opencode"
     info "    Pi:          ~/.trajectory/bin/trajectory setup --clients pi"
@@ -481,6 +514,6 @@ info ""
 info "  To check status:"
 info "    $BINARY doctor"
 info ""
-info "  To uninstall, remove the install directory:"
-info "    $INSTALL_DIR"
+info "  To uninstall:"
+info "    bash $INSTALL_DIR/uninstall.sh"
 info "========================================="

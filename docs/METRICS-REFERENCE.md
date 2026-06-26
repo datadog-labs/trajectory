@@ -6,6 +6,8 @@ For marker syntax and dashboard examples, see [MARKERS.md](MARKERS.md). For
 configuration and destination trust, see [USER-GUIDE.md](USER-GUIDE.md).
 For cross-agent source contracts, see
 [METRICS-CONSISTENCY-AUDIT.md](METRICS-CONSISTENCY-AUDIT.md).
+For Datadog LLM Observability span tags, see [LLM-OBS-SPAN-TAGS.md](LLM-OBS-SPAN-TAGS.md).
+For cost-overlap dashboard guidance, see [COST-OVERLAP-CONSUMER-GUIDE.md](COST-OVERLAP-CONSUMER-GUIDE.md).
 For the built-in metric guide, run:
 
 ```bash
@@ -83,10 +85,10 @@ unattributed.
 |---|---|---|
 | `gen_ai.conversation.id` | Session ID | `unknown` |
 | `session_id` | Compatibility alias for session ID | `unknown` |
-| `trajectory.client_source` | Client source, such as `claude-code`, `codex`, `gemini`, `cursor`, `pi`, or `opencode` | `unknown` |
+| `trajectory.client_source` | Client source, such as `claude-code`, `codex`, `gemini`, `agy`, `cursor`, `pi`, or `opencode` | `unknown` |
 | `trajectory.user` | Resolved user | `unknown` |
 | `trajectory.user_email` | Optional resolved user email from `TRAJECTORY_USER_EMAIL`, `identity.user_email`, `identity.user_email_command`, or `identity.user_email_suffix` | Omitted |
-| `github.email` | Optional resolved GitHub email from `TRAJECTORY_GITHUB_EMAIL`, `identity.github_email`, `identity.github_email_command`, repo-local Git config, or global Git config | Omitted |
+| `git.email` | Optional resolved Git email from `TRAJECTORY_GITHUB_EMAIL`, `identity.github_email`, `identity.github_email_command`, repo-local Git config, or global Git config | Omitted |
 | `github.username` | Optional resolved GitHub username from `TRAJECTORY_GITHUB_USERNAME`, `identity.github_username`, `identity.github_username_command`, repo-local Git config, or global Git config | Omitted |
 | `trajectory.version` | Trajectory binary version | `dev` |
 | `host` | Local hostname | `unknown` |
@@ -94,7 +96,7 @@ unattributed.
 | `os.version` | OS version string, when available | Omitted |
 | `ml_app` | Destination ML app | Omitted |
 | `gen_ai.request.model` | Model name | Omitted |
-| `trajectory.client_version` | Client or harness version | Omitted |
+| `trajectory.client_version` | Client or harness version from capture or cache | Omitted when unavailable |
 | `trajectory.turn_id` | Stable turn ordinal on turn-scoped metrics; prevents same-second turn samples from collapsing into one Datadog point | Omitted when the turn cannot be resolved |
 | `repo` | Git repository name from the remote origin, or project directory basename when the origin is unavailable | `unknown` |
 | `owner` | Git repository owner from the remote origin | `unknown` |
@@ -110,6 +112,31 @@ not added to OTLP exports, Claude native OTLP proxy metrics, or process-level
 health/privacy counters. Destination tags and marker dimensions may also be
 present where those publish paths support them. Keep custom tags low-cardinality
 and non-sensitive.
+
+### Cost Overlap Tags
+
+Trajectory cost metrics carry bounded tags that help dashboards avoid summing
+Trajectory attribution cost with provider, gateway, cloud billing, or native
+client telemetry cost. These tags are non-sensitive route classifications, not
+raw URLs, headers, credentials, helper commands, account IDs, or org IDs.
+
+| Tag | Values |
+|---|---|
+| `trajectory.provider` | `anthropic` |
+| `trajectory.provider_route` | `direct`, `llm_gateway`, `bedrock`, `vertex`, `foundry`, `unknown`, `mixed` |
+| `trajectory.provider_cost_visibility` | `anthropic_api`, `gateway_aggregate`, `cloud_provider_billing`, `unknown`, `mixed` |
+| `trajectory.cost_overlap_risk` | `possible`, `aggregate_only`, `unknown`, `mixed` |
+| `trajectory.cost_overlap_signal` | `session_env`, `claude_settings`, `none`, `mixed` |
+| `trajectory.cost_role` | `attribution`, `client_telemetry` |
+| `trajectory.cost_dedupe_group` | Provider/route bucket such as `anthropic:direct`, `anthropic:llm_gateway`, or `anthropic:mixed` |
+| `trajectory.cost_dedupe_confidence` | `high`, `medium`, `low`, `mixed` |
+| `trajectory.cost_source` | Source of the cost stream when different metric families can overlap; native Claude telemetry proxied by Trajectory uses `claude_native_otlp` |
+
+The tags are applied to Trajectory-owned cost-bearing base metrics only.
+Claude Code native OTLP metrics proxied by Trajectory use
+`trajectory.cost_role:client_telemetry` and
+`trajectory.cost_source:claude_native_otlp` when that proxy path enriches the
+payload. Trajectory-owned cost metrics use `trajectory.cost_role:attribution`.
 
 ## Per-Turn Metrics
 

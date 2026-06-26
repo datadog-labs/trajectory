@@ -5,9 +5,9 @@ Observe AI coding agents like production systems.
 See the whole run. Measure the behavior. Improve the workflow.
 
 Trajectory captures coding-agent sessions across Claude Code, Codex, Gemini,
-Cursor, Pi, OpenCode, GitHub Copilot CLI, and Factory Droid, then turns them
-into local timelines, Datadog LLM Observability traces, operational metrics,
-and Markers: programmable signals for how agents work.
+Antigravity, Cursor, Pi, OpenCode, GitHub Copilot CLI, and Factory Droid, then
+turns them into local timelines, Datadog LLM Observability traces, operational
+metrics, and Markers: programmable signals for how agents work.
 
 ## What It Answers
 
@@ -79,7 +79,8 @@ agent behavior becomes something you can graph, alert on, compare, and improve.
 ## Core Capabilities
 
 - **Multi-client instrumentation** for Claude Code, Codex CLI, Gemini CLI,
-  Cursor, Pi, OpenCode, GitHub Copilot CLI beta, and Factory Droid beta.
+  Antigravity CLI, Cursor, Pi, OpenCode, GitHub Copilot CLI beta, and Factory
+  Droid beta.
 - **Local-first timelines** for session lifecycle, turns, tool calls, model
   usage, cost signals, and repository context.
 - **Datadog-native export** for configurable LLM Observability traces and
@@ -122,6 +123,7 @@ Trajectory supports:
 - Codex CLI
 - GitHub Copilot CLI beta
 - Gemini CLI
+- Antigravity CLI (`agy`)
 - Cursor Desktop and cursor-agent
 - Factory Droid beta
 - Pi
@@ -141,6 +143,7 @@ docs/                     Public user documentation
 plugin/trajectory/        Claude Code plugin
 plugin/trajectory-codex/  Codex plugin
 plugin/trajectory-gemini/ Gemini context assets
+plugin/trajectory-antigravity/ Antigravity CLI plugin
 plugin/trajectory-pi/     Pi extension
 plugin/trajectory-opencode/ OpenCode plugin
 intercepts/               Claude wrapper intercept runtime
@@ -167,6 +170,9 @@ This repository accepts changes to public docs, marketplace metadata, plugin ass
 - [docs/MARKERS.md](docs/MARKERS.md): marker authoring and marker-derived metrics
 - [docs/DATA-FORMATS.md](docs/DATA-FORMATS.md): materialized session fields and LLM Observability export fields
 - [docs/SUBAGENT-TRACE-MODEL.md](docs/SUBAGENT-TRACE-MODEL.md): semantic subagent trace rendering and span-link behavior
+- [docs/LLM-OBS-SPAN-TAGS.md](docs/LLM-OBS-SPAN-TAGS.md): Datadog LLM Observability span tag contract
+- [docs/COST-OVERLAP-CONSUMER-GUIDE.md](docs/COST-OVERLAP-CONSUMER-GUIDE.md): cost-overlap dashboard guidance
+- [docs/LOCAL-UI-DATA-SOURCES.md](docs/LOCAL-UI-DATA-SOURCES.md): local-ui datastore provenance fields
 
 ## License
 
