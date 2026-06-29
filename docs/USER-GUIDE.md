@@ -236,7 +236,12 @@ trajectory setup                     # Interactive setup (site, API key, agents)
 trajectory setup --clients codex     # Add or refresh one client integration
 trajectory setup --clients copilot   # Add or refresh GitHub Copilot CLI beta live capture
 trajectory setup --clients agy       # Add or refresh Antigravity CLI capture
+trajectory setup --clients goose     # Add or refresh Goose capture
 trajectory setup --clients droid     # Add or refresh Factory Droid beta live capture
+trajectory setup --clients hermes    # Add or refresh Hermes Agent capture
+trajectory setup --clients amp       # Add or refresh Amp Code capture
+trajectory setup --clients qwen      # Add or refresh Qwen Code capture
+trajectory setup --clients kilo      # Add or refresh Kilo Code capture
 trajectory setup --clients all       # Add or refresh all setup-managed clients
 trajectory setup auto-instrument --json  # Dry-run managed auto-instrument plan
 trajectory setup auto-instrument apply --yes --json  # Apply when managed mutation is enabled
@@ -267,11 +272,16 @@ local sink" above.
 | GitHub Copilot CLI | Beta Copilot plugin command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
 | Gemini CLI | Managed command hooks | Yes | Yes | Yes | Gemini transcript backfill | Yes |
 | Antigravity CLI (`agy`) | Antigravity plugin command hooks | Yes | Yes | Yes | Not yet | No setup-managed resume |
+| Goose | Open Plugins command hooks | Session, prompt, tool, shell/file, and assistant-message hooks | Usage when hook payloads expose it | Not yet | Not yet | No setup-managed resume |
 | Cursor Desktop | Command hooks | Yes | Cursor DB dependent | Yes | Cursor chat backfill | Yes |
 | cursor-agent CLI | Transcript watcher | Tool and turn events | Not exposed by current transcripts | No | Same transcript source | No setup-managed resume |
 | Factory Droid | Beta Factory plugin command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
+| Hermes Agent | Observer plugin hooks | Yes | Usage payloads when present | Yes | Not yet | No setup-managed resume |
+| Amp Code | Setup-managed system plugin | Yes | When Amp plugin events expose usage | MCP | Not yet | No setup-managed resume |
+| Qwen Code | Native HTTP hooks | Yes | Yes, from usage metadata and transcript fallback | Yes | Not yet | No setup-managed resume |
 | Pi | TypeScript extension | Yes | Yes | Native tool plus MCP | Pi/OMP session backfill | Yes |
 | OpenCode | Plugin SDK events | Yes | Yes | Yes | SQLite backfill | Yes |
+| Kilo Code | Plugin SDK events | Yes | Native OTLP traces/logs plus SDK payloads when exposed | Yes | Not yet | No setup-managed resume |
 
 ## Publishing and export
 
@@ -501,6 +511,11 @@ trajectory user-guide clients/copilot # GitHub Copilot CLI beta details
 trajectory user-guide clients/cursor # Cursor-specific details
 trajectory user-guide clients/droid  # Factory Droid beta details
 trajectory user-guide clients/gemini # Gemini-specific details
+trajectory user-guide clients/hermes # Hermes Agent observer plugin details
+trajectory user-guide clients/amp    # Amp Code system plugin details
+trajectory user-guide clients/goose  # Goose-specific details
+trajectory user-guide clients/qwen   # Qwen Code native HTTP hook details
+trajectory user-guide clients/kilo   # Kilo Code plugin and OTLP relay details
 trajectory user-guide clients/pi     # Pi-specific details
 trajectory user-guide clients/opencode # OpenCode-specific details
 trajectory user-guide install        # Installation methods

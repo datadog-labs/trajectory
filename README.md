@@ -5,9 +5,9 @@ Observe AI coding agents like production systems.
 See the whole run. Measure the behavior. Improve the workflow.
 
 Trajectory captures coding-agent sessions across Claude Code, Codex, Gemini,
-Antigravity, Cursor, Pi, OpenCode, GitHub Copilot CLI, and Factory Droid, then
-turns them into local timelines, Datadog LLM Observability traces, operational
-metrics, and Markers: programmable signals for how agents work.
+Antigravity, Goose, Hermes Agent, Amp Code, Qwen Code, Kilo Code, Cursor, Pi,
+OpenCode, GitHub Copilot CLI, and Factory Droid, then turns them into local
+timelines, Datadog LLM Observability traces, operational metrics, and Markers.
 
 ## What It Answers
 
@@ -79,8 +79,8 @@ agent behavior becomes something you can graph, alert on, compare, and improve.
 ## Core Capabilities
 
 - **Multi-client instrumentation** for Claude Code, Codex CLI, Gemini CLI,
-  Antigravity CLI, Cursor, Pi, OpenCode, GitHub Copilot CLI beta, and Factory
-  Droid beta.
+  Antigravity CLI, Goose, Hermes Agent, Amp Code, Qwen Code, Kilo Code,
+  Cursor, Pi, OpenCode, GitHub Copilot CLI beta, and Factory Droid beta.
 - **Local-first timelines** for session lifecycle, turns, tool calls, model
   usage, cost signals, and repository context.
 - **Datadog-native export** for configurable LLM Observability traces and
@@ -124,6 +124,11 @@ Trajectory supports:
 - GitHub Copilot CLI beta
 - Gemini CLI
 - Antigravity CLI (`agy`)
+- Goose
+- Hermes Agent
+- Amp Code
+- Qwen Code
+- Kilo Code
 - Cursor Desktop and cursor-agent
 - Factory Droid beta
 - Pi
@@ -146,6 +151,7 @@ plugin/trajectory-gemini/ Gemini context assets
 plugin/trajectory-antigravity/ Antigravity CLI plugin
 plugin/trajectory-pi/     Pi extension
 plugin/trajectory-opencode/ OpenCode plugin
+plugin/trajectory-kilo/   Kilo Code plugin
 intercepts/               Claude wrapper intercept runtime
 skills/                   Shared skill assets
 RELEASES.json             Release-channel selector

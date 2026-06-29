@@ -4,11 +4,23 @@ Codex marketplace plugin for trajectory agent observability.
 
 ## What It Does
 
-- **12 lifecycle hooks** capture every session event (tool calls, prompts, compaction, subagents) with command hooks that invoke the installed `trajectory capture-hook --client codex --ensure-serve` binary path
+- **12 lifecycle hooks** capture every session event (tool calls, prompts, compaction, subagents) with foreground command hooks that invoke the installed `trajectory capture-hook --client codex --ensure-serve` binary path
 - **MCP server** provides introspection tools (status, sessions, queries, incognito, flush, markers)
 - **`/incognito` skill** toggles publish suppression for the current session while local JSONL capture continues
 
-The built-in Codex watcher (rollout file tailing) serves as a fallback for sessions started before the plugin was installed.
+Codex capture is intentionally hybrid. Command hooks provide ordered lifecycle
+edges that Codex waits on, while Codex rollout JSONL under `~/.codex/sessions/`
+contains checkpoint-only details such as assistant messages, reasoning,
+permissions, non-shell tools, model metadata, and token snapshots. Trajectory
+merges those sources in `trajectory serve` before writing its normalized session
+JSONL under `~/.trajectory/trajectories/`.
+
+The built-in Codex watcher (rollout file tailing) serves as a fallback for
+sessions started before the plugin was installed or when hooks cannot notify
+the local server. Codex hooks therefore use the `trajectory capture-hook`
+command path instead of direct `curl` or raw JSONL append: the server merge path
+owns checkpoint reconciliation, duplicate suppression, rollout cursor
+advancement, and token/model enrichment.
 
 For CLI usage, run `trajectory user-guide` or see `docs/USER-GUIDE.md`.
 

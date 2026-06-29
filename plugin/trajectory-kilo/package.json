@@ -1,0 +1,13 @@
+{
+  "name": "@datadog/trajectory-kilo",
+  "version": "3.0.0",
+  "description": "Trajectory capture plugin for Kilo Code",
+  "exports": {
+    "./server": "./src/index.ts"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/datadog-labs/trajectory"
+  }
+}

@@ -22,11 +22,16 @@ trajectory user-guide clients
 | GitHub Copilot CLI | `trajectory setup --clients copilot` | Beta plugin command hooks plus MCP | None |
 | Gemini CLI | `trajectory setup --clients gemini` | Managed command hooks plus MCP | Gemini transcript backfill |
 | Antigravity CLI (`agy`) | `trajectory setup --clients agy` | Antigravity plugin command hooks plus MCP | None |
+| Goose | `trajectory setup --clients goose` | Open Plugins command hooks | None |
 | Cursor Desktop | `trajectory setup --clients cursor` | Cursor command hooks plus MCP | Cursor chat backfill |
 | cursor-agent CLI | Automatic when `cursor-agent` is on PATH | Transcript watcher | Same transcript source |
 | Factory Droid | `trajectory setup --clients droid` | Beta Factory command hooks plus MCP | None |
+| Hermes Agent | `trajectory setup --clients hermes` | Observer Python plugin plus MCP | None |
+| Amp Code | `trajectory setup --clients amp` | System TypeScript plugin plus MCP | None |
+| Qwen Code | `trajectory setup --clients qwen` | Native HTTP hooks plus MCP | None |
 | Pi | `trajectory setup --clients pi` | TypeScript extension plus eager MCP | Pi/OMP session backfill |
 | OpenCode | `trajectory setup --clients opencode` | OpenCode plugin SDK events plus MCP | SQLite backfill |
+| Kilo Code | `trajectory setup --clients kilo` | Plugin SDK events plus MCP | None |
 
 ## Shared Local Flow
 
@@ -180,6 +185,25 @@ Gemini-compatible hook events and post to `/capture/agy/...`. The server reuses
 Gemini parsing and token/cost handling, but stamps `client_source=agy`.
 Historical Antigravity backfill is not implemented yet.
 
+## Goose
+
+Setup writes a Goose Open Plugins package under
+`~/.agents/plugins/trajectory/` and registers command hooks for session,
+prompt, tool, shell, file, and assistant-message events. The hooks post
+Goose's Open Plugins context JSON to `/capture/goose/...` through the local
+Trajectory server.
+
+Goose sessions are live capture only for now. Provider usage is recorded when
+Goose exposes it through hook payloads; historical import from Goose's local
+SQLite history is not implemented yet.
+
+Verify:
+
+```bash
+goose plugin list
+trajectory doctor
+```
+
 ## Cursor
 
 Cursor has two distinct capture paths.
@@ -206,6 +230,40 @@ incognito skill.
 Capture is beta live CLI capture only. There is no Factory/Droid historical
 backfill or transcript import path.
 
+## Hermes Agent
+
+Setup writes a Hermes observer plugin and config entry so Hermes can notify
+Trajectory about session, model, tool, and API-request lifecycle events.
+Hermes discovers the plugin from its configured plugin roots, and the plugin
+posts observer payloads to the local capture server without blocking normal
+Hermes behavior.
+
+The Go capture runtime records `client_source=hermes`, preserves Hermes
+observer turn identifiers, and uses native Hermes `usage` payloads for token
+and cost values when present. Historical Hermes import is not implemented yet.
+
+## Amp Code
+
+Setup writes a system TypeScript plugin plus MCP configuration for Amp Code.
+Amp lifecycle events such as session start, agent start, tool calls, tool
+results, and assistant messages are normalized as `client_source=amp` events.
+Token and cost fields are preserved when Amp exposes them.
+
+Amp does not expose a session-end plugin event today, so live sessions end on
+Trajectory's idle lifecycle handling. Historical Amp thread import is not
+implemented yet.
+
+## Qwen Code
+
+Setup writes Qwen Code settings for Trajectory MCP plus native HTTP hooks.
+Capture uses Qwen's hook transport directly rather than command-line curl
+shims, and Qwen payloads are normalized as `client_source=qwen` events.
+
+Qwen Code supports OpenAI-compatible providers. Trajectory records Qwen
+`usageMetadata` when present and can read the current chat JSONL transcript as
+a fallback for stop payloads that omit usage. Historical Qwen import is not
+implemented yet.
+
 ## Pi
 
 Setup writes `~/.pi/agent/extensions/trajectory/` and points
@@ -231,6 +289,23 @@ directory.
 The plugin SDK events cover chat messages, tool execution before/after events,
 and lifecycle events. Historical import uses OpenCode SQLite databases. OpenCode
 does not install a `hooks.json` file.
+
+## Kilo Code
+
+Setup installs the Kilo Code plugin under the resolved Kilo config directory
+(`KILO_CONFIG_DIR`, then `XDG_CONFIG_HOME/kilo`, then `~/.config/kilo`), adds
+the plugin path to `opencode.json`, writes a `trajectory` MCP entry, and
+installs the global incognito skill.
+
+Kilo Code is OpenCode-compatible at the plugin surface. The Trajectory plugin
+uses SDK events for chat messages, tool execution before/after events, and
+lifecycle events. It also supports native OpenTelemetry export: point Kilo's
+OTLP endpoint at `http://localhost:4318` to relay native traces and logs
+through the local Trajectory OTLP relay.
+
+Manual fallback: copy `plugin/trajectory-kilo` to
+`~/.config/kilo/plugins/trajectory` and add that absolute path to Kilo's
+`plugin` array plus a `trajectory` MCP entry.
 
 ## Troubleshooting
 
