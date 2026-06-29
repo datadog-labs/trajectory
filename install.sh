@@ -439,6 +439,15 @@ else
     info "      Antigravity CLI not detected - skipping Antigravity configuration guidance."
 fi
 
+# Goose configuration (handled by setup wizard)
+if command -v goose >/dev/null 2>&1; then
+    info "      Goose detected - configuration is handled by the setup wizard."
+    info "      To refresh Goose wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients goose"
+    PLUGIN_INSTALLED=1
+else
+    info "      Goose CLI not detected - skipping Goose configuration guidance."
+fi
+
 # Cursor configuration (handled by setup wizard)
 if command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1; then
     info "      Cursor detected - configuration is handled by the setup wizard."
@@ -446,6 +455,33 @@ if command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1;
     PLUGIN_INSTALLED=1
 else
     info "      Cursor CLI not detected - skipping Cursor configuration guidance."
+fi
+
+# Hermes Agent configuration (handled by setup wizard)
+if command -v hermes >/dev/null 2>&1; then
+    info "      Hermes Agent detected - configuration is handled by the setup wizard."
+    info "      To refresh Hermes wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients hermes"
+    PLUGIN_INSTALLED=1
+else
+    info "      Hermes Agent CLI not detected - skipping Hermes configuration guidance."
+fi
+
+# Amp Code configuration (handled by setup wizard)
+if command -v amp >/dev/null 2>&1; then
+    info "      Amp Code detected - configuration is handled by the setup wizard."
+    info "      To refresh Amp Code wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients amp"
+    PLUGIN_INSTALLED=1
+else
+    info "      Amp Code CLI not detected - skipping Amp Code configuration guidance."
+fi
+
+# Qwen Code configuration (handled by setup wizard)
+if command -v qwen >/dev/null 2>&1; then
+    info "      Qwen Code detected - configuration is handled by the setup wizard."
+    info "      To refresh Qwen Code wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients qwen"
+    PLUGIN_INSTALLED=1
+else
+    info "      Qwen Code CLI not detected - skipping Qwen Code configuration guidance."
 fi
 
 # OpenCode plugin
@@ -465,6 +501,31 @@ if command -v opencode >/dev/null 2>&1; then
     PLUGIN_INSTALLED=1
 else
     info "      OpenCode CLI not detected - skipping OpenCode plugin."
+fi
+
+# Kilo Code plugin
+KILO_PLUGIN_DIR="$SCRIPT_DIR/plugin/trajectory-kilo"
+KILO_CLI=""
+if command -v kilo >/dev/null 2>&1; then
+    KILO_CLI="kilo"
+elif command -v kilocode >/dev/null 2>&1; then
+    KILO_CLI="kilocode"
+fi
+if [ -n "$KILO_CLI" ]; then
+    if [ -d "$KILO_PLUGIN_DIR" ]; then
+        info "      Installing Kilo Code plugin..."
+        "$KILO_CLI" plugin "$KILO_PLUGIN_DIR" || {
+            warn "Kilo Code plugin install failed. Install manually:"
+            warn "  kilo plugin /path/to/trajectory/plugin/trajectory-kilo"
+            warn "  or run: ~/.trajectory/bin/trajectory setup --clients kilo"
+        }
+    else
+        warn "Kilo Code CLI detected, but local plugin directory not found: $KILO_PLUGIN_DIR"
+        warn "Refresh Kilo Code wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients kilo"
+    fi
+    PLUGIN_INSTALLED=1
+else
+    info "      Kilo Code CLI not detected - skipping Kilo Code plugin."
 fi
 
 # Pi extension
@@ -495,8 +556,13 @@ if [ "$PLUGIN_INSTALLED" = "0" ]; then
     info "    Droid beta:  ~/.trajectory/bin/trajectory setup --clients droid"
     info "    Gemini:      ~/.trajectory/bin/trajectory setup --clients gemini"
     info "    Antigravity: ~/.trajectory/bin/trajectory setup --clients agy"
+    info "    Goose:       ~/.trajectory/bin/trajectory setup --clients goose"
     info "    Cursor:      ~/.trajectory/bin/trajectory setup --clients cursor"
+    info "    Hermes:      ~/.trajectory/bin/trajectory setup --clients hermes"
+    info "    Amp Code:    ~/.trajectory/bin/trajectory setup --clients amp"
+    info "    Qwen Code:   ~/.trajectory/bin/trajectory setup --clients qwen"
     info "    OpenCode:    ~/.trajectory/bin/trajectory setup --clients opencode"
+    info "    Kilo Code:   ~/.trajectory/bin/trajectory setup --clients kilo"
     info "    Pi:          ~/.trajectory/bin/trajectory setup --clients pi"
 fi
 

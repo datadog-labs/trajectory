@@ -194,6 +194,33 @@ Missing tags can happen for legacy data, non-Claude clients, or non-cost
 metrics. Keep these series visible as uncategorized. Do not backfill a direct
 or gateway assumption in the UI.
 
+### Verifying Claude Cost Fidelity
+
+Use `trajectory user-guide claude-cost` for the user-facing workflow. Use the
+read-only CLI verifier before changing dashboard dedupe behavior for a Claude
+cohort:
+
+```bash
+trajectory verify claude-cost route
+trajectory verify claude-cost transcript --session <session-id>
+trajectory verify claude-cost artifacts --dir <native-otel-artifact-dir>
+```
+
+Interpret the modes separately:
+
+- `route` reports whether current Claude configuration evidence points at a
+  direct Anthropic route, gateway/cloud route, or an ambiguous route. Managed
+  settings are reported as blocking only when route evidence indicates gateway
+  or non-local telemetry behavior; managed-settings log lines alone are not a
+  native-cost failure.
+- `transcript` compares Claude transcript-derived tokens and estimated cost to
+  captured Trajectory JSONL and local cache rows. This validates Trajectory
+  capture fidelity, but it is not an independent native Claude billing oracle.
+- `artifacts` reads native OTel canary output such as
+  `claude-native-otel-normalized.json`. A `direct_comparable` /
+  `native_comparison:pass` result is the equality check against
+  `claude_code.cost.usage`.
+
 ## Implementation Checklist
 
 Before enabling dashboard UI overlap rendering, verify:

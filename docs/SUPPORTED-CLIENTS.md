@@ -13,6 +13,11 @@ For the built-in client overview and per-client guides, run:
 trajectory user-guide clients
 trajectory user-guide clients/codex
 trajectory user-guide clients/agy
+trajectory user-guide clients/goose
+trajectory user-guide clients/hermes
+trajectory user-guide clients/amp
+trajectory user-guide clients/qwen
+trajectory user-guide clients/kilo
 ```
 
 ## Quick Reference
@@ -24,11 +29,16 @@ trajectory user-guide clients/agy
 | GitHub Copilot CLI | `trajectory setup --clients copilot` | Beta | Copilot plugin command hooks + MCP |
 | Gemini CLI | `trajectory setup --clients gemini` | 0.30.0+ | Managed command hooks + MCP |
 | Antigravity CLI (`agy`) | `trajectory setup --clients agy` | 1.0.0+ | Antigravity plugin command hooks + MCP |
+| Goose | `trajectory setup --clients goose` | 1.39.0 tested | Open Plugins command hooks |
 | Cursor Desktop | `trajectory setup --clients cursor` | 1.0+ | Command hooks that POST to capture |
 | cursor-agent CLI | Automatic when `cursor-agent` is on PATH | Beta | Transcript watcher |
 | Factory Droid | `trajectory setup --clients droid` | Beta | Factory plugin command hooks + MCP |
+| Hermes Agent | `trajectory setup --clients hermes` | Beta | Observer plugin hooks + MCP |
+| Amp Code | `trajectory setup --clients amp` | Beta | System TypeScript plugin events + MCP |
+| Qwen Code | `trajectory setup --clients qwen` | 0.19.2 tested | Native HTTP hooks + MCP |
 | Pi | `trajectory setup --clients pi` | Beta | TypeScript extension + MCP |
 | OpenCode | `trajectory setup --clients opencode` | Beta | Plugin SDK events + MCP |
+| Kilo Code | `trajectory setup --clients kilo` | Beta | Plugin SDK events + MCP |
 
 ## Feature Coverage Matrix
 
@@ -39,11 +49,16 @@ trajectory user-guide clients/agy
 | GitHub Copilot CLI | Yes, beta plugin command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
 | Gemini CLI | Yes, managed command hooks | Yes | Yes | Yes | Gemini transcript backfill | Yes |
 | Antigravity CLI (`agy`) | Yes, plugin command hooks | Yes, via Gemini-compatible hook schema | Yes, via Gemini-compatible token fields | Yes | Not yet | No setup-managed resume |
+| Goose | Yes, Open Plugins command hooks | Session, prompt, tool, shell/file, and assistant-message hooks | Usage when hook payloads expose it | Not yet | Not yet | No setup-managed resume |
 | Cursor Desktop | Yes, command hooks | Yes | Cursor DB dependent | Yes | Cursor chat backfill | Yes |
 | cursor-agent CLI | Yes, transcript watcher | Tool and turn events | Not exposed by current transcripts | No | Same transcript source | No setup-managed resume |
 | Factory Droid | Yes, beta Factory plugin command hooks | Command-level events | Not yet | MCP config and incognito skill | Not yet | Not yet |
+| Hermes Agent | Yes, observer plugin hooks | Yes | Usage payloads when present | Yes | Not yet | No setup-managed resume |
+| Amp Code | Yes, setup-managed system plugin | Yes | When Amp plugin events expose usage | MCP | Not yet | No setup-managed resume |
+| Qwen Code | Yes, native HTTP hooks | Yes | Yes, from usage metadata and transcript fallback | Yes | Not yet | No setup-managed resume |
 | Pi | Yes, TypeScript extension | Yes | Yes | Native tool plus MCP | Pi/OMP session backfill | Yes |
 | OpenCode | Yes, plugin SDK events | Yes | Yes | Yes | SQLite backfill | Yes |
+| Kilo Code | Yes, plugin SDK events | Yes | Native OTLP traces/logs plus SDK payloads when exposed | Yes | Not yet | No setup-managed resume |
 
 For local cost readback and supported-agent fidelity checks, run `trajectory
 cost`, `trajectory cost inspect --session <id>`, and `trajectory cost
@@ -198,6 +213,24 @@ agy plugin validate plugin/trajectory-antigravity
 
 Current limitations: no historical Antigravity backfill or setup-managed resume target yet.
 
+## Goose
+
+**Minimum version: 1.39.0 tested** (Open Plugins support)
+
+Install with setup:
+
+```bash
+trajectory setup --clients goose
+```
+
+Setup writes a Goose Open Plugins package under `~/.agents/plugins/trajectory`
+and registers it with Goose. The plugin defines command hooks that post Open
+Plugins context JSON to `/capture/goose/<event>`.
+
+Goose live capture covers session start/end, prompts, tool calls, shell and
+file events, and assistant-message checkpoints. Historical Goose backfill is
+not implemented yet.
+
 ## Cursor
 
 Cursor has two separate products with different capture paths:
@@ -270,6 +303,63 @@ Capture is live only. There is no Factory/Droid historical backfill, transcript 
 
 Registered documented events: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `Notification`, `Stop`, `SubagentStop`, `PreCompact`, and `SessionEnd`. Factory's public docs do not currently document `PostToolUseFailure`, `PermissionRequest`, `SubagentStart`, or `PostCompact` for Droid; the server accepts those Claude-compatible names as best-effort future compatibility, but the packaged Droid plugin does not register them.
 
+## Hermes Agent
+
+**Status: Beta, fixture-tested against the public Hermes observer-hook contract**
+
+Install with setup:
+
+```bash
+trajectory setup --clients hermes
+```
+
+Setup writes a Hermes observer plugin, plugin config, and MCP server entry. The
+observer plugin captures lifecycle events such as session start, turn start,
+message send, post-model request, tool execution, and session end, then posts
+them to `/capture/hermes/<event>`.
+
+Hermes `post_api_request` payloads can include usage fields. Trajectory records
+those on the canonical turn events and uses them for tokens and cost when
+available. Historical Hermes backfill is not implemented yet.
+
+## Amp Code
+
+**Status: Beta, fixture-tested**
+
+Install with setup:
+
+```bash
+trajectory setup --clients amp
+```
+
+Setup writes a system TypeScript plugin and MCP entry. Amp plugin lifecycle
+events include session start, agent start, tool calls, tool results, and
+assistant messages. Trajectory posts them to `/capture/amp/<event>` and stamps
+`client_source=amp`.
+
+Amp does not expose a session-end plugin event today, so live sessions end on
+Trajectory's idle lifecycle handling. Historical Amp backfill is not
+implemented yet.
+
+## Qwen Code
+
+**Minimum version: 0.19.2 tested** (native HTTP hooks and MCP)
+
+Install with setup:
+
+```bash
+trajectory setup --clients qwen
+```
+
+Setup writes Qwen Code settings, registers Trajectory MCP, and installs native
+HTTP hooks. Capture uses Qwen's HTTP hook transport to post events to
+`/capture/qwen/<event>`.
+
+Qwen Code supports OpenAI-compatible providers. Trajectory records
+`usageMetadata` when Qwen exposes it and can use the current chat JSONL
+transcript as a fallback for stop payloads that omit usage. Historical Qwen
+backfill is not implemented yet.
+
 ## OpenCode
 
 **Status: Supported** (headless mode: `opencode run`)
@@ -288,6 +378,33 @@ Manual fallback: copy `plugin/trajectory-opencode` to `~/.config/opencode/plugin
 
 **Source:** [github.com/anomalyco/opencode](https://github.com/anomalyco/opencode)
 
+## Kilo Code
+
+**Status: Beta**
+
+Install with setup:
+
+```bash
+trajectory setup --clients kilo
+```
+
+Kilo Code is OpenCode-compatible at the plugin surface. Setup installs the
+Trajectory Kilo plugin under the resolved Kilo config directory
+(`KILO_CONFIG_DIR`, `XDG_CONFIG_HOME/kilo`, then `~/.config/kilo`), adds the
+plugin path plus a `trajectory` MCP entry to `opencode.json`, and writes the
+incognito skill into the global Kilo skills directory.
+
+The plugin uses SDK events for chat messages, tool execution before/after
+events, and lifecycle events. Kilo can also export native OpenTelemetry traces
+and logs to Trajectory's local OTLP relay at `http://localhost:4318`.
+
+Manual fallback: copy `plugin/trajectory-kilo` to
+`~/.config/kilo/plugins/trajectory` and add that local path to the `plugin`
+array plus a `trajectory` MCP entry.
+
+**Source:** [github.com/Kilo-Org/kilocode](https://github.com/Kilo-Org/kilocode),
+[Kilo CLI docs](https://kilo.ai/docs/code-with-ai/platforms/cli)
+
 ## Version Check
 
 To verify your client version:
@@ -298,7 +415,12 @@ codex --version           # Codex CLI
 copilot version           # GitHub Copilot CLI
 gemini --version          # Gemini CLI
 cursor --version          # Cursor (desktop) / cursor-agent --version (CLI)
+goose --version           # Goose
+hermes --version          # Hermes Agent
+amp --version             # Amp Code
+qwen --version            # Qwen Code
 droid --version           # Factory Droid
 pi --version              # Pi
 opencode --version        # OpenCode (note: takes cwd as argument)
+kilo --version            # Kilo Code
 ```

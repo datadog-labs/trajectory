@@ -18,7 +18,7 @@ conditional so missing source data does not invent false attribution.
 | `host` | Required | Publish engine host lookup | Falls back to `unknown`. This is a tag only, not a Datadog host resource. |
 | `trajectory.format_version` | Optional | `session_start.format_version` | Present when capture records a format version. |
 | `gen_ai.request.model` | Optional | Captured model or publish metadata | Raw model label used for query and metric parity. |
-| `trajectory.client_source` | Optional | `session_start.client_source` | Examples: `codex`, `claude-code`, `gemini`, `agy`. |
+| `trajectory.client_source` | Optional | `session_start.client_source` | Examples: `codex`, `claude-code`, `gemini`, `agy`, `goose`. |
 | `trajectory.client_version` | Optional | Captured client or harness version | Coding-agent version when the client reports one. |
 | `project_dir` | Optional | Captured or cached project directory | Basename only; full paths stay out of tags. |
 | `trajectory.capture_level` | Optional | Capture/export level | Examples: `minimal`, `standard`, `full`. |
