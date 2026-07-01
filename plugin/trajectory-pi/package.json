@@ -12,5 +12,10 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/datadog-labs/trajectory"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ]
   }
 }

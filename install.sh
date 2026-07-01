@@ -36,7 +36,8 @@ warn()  { echo "[trajectory]  WARNING: $1" >&2; }
 fail()  { echo "[trajectory]  ERROR: $1" >&2; exit 1; }
 
 # Collect args that pass through to `trajectory setup`. Recognized setup flags:
-# --site, --ml-app, --api-key, --clients (all take a value), --non-interactive.
+# --site, --ml-app, --api-key, --clients (all take a value),
+# --install-client-shims, --no-client-shims, and --non-interactive.
 # The legacy install-only --add-to-path flag is accepted as a no-op for older
 # scripts. install.sh and `trajectory setup` do not edit shell rc files.
 SETUP_ARGS=()
@@ -448,6 +449,51 @@ else
     info "      Goose CLI not detected - skipping Goose configuration guidance."
 fi
 
+# Cline CLI configuration (handled by setup wizard)
+if command -v cline >/dev/null 2>&1; then
+    info "      Cline CLI detected - configuration is handled by the setup wizard."
+    info "      To refresh Cline wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients cline"
+    PLUGIN_INSTALLED=1
+else
+    info "      Cline CLI not detected - skipping Cline configuration guidance."
+fi
+
+# Aider configuration (opt-in command shim handled by setup wizard)
+if command -v aider >/dev/null 2>&1; then
+    info "      Aider detected - opt-in command shim configuration is handled by the setup wizard."
+    info "      To refresh Aider shim wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients aider --install-client-shims"
+    PLUGIN_INSTALLED=1
+else
+    info "      Aider CLI not detected - skipping Aider configuration guidance."
+fi
+
+# Continue CLI configuration (opt-in command shim handled by setup wizard)
+if command -v cn >/dev/null 2>&1; then
+    info "      Continue CLI detected - opt-in command shim configuration is handled by the setup wizard."
+    info "      To refresh Continue CLI shim wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients continue --install-client-shims"
+    PLUGIN_INSTALLED=1
+else
+    info "      Continue CLI not detected - skipping Continue CLI configuration guidance."
+fi
+
+# Mistral Vibe configuration (opt-in command shim handled by setup wizard)
+if command -v vibe >/dev/null 2>&1; then
+    info "      Mistral Vibe detected - opt-in command shim and hooks configuration is handled by the setup wizard."
+    info "      To refresh Mistral Vibe shim wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients mistral-vibe --install-client-shims"
+    PLUGIN_INSTALLED=1
+else
+    info "      Mistral Vibe CLI not detected - skipping Mistral Vibe configuration guidance."
+fi
+
+# Codebuff configuration (opt-in command shim handled by setup wizard)
+if command -v codebuff >/dev/null 2>&1 || command -v cb >/dev/null 2>&1; then
+    info "      Codebuff detected - opt-in command shim configuration is handled by the setup wizard."
+    info "      To refresh Codebuff shim wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients codebuff --install-client-shims"
+    PLUGIN_INSTALLED=1
+else
+    info "      Codebuff CLI not detected - skipping Codebuff configuration guidance."
+fi
+
 # Cursor configuration (handled by setup wizard)
 if command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1; then
     info "      Cursor detected - configuration is handled by the setup wizard."
@@ -482,6 +528,24 @@ if command -v qwen >/dev/null 2>&1; then
     PLUGIN_INSTALLED=1
 else
     info "      Qwen Code CLI not detected - skipping Qwen Code configuration guidance."
+fi
+
+# OpenHands configuration (handled by setup wizard)
+if command -v openhands >/dev/null 2>&1; then
+    info "      OpenHands detected - configuration is handled by the setup wizard."
+    info "      To refresh OpenHands wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients openhands"
+    PLUGIN_INSTALLED=1
+else
+    info "      OpenHands CLI not detected - skipping OpenHands configuration guidance."
+fi
+
+# Kiro CLI configuration (handled by setup wizard)
+if command -v kiro-cli >/dev/null 2>&1 || command -v kiro >/dev/null 2>&1; then
+    info "      Kiro CLI detected - configuration is handled by the setup wizard."
+    info "      To refresh Kiro CLI wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients kiro"
+    PLUGIN_INSTALLED=1
+else
+    info "      Kiro CLI not detected - skipping Kiro CLI configuration guidance."
 fi
 
 # OpenCode plugin
@@ -557,10 +621,17 @@ if [ "$PLUGIN_INSTALLED" = "0" ]; then
     info "    Gemini:      ~/.trajectory/bin/trajectory setup --clients gemini"
     info "    Antigravity: ~/.trajectory/bin/trajectory setup --clients agy"
     info "    Goose:       ~/.trajectory/bin/trajectory setup --clients goose"
+    info "    Cline CLI:   ~/.trajectory/bin/trajectory setup --clients cline"
+    info "    Aider:       ~/.trajectory/bin/trajectory setup --clients aider --install-client-shims"
+    info "    Continue CLI: ~/.trajectory/bin/trajectory setup --clients continue --install-client-shims"
+    info "    Mistral Vibe: ~/.trajectory/bin/trajectory setup --clients mistral-vibe --install-client-shims"
+    info "    Codebuff:    ~/.trajectory/bin/trajectory setup --clients codebuff --install-client-shims"
     info "    Cursor:      ~/.trajectory/bin/trajectory setup --clients cursor"
     info "    Hermes:      ~/.trajectory/bin/trajectory setup --clients hermes"
     info "    Amp Code:    ~/.trajectory/bin/trajectory setup --clients amp"
     info "    Qwen Code:   ~/.trajectory/bin/trajectory setup --clients qwen"
+    info "    OpenHands:   ~/.trajectory/bin/trajectory setup --clients openhands"
+    info "    Kiro CLI:    ~/.trajectory/bin/trajectory setup --clients kiro"
     info "    OpenCode:    ~/.trajectory/bin/trajectory setup --clients opencode"
     info "    Kilo Code:   ~/.trajectory/bin/trajectory setup --clients kilo"
     info "    Pi:          ~/.trajectory/bin/trajectory setup --clients pi"

@@ -124,7 +124,7 @@ uninstall_clients() {
         return
     fi
 
-    for client in cc codex copilot cursor droid gemini agy goose hermes amp qwen pi opencode kilo; do
+    for client in cc codex copilot cursor droid gemini agy goose cline aider hermes continue mistral-vibe amp qwen openhands kiro pi opencode kilo codebuff; do
         if [ "$DRY_RUN" = "1" ]; then
             info "Would run: $binary setup --uninstall $client --non-interactive"
             continue

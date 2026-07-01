@@ -15,7 +15,7 @@ trajectory user-guide llm-capacity
 | Feature | Default | What it does | How often it can call an LLM | Primary controls |
 |---|---|---|---|---|
 | Task segmentation | On | Splits sessions into tasks and scores task dimensions such as outcome, autonomy, risk, and reversibility | About every `segmentation.interval` completed turns, default 10, plus one final pass at session end for sessions with at least 2 turns | `segmentation.enabled`, `segmentation.interval`, `segmentation.model`, `TRAJECTORY_SEGMENTATION_DISABLED=1` |
-| Sensitivity classification | On, `balanced` mode | Classifies session content for the publish gate as public, internal, confidential, or restricted | In `balanced` mode, about every 10 completed turns, plus a session-end scan on the non-incognito publish path. In `near_realtime` mode, active sessions are scanned only when new content exists, default every 30 minutes. | `export.sensitivity.scanning_mode`, `export.sensitivity.near_realtime_interval_minutes` |
+| Sensitivity classification | On, `near_realtime` mode | Classifies session content for the publish gate as public, internal, confidential, or restricted | In `near_realtime` mode, active sessions are scanned only when new content exists, default every 240 minutes, plus a session-end scan on the non-incognito publish path. In `balanced` mode, about every 10 completed turns, plus the session-end scan. | `export.sensitivity.scanning_mode`, `export.sensitivity.near_realtime_interval_minutes` |
 
 For zero Trajectory-owned LLM calls from the capture server, disable both:
 
@@ -50,7 +50,8 @@ For example, a 23-turn session normally means about 3 segmentation calls: turn
 
 Headless coding-agent sessions are included in capture and publish by default
 when export is configured. Sensitivity/classification and segmentation always
-skip headless sessions. To opt out of capture/publish for headless agent sessions:
+skip headless sessions. To opt out of capture/publish for all non-internal
+headless agent sessions:
 
 ```bash
 trajectory config set capture.include_headless_agents false
@@ -88,7 +89,7 @@ LLM capacity use.
 
 ## Sensitivity classification
 
-Sensitivity classification is enabled by default in `balanced` mode. It is
+Sensitivity classification is enabled by default in `near_realtime` mode. It is
 primarily used by trace publish privacy gates, but `export.traces=off` is not a
 guaranteed capacity control by itself. If you want no sensitivity-classifier LLM
 calls and no sensitivity publish gate, set `export.sensitivity.scanning_mode`
@@ -96,12 +97,11 @@ to `off`.
 
 Scanning modes:
 
-- `balanced` is the default. It scans on the same default turn cadence as
-  segmentation: about every 10 completed turns, plus a final session-end scan on
-  the non-incognito publish path.
-- `near_realtime` scans active sessions on a time window when new content
-  exists. The default interval is 30 minutes, and the durable per-session window
-  is enforced across concurrent serve processes.
+- `near_realtime` is the default. It scans active sessions on a time window when
+  new content exists. The default interval is 240 minutes.
+- `balanced` scans on the same default turn cadence as segmentation: about every
+  10 completed turns, plus a final session-end scan on the non-incognito publish
+  path.
 - `off` disables sensitivity classifier calls and disables the sensitivity
   publish gate.
 
@@ -141,7 +141,7 @@ classifier calls:
 
 ```bash
 trajectory config set export.sensitivity.scanning_mode near_realtime
-trajectory config set export.sensitivity.near_realtime_interval_minutes 30
+trajectory config set export.sensitivity.near_realtime_interval_minutes 240
 ```
 
 Lower `near_realtime_interval_minutes` values can release held spans sooner, but
@@ -156,10 +156,10 @@ near_realtime: active windows with new content / interval + at most 1 session-en
 off:           0 calls
 ```
 
-Incognito is a privacy control, not a global capacity control. It suppresses
-publish for ordinary destinations and skips active-session and final sensitivity
-scans for that session. Use `scanning_mode: off` when you want a
-configuration-wide guarantee of zero sensitivity-classifier calls.
+Incognito is a privacy control, not a capacity control. It suppresses publish
+for ordinary destinations and skips the final non-incognito publish-drain scan,
+but active-session sensitivity scanning can still run while the session is
+active. Use `scanning_mode: off` for a capacity guarantee.
 
 ## Cost reporting
 
@@ -175,10 +175,6 @@ The cost metric uses estimated token counts from prompt and output size, then
 prices those counts with Trajectory's existing model pricing table. It is not a
 provider invoice. Calls whose model is not visible or not priced still emit
 `trajectory.serve.llm_capacity.calls.total` with `cost_source:pricing_unknown`.
-Classifier backend errors can also represent attempted calls that consumed
-provider-side capacity before failing or returning unparseable output. Check
-`trajectory.serve.sensitivity.classifier_backend_error` alongside the capacity
-metrics when investigating unexpected spend.
 
 Useful queries:
 
@@ -196,8 +192,6 @@ session:
 - `export.metrics`: controls metrics publish.
 - `export.placeholder_llm_span`: controls a synthetic Datadog LLM span for cost
   enrichment; it does not call an LLM.
-- `export.subagent_span_mode`: controls how captured subagent lifecycle events
-  are rendered in trace exports; it does not call an LLM.
 - Marker evaluation: built-in and YAML markers are rule-based over local SQLite
   data.
 - `segmentation.publish_metrics` and `segmentation.publish_traces`: control

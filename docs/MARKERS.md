@@ -687,6 +687,10 @@ gen_ai.usage.input_tokens: 4300
 gen_ai.usage.output_tokens: 1240
 ```
 
+When generic skill-tool invocations omit native skill source metadata,
+Trajectory can infer `source_scope` by matching `skill_name` to local project
+or user skill files.
+
 The expected metric tags include `environment:test`, `session_id:<id>`, `trajectory.client_source:pi`, `trajectory.client_version:marker-canary/dev`, `gen_ai.request.model:openai/gpt-5.1`, and `project_dir:trajectory-marker-canary-fixture`. Marker detail fields such as `detected_from` and `source_scope` are validated locally; they are not Datadog metric tags unless a measure explicitly maps them to bounded dimensions.
 
 ## End-to-end authoring workflow

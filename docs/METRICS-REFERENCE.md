@@ -85,7 +85,7 @@ unattributed.
 |---|---|---|
 | `gen_ai.conversation.id` | Session ID | `unknown` |
 | `session_id` | Compatibility alias for session ID | `unknown` |
-| `trajectory.client_source` | Client source, such as `claude-code`, `codex`, `gemini`, `agy`, `cursor`, `pi`, or `opencode` | `unknown` |
+| `trajectory.client_source` | Client source, such as `claude-code`, `cline`, `codex`, `gemini`, `agy`, `goose`, `aider`, `continue`, `mistral-vibe`, `codebuff`, `cursor`, `openhands`, `kiro`, `pi`, or `opencode` | `unknown` |
 | `trajectory.user` | Resolved user | `unknown` |
 | `trajectory.user_email` | Optional resolved user email from `TRAJECTORY_USER_EMAIL`, `identity.user_email`, `identity.user_email_command`, or `identity.user_email_suffix` | Omitted |
 | `git.email` | Optional resolved Git email from `TRAJECTORY_GITHUB_EMAIL`, `identity.github_email`, `identity.github_email_command`, repo-local Git config, or global Git config | Omitted |
@@ -264,6 +264,23 @@ Built-in and setup-default metrics include:
 | `trajectory.session.task_autonomy_mean` | gauge | session | Mean task autonomy score when task-segmentation publish is enabled for the destination |
 | `trajectory.session.high_risk_tasks` | gauge | session | Tasks with high risk score when task-segmentation publish is enabled for the destination |
 
+For trusted skill usage reports, prefer `trajectory.turn.skill_invocations` with
+`sum by {skill_name,detected_from,source_scope,signal_confidence}`. When native
+or explicit source metadata is unavailable, `source_scope` may be recovered by
+matching a generic skill-tool invocation against local project or user skill
+files. These metric series also carry normal Trajectory session tags including
+`trajectory.client_source`, `trajectory.client_version`, `trajectory.user`, and
+repo tags when available.
+
+Claude Code skill activation can arrive from native OTLP `skill_activated` logs
+or native transcript assistant messages with `attributionSkill`. When a turn
+has a high-confidence skill invocation marker, Trajectory also emits skill
+complexity metrics. Tool spans with native skill attributes publish as
+`skill_attribution:span_tool_attribute`; otherwise Trajectory can correlate a
+single high-confidence skill signal with same-turn Claude tool spans as
+`skill_attribution:span_temporal`, or fall back to same-turn materialized tool
+rows tagged `skill_attribution:turn_assisted`.
+
 Count-like session gauges that represent one final value per completed session
 also publish a `.completed_count` mirror, for example
 `trajectory.session.force_pushes.completed_count`,
@@ -299,6 +316,8 @@ privacy/publish diagnostics.
 
 | Metric | Type | Tags | Notes |
 |---|---|---|---|
+| `trajectory.ops.install.current_state` | gauge | Canonical serve tags plus `managed`, `role`, `outcome`, `reason`, `setup_binary_status`, `setup_binary_version` | Managed setup summary. Current state emits `1`; prior state series emit `0` when setup state changes so dashboards can filter on the latest active state. |
+| `trajectory.ops.install.agent_state` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `agent_status`, `setup_outcome`, `setup_stage`, `setup_component`, `setup_capture_path`, `setup_next_step`, `reason`, `setup_binary_status`, `setup_binary_version` | Per-integration setup state for every selected client. Distinguishes registration failures from verification failures and degraded fallback paths such as MCP watcher fallback. |
 | `trajectory.publish.active_destinations` | gauge | Canonical tags plus top-level and destination tags on Datadog destinations | Number of active destinations seen for a session |
 | `trajectory.publish.turns` | count | OTLP publish path tags | Internal publish turn counter |
 | `trajectory.serve.incognito.enabled` | count | `client_source` | User or tool enabled incognito; intentionally not tagged by session ID |
@@ -322,6 +341,18 @@ LLM-capacity cost is estimated from prompt/output size and the existing model
 pricing table. It is useful for directional spend dashboards, not provider
 invoice reconciliation. Calls whose model is not visible or priced still emit
 the call count with `cost_source:pricing_unknown`.
+
+Managed setup state uses low-cardinality reason and remediation tags. Use
+`setup_stage:registration` when client setup failed before writing or
+registering assets, `setup_stage:verification` when setup completed but the
+installed config is not usable, `setup_stage:fallback` when capture is expected
+through a lower-fidelity fallback, and `setup_stage:configured` for a fully
+verified integration. `setup_component` identifies the failed surface, such as
+`mcp_config`, `hooks_config`, `plugin_marketplace`, `plugin_install`,
+`wrapper_metadata`, `client_runtime`, or `sdk_extension`. `setup_next_step`
+contains a bounded remediation code such as `rerun_setup_client`,
+`install_client_then_rerun_setup`, `fix_permissions_then_rerun_setup`,
+`install_node_or_reinstall_client`, or `ensure_trajectory_bin_first_on_path`.
 
 ## Companion Metrics
 

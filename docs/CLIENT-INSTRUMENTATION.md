@@ -23,15 +23,22 @@ trajectory user-guide clients
 | Gemini CLI | `trajectory setup --clients gemini` | Managed command hooks plus MCP | Gemini transcript backfill |
 | Antigravity CLI (`agy`) | `trajectory setup --clients agy` | Antigravity plugin command hooks plus MCP | None |
 | Goose | `trajectory setup --clients goose` | Open Plugins command hooks | None |
+| Cline CLI | `trajectory setup --clients cline` | File hooks plus MCP | None |
+| Aider | `trajectory setup --clients aider --install-client-shims` | Opt-in command shim plus analytics/history sidecars | None |
+| Continue CLI | `trajectory setup --clients continue --install-client-shims` | Opt-in `cn` shim plus session JSON readback | None |
+| Mistral Vibe | `trajectory setup --clients mistral-vibe --install-client-shims` | Opt-in command shim plus native tool hooks | None |
+| Codebuff | `trajectory setup --clients codebuff --install-client-shims` | Opt-in command shims plus chat-history import | Codebuff chat history |
 | Cursor Desktop | `trajectory setup --clients cursor` | Cursor command hooks plus MCP | Cursor chat backfill |
 | cursor-agent CLI | Automatic when `cursor-agent` is on PATH | Transcript watcher | Same transcript source |
 | Factory Droid | `trajectory setup --clients droid` | Beta Factory command hooks plus MCP | None |
 | Hermes Agent | `trajectory setup --clients hermes` | Observer Python plugin plus MCP | None |
 | Amp Code | `trajectory setup --clients amp` | System TypeScript plugin plus MCP | None |
 | Qwen Code | `trajectory setup --clients qwen` | Native HTTP hooks plus MCP | None |
+| OpenHands | `trajectory setup --clients openhands` | Command hooks plus MCP | None |
 | Pi | `trajectory setup --clients pi` | TypeScript extension plus eager MCP | Pi/OMP session backfill |
 | OpenCode | `trajectory setup --clients opencode` | OpenCode plugin SDK events plus MCP | SQLite backfill |
 | Kilo Code | `trajectory setup --clients kilo` | Plugin SDK events plus MCP | None |
+| Kiro CLI | `trajectory setup --clients kiro` | Agent command hooks plus MCP | None |
 
 ## Shared Local Flow
 
@@ -52,15 +59,16 @@ for the client:
   introspection.
 - Agent skills or slash commands where the client supports them.
 - Local marketplace metadata for plugin-based clients.
+- Opt-in command shims for clients that do not expose native hooks.
 - An installed or extension-local `trajectory` binary path where the client
   expects one.
 
 Plugin-only manual installs can miss these companion pieces. Use
 `trajectory setup --clients <client>` for normal installs and refreshes. That
-client-only path updates hooks, MCP entries, skills, commands, local binaries,
-and local marketplace files without prompting for Datadog site, service name,
-or API key values. Run `trajectory setup` without `--clients` when you want to
-change export settings.
+client-only path updates hooks, MCP entries, skills, commands, opt-in command
+shims, local binaries, and local marketplace files without prompting for
+Datadog site, service name, or API key values. Run `trajectory setup` without
+`--clients` when you want to change export settings.
 
 The authoritative MCP catalog, including safe query examples, is embedded in
 the binary:
@@ -204,6 +212,61 @@ goose plugin list
 trajectory doctor
 ```
 
+## Cline CLI
+
+Setup writes Trajectory-owned file hooks under `~/.cline/hooks` or
+`$CLINE_DIR/hooks`, plus Trajectory MCP settings. Existing user hook files are
+preserved. The hook scripts invoke `trajectory capture-hook --client cline
+--ensure-serve` and send stdin payloads to `/capture/cline/<event>`.
+
+Captured rows use `client_source=cline`. Current Cline hooks expose lifecycle,
+prompt, tool, assistant summary, and shutdown payloads, but not stable token or
+cost usage.
+
+## Aider
+
+Aider capture uses an opt-in command shim. Setup writes a managed `aider` shim
+under `~/.trajectory/bin` and wrapper metadata under
+`~/.trajectory/state/aider/`. The shim invokes the real Aider binary, starts or
+reuses `trajectory serve`, and adds analytics and history sidecars when the
+user has not already supplied them.
+
+The shim posts session, prompt, assistant-message, turn, and session-end events.
+Token and cost fields come from Aider analytics rows when present.
+
+## Continue CLI
+
+Continue capture uses an opt-in `cn` command shim. Setup writes wrapper metadata
+under `~/.trajectory/state/continue/`. The shim invokes the real Continue CLI,
+sets a Trajectory session id for new sessions, and reads Continue session JSON
+after the real process exits.
+
+Prompt text, assistant text, model, tokens, and cost are derived from Continue
+session history when those fields are present.
+
+## Mistral Vibe
+
+Mistral Vibe capture uses an opt-in `vibe` command shim plus native
+`before_tool` and `after_tool` hook entries. The shim starts or reuses
+`trajectory serve`, enables Vibe experimental hooks for the wrapped process,
+and reads Vibe session logs after the run.
+
+Trajectory records prompt, tool, assistant-message, turn, and session-end events
+with `client_source=mistral-vibe`. Token and cost fields come from Vibe session
+metadata when session logging is enabled.
+
+## Codebuff
+
+Codebuff capture uses opt-in `codebuff` and `cb` command shims. The shim invokes
+the real Codebuff binary unchanged, then imports any Codebuff
+`chat-messages.json` rows written for the current project. `CODEBUFF_DATA_DIR`
+can override the default Codebuff history roots.
+
+The shim and `trajectory backfill --from-codebuff-chats` emit session, prompt,
+assistant-message, turn, and session-end events. When Codebuff history contains
+provider usage metadata, Trajectory normalizes token usage and emits
+provider-call rows.
+
 ## Cursor
 
 Cursor has two distinct capture paths.
@@ -264,6 +327,16 @@ Qwen Code supports OpenAI-compatible providers. Trajectory records Qwen
 a fallback for stop payloads that omit usage. Historical Qwen import is not
 implemented yet.
 
+## OpenHands
+
+Setup writes command hooks to `~/.openhands/hooks.json` and a Trajectory MCP
+server entry to `~/.openhands/mcp.json`. The hooks invoke `trajectory
+capture-hook --client openhands --ensure-serve` because OpenHands sends hook
+payload JSON on stdin.
+
+Current OpenHands command hooks cover session start, prompts, tools, stop, and
+session end. They do not expose assistant messages or token usage today.
+
 ## Pi
 
 Setup writes `~/.pi/agent/extensions/trajectory/` and points
@@ -306,6 +379,16 @@ through the local Trajectory OTLP relay.
 Manual fallback: copy `plugin/trajectory-kilo` to
 `~/.config/kilo/plugins/trajectory` and add that absolute path to Kilo's
 `plugin` array plus a `trajectory` MCP entry.
+
+## Kiro CLI
+
+Setup writes Trajectory-owned Kiro agent configuration under `~/.kiro/agents/`
+and merges a Trajectory MCP server into Kiro settings. Kiro command hooks pass
+payload JSON on stdin for agent spawn, user prompt, tool events, and stop.
+
+Captured rows use `client_source=kiro`. Stop payloads include assistant response
+text, but current documented hook payloads do not expose stable token or cost
+usage.
 
 ## Troubleshooting
 
