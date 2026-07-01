@@ -77,7 +77,7 @@ if [ ! -x "$BINARY" ]; then
     WARN_STAMP="${STATE_DIR}/no-binary-warned.${PPID}"
     if [ ! -f "$WARN_STAMP" ]; then
         : | atomic_write_file "$WARN_STAMP" || true
-        echo '[trajectory] Binary not found. Reload your shell or run: export PATH="$HOME/.trajectory/bin:$PATH"' >&2
+        echo '[trajectory] Binary not found at ~/.trajectory/bin/trajectory. Run ~/.trajectory/bin/trajectory doctor after reinstalling.' >&2
     fi
     exit 0
 fi

@@ -17,6 +17,21 @@ mkdir -p ~/.pi/agent/extensions
 cp -R /path/to/trajectory/plugin/trajectory-pi ~/.pi/agent/extensions/trajectory
 ```
 
+The package manifest declares the Pi extension entrypoint:
+
+```json
+{
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  }
+}
+```
+
+Pi discovers the extension from `~/.pi/agent/extensions/trajectory/package.json`;
+you do not need to add `src/index.ts` to `~/.pi/agent/settings.json`. The root
+`index.ts` file is a shim that re-exports `./src/index.ts` for Pi versions or
+workflows that scan package-root extension entrypoints.
+
 Then point `~/.pi/agent/mcp.json` at `~/.pi/agent/extensions/trajectory/bin/trajectory mcp`.
 
 ## Tools

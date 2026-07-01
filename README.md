@@ -4,10 +4,12 @@ Observe AI coding agents like production systems.
 
 See the whole run. Measure the behavior. Improve the workflow.
 
-Trajectory captures coding-agent sessions across Claude Code, Codex, Gemini,
-Antigravity, Goose, Hermes Agent, Amp Code, Qwen Code, Kilo Code, Cursor, Pi,
-OpenCode, GitHub Copilot CLI, and Factory Droid, then turns them into local
-timelines, Datadog LLM Observability traces, operational metrics, and Markers.
+Trajectory captures coding-agent sessions across Claude Code, Cline CLI,
+Codex, Gemini, Antigravity, Goose, Aider, Continue CLI, Mistral Vibe,
+Codebuff, Hermes Agent, Amp Code, Qwen Code, OpenHands, Kiro CLI, Kilo Code,
+Cursor, Pi, OpenCode, GitHub Copilot CLI, and Factory Droid, then turns them
+into local timelines, Datadog LLM Observability traces, operational metrics,
+and Markers.
 
 ## What It Answers
 
@@ -78,8 +80,9 @@ agent behavior becomes something you can graph, alert on, compare, and improve.
 
 ## Core Capabilities
 
-- **Multi-client instrumentation** for Claude Code, Codex CLI, Gemini CLI,
-  Antigravity CLI, Goose, Hermes Agent, Amp Code, Qwen Code, Kilo Code,
+- **Multi-client instrumentation** for Claude Code, Cline CLI, Codex CLI,
+  Gemini CLI, Antigravity CLI, Goose, Aider, Continue CLI, Mistral Vibe,
+  Codebuff, Hermes Agent, Amp Code, Qwen Code, OpenHands, Kiro CLI, Kilo Code,
   Cursor, Pi, OpenCode, GitHub Copilot CLI beta, and Factory Droid beta.
 - **Local-first timelines** for session lifecycle, turns, tool calls, model
   usage, cost signals, and repository context.
@@ -100,7 +103,7 @@ agent behavior becomes something you can graph, alert on, compare, and improve.
 bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main/install.sh)
 ```
 
-The installer downloads the latest Trajectory release asset for your platform, installs it under `~/.trajectory/bin/trajectory`, stages the Claude wrapper intercept runtime, runs `trajectory setup`, and registers detected coding-agent plugins.
+The installer downloads the latest Trajectory release asset for your platform, installs it under `~/.trajectory/bin/trajectory`, stages the Claude wrapper intercept runtime, runs `trajectory setup`, and registers detected coding-agent integrations. Agent command shims are opt-in and can be installed with `--install-client-shims` where supported.
 
 To upgrade an install from this repository, rerun the installer.
 
@@ -120,14 +123,21 @@ trajectory-windows-amd64.exe
 Trajectory supports:
 
 - Claude Code
+- Cline CLI
 - Codex CLI
 - GitHub Copilot CLI beta
 - Gemini CLI
 - Antigravity CLI (`agy`)
+- Aider
+- Continue CLI
+- Mistral Vibe
+- Codebuff
 - Goose
 - Hermes Agent
 - Amp Code
 - Qwen Code
+- OpenHands
+- Kiro CLI
 - Kilo Code
 - Cursor Desktop and cursor-agent
 - Factory Droid beta
