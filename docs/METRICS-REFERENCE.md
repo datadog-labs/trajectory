@@ -102,7 +102,7 @@ unattributed.
 | `owner` | Git repository owner from the remote origin | `unknown` |
 | `git_remote_host` | Git remote host from the remote origin | `unknown` |
 | `project_dir` | Project directory basename | Omitted |
-| `trajectory.trace_type` | Metric grain: `turn`, `session`, `task`, `commit`, or `pr` | Set by emitter |
+| `trajectory.trace_type` | Metric grain: `turn`, `session`, `task`, `commit`, `pr`, or `serve` | Set by emitter |
 
 Top-level config `tags:` are included on Trajectory-published Datadog metric
 series for Datadog destinations, including base, marker, heartbeat, and task
@@ -318,6 +318,10 @@ privacy/publish diagnostics.
 |---|---|---|---|
 | `trajectory.ops.install.current_state` | gauge | Canonical serve tags plus `managed`, `role`, `outcome`, `reason`, `setup_binary_status`, `setup_binary_version` | Managed setup summary. Current state emits `1`; prior state series emit `0` when setup state changes so dashboards can filter on the latest active state. |
 | `trajectory.ops.install.agent_state` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `agent_status`, `setup_outcome`, `setup_stage`, `setup_component`, `setup_capture_path`, `setup_next_step`, `reason`, `setup_binary_status`, `setup_binary_version` | Per-integration setup state for every selected client. Distinguishes registration failures from verification failures and degraded fallback paths such as MCP watcher fallback. |
+| `trajectory.ops.agent.present` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source` | Daily local inventory signal for each known coding-agent client. Emits `1` when the client is detected on the machine and `0` when absent. Client aliases such as `cc` are reported as canonical runtime sources such as `claude-code`. |
+| `trajectory.ops.agent.version` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `client_version`, `trajectory.client_version`, `version_source` | Daily installed-agent freshness signal. Emits `1` for detected clients with the best available CLI-probed version, or `client_version:unknown` when the client is present but the version probe is unavailable. |
+| `trajectory.ops.agent.active_sessions` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source` | Hourly count of fresh active sessions by canonical client source, deduped across concurrent `trajectory serve` processes using per-PID heartbeat sentinels. Emits `0` for known clients with no fresh active sessions. |
+| `trajectory.ops.agent.active_session_version` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `client_version`, `trajectory.client_version`, `version_source` | Hourly active-session count by client version, using captured session-start state from heartbeat sentinels. Missing versions are reported as `client_version:unknown`. |
 | `trajectory.publish.active_destinations` | gauge | Canonical tags plus top-level and destination tags on Datadog destinations | Number of active destinations seen for a session |
 | `trajectory.publish.turns` | count | OTLP publish path tags | Internal publish turn counter |
 | `trajectory.serve.incognito.enabled` | count | `client_source` | User or tool enabled incognito; intentionally not tagged by session ID |

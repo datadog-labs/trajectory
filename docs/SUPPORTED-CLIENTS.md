@@ -354,7 +354,13 @@ CI validates this Desktop install surface on macOS by running setup in an isolat
 
 cursor-agent is a standalone CLI (`cursor-agent --print` for headless mode). It does NOT support hooks.json. Capture uses a **transcript file watcher** that tails nested transcript files under `~/.cursor/projects/*/agent-transcripts/<session>/*.jsonl`, similar to the Codex rollout watcher.
 
-The watcher starts automatically when `cursor-agent` is on PATH. No manual setup needed - the trajectory binary detects cursor-agent and watches for transcripts. Because the current headless transcript format does not expose token or cost fields, cursor-agent metrics are limited to tool, turn, and session counts until Cursor adds those fields.
+The watcher starts automatically when `cursor-agent` is on PATH. No manual
+setup needed - the trajectory binary detects cursor-agent and watches for
+transcripts. The watcher preserves `transcript_path` and marks these sessions
+headless, so sensitivity scanning and segmentation are skipped for the
+supported `cursor-agent --print` path. Because the current headless transcript
+format does not expose token or cost fields, cursor-agent metrics are limited
+to tool, turn, and session counts until Cursor adds those fields.
 
 Install cursor-agent: `curl -fsSL https://cursor.com/install | bash`
 
