@@ -70,6 +70,33 @@ shims, local binaries, and local marketplace files without prompting for
 Datadog site, service name, or API key values. Run `trajectory setup` without
 `--clients` when you want to change export settings.
 
+## Setup Instrumentation Policy
+
+Client setup uses the least invasive registration surface the upstream client
+supports:
+
+- Prefer native packages, plugins, hooks, MCP, extension manifests, or
+  transcript discovery before command shims or wrapper-style launch
+  interception.
+- Write only scoped client integration files needed for capture, MCP, skills,
+  commands, plugin discovery, or local extension runtimes.
+- Do not edit shell startup files, shell aliases, shell functions, or export
+  `PATH` from setup. When `trajectory` is not on `PATH`, setup and doctor
+  prefer an existing home bin directory and suggest a symlink such as
+  `ln -s ~/.trajectory/bin/trajectory ~/.local/bin/trajectory`.
+- Command shims named like upstream agent commands are allowed only for clients
+  that have no stable native capture surface, and they require explicit opt-in
+  through `--install-client-shims` or the interactive setup prompt.
+- Feature gates are required for behavior that mutates durable user state,
+  changes client startup, adds wrapper or OTLP interposer behavior, depends on
+  managed settings precedence, or changes outbound network shape.
+- Wrapper metadata records the real upstream binary, setup avoids self-wrapping
+  an existing Trajectory shim, and uninstall removes only Trajectory-managed
+  shim files and metadata.
+- Setup verification, inventory, and doctor report the actual registration
+  mechanism: package manifest, command shim and metadata, hook config, MCP
+  config, or transcript watcher.
+
 The authoritative MCP catalog, including safe query examples, is embedded in
 the binary:
 
@@ -126,6 +153,15 @@ Verify:
 claude plugin list
 trajectory doctor
 ```
+
+Use `trajectory claude` when you want Trajectory to route native Claude Code
+OTLP telemetry through local `trajectory serve` for one launched process
+without changing `~/.claude/settings.json`. This process-only interposer is
+controlled by the `claude_native_otlp_interposer` feature flag. It is on by
+default because running `trajectory claude` is the explicit opt-in boundary;
+disable it with `trajectory features disable claude_native_otlp_interposer` or
+`TRAJECTORY_DISABLE_FEATURES=claude_native_otlp_interposer` to keep the wrapper
+from injecting native OTLP environment variables.
 
 ## Codex CLI
 
@@ -279,9 +315,11 @@ writes `~/.cursor/skills/incognito/SKILL.md`.
 
 cursor-agent CLI does not support `hooks.json`. Trajectory watches nested
 transcript files under `~/.cursor/projects/*/agent-transcripts/` when
-`cursor-agent` is present on `PATH`. Current cursor-agent transcripts do not
-expose token or cost fields, so metrics are limited to activity that can be
-derived from transcript structure.
+`cursor-agent` is present on `PATH`. The watcher marks those sessions headless
+while preserving `transcript_path`, so sensitivity scanning and segmentation
+are skipped for the supported `cursor-agent --print` path. Current cursor-agent
+transcripts do not expose token or cost fields, so metrics are limited to
+activity that can be derived from transcript structure.
 
 ## Factory Droid
 

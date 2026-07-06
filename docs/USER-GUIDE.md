@@ -9,7 +9,12 @@ trajectory status                    # Terminal dashboard with session metrics
 trajectory cost                      # Local cost summary and top sessions
 trajectory view                      # Open the local browser viewer
 trajectory doctor                    # Diagnose issues (binary, config, hooks, data)
-trajectory inventory --json          # Refresh local agent and capability inventory
+trajectory inventory refresh --json  # Refresh local agent and capability inventory
+trajectory inventory show --json     # Read the latest local inventory artifact
+trajectory plugins list              # Show opt-in product activation profiles
+trajectory plugins show datadog-security # Show Datadog Security activation
+trajectory security status           # Shortcut for the Datadog Security plugin
+trajectory features list             # Show feature flags and effective sources
 trajectory diagnose publish          # Explain capture, local mapping, and publish expectations
 trajectory logs [-f] [--grep PAT]   # View capture server logs
 trajectory version                   # Print version
@@ -24,6 +29,14 @@ commands, plugins, and settings sources. `current.json` contains the latest
 refresh, while `snapshots/` stores hash-named inventory snapshots for support
 triage or product-pack drift checks. Trajectory does not publish these
 inventory artifacts to Datadog yet.
+
+`trajectory plugins list` shows opt-in product activation profiles layered over
+compiled modules. Baseline `trajectory setup` remains observability-only; use
+`trajectory security setup --mode observe --clients cc,codex,cursor` to enable
+the Datadog Security plugin for explicit supported clients. Enforce mode can
+block agent actions and requires `--yes`. Use `trajectory security disable
+--clients ... --remove-hooks` to disable config and remove stale
+Trajectory-managed dispatcher hooks while preserving baseline capture hooks.
 
 Use `trajectory view --session <id>` to inspect one captured session in the local browser viewer. If local-ui is not already running, `view` starts it and opens the session deep link. Use `trajectory user-guide local-ui` for cache repair and Lapdog-compatible local inspection.
 
@@ -45,8 +58,14 @@ For repeated Codex turns or malformed LLM Obs spans, check the capture and publi
 ```bash
 trajectory config show               # View merged runtime config
 trajectory config set <key> <value>  # Set a config value
+trajectory config reload             # Dry-run live serve reload/restart plan
+trajectory config reload --yes       # Reload live serve config; restart only when required
+trajectory update reconcile          # Dry-run old-version serve process refresh
+trajectory update reconcile --yes    # Safely replace old-version standalone serve processes
 trajectory config set-secret <name>  # Store a secret in the OS keychain
 trajectory config get <key>          # Read a single value
+trajectory features enable <name>    # Persist a user feature-flag override
+trajectory features disable <name>   # Persist a user feature-flag kill switch
 ```
 
 Most users edit `~/.trajectory/config.yaml` through `trajectory config set`. Installers or administrators may provide `~/.trajectory/config.defaults.yaml` to seed managed defaults, and environment variables can override specific values for the current shell or launched process.
@@ -61,8 +80,31 @@ trajectory config set export.traces standard       # off | minimal | standard | 
 trajectory config set export.metrics true
 trajectory config set export.placeholder_llm_span false  # omit synthetic cost-only LLM spans
 trajectory config set local_ui.auto_start false    # disable automatic local-ui startup
+trajectory features disable claude_native_otlp_interposer # keep trajectory claude from injecting native OTLP env
 trajectory config set-secret dd-api-key             # prompts for the key securely
 ```
+
+Feature flags can also be overridden for one process with
+`TRAJECTORY_ENABLE_FEATURES=name_a,name_b` and
+`TRAJECTORY_DISABLE_FEATURES=name_a,name_b`. Disabled wins, and managed
+`config.defaults.yaml` disables cannot be re-enabled by user config. See
+[`FEATURE-FLAGS.md`](FEATURE-FLAGS.md) for rollout rules and the registered
+flag catalog.
+
+After changing config or credentials, run `trajectory config reload` first; if
+it prints reload candidates, run `trajectory config reload --yes`, then confirm
+with `trajectory ps`. Publish/export and identity changes normally reload in
+place. Listener, capture, sensitivity, org-sync, module, and similar process
+shape changes report restart-required keys and use the safe replacement
+fallback.
+
+After a binary update, existing `trajectory serve` processes keep running the
+old executable image until replaced. Run `trajectory update reconcile` to
+compare per-PID serve health against the installed binary version. The default
+dry-run reports old-version standalone serve processes and blockers. With
+`--yes`, Trajectory starts a target-version replacement first, waits for fresh
+target-version health, then signals only old-version standalone `serve` PIDs
+that have no fresh session heartbeat or active publish outbox claim.
 
 For metrics-only Datadog export, keep `export.traces` off and set
 `export.metrics` true:
@@ -120,6 +162,32 @@ thinking text, post-tool outputs/results, diffs, file contents, raw payloads,
 error text, summaries, and user email fields. See
 [SECURITY-EVENT-STREAM.md](SECURITY-EVENT-STREAM.md) and
 `trajectory user-guide security-event-stream`.
+
+Managed Datadog destinations can also opt in to derived AI Usage events for
+skill observability:
+
+```yaml
+required_destinations:
+  - name: aiusage
+    type: datadog
+    site: datadoghq.com
+    ml_app: coding-agents
+    api_key_ref: dd-aiusage-api-key
+    level: off
+    ai_usage:
+      enabled: true
+      endpoint: https://event-platform-intake.datadoghq.com/api/v2/aiusage
+      track: aiusage
+      approved: true
+```
+
+This publisher emits one `trajectory.ai_usage.skill.v1` JSON event per
+skill-assisted turn, with skill name, invocation count, repo/user identity,
+coding-agent identity, detection source, tool count, distinct tool count,
+duration, tool names, and tool types. It does not include prompts, assistant
+responses, tool input/output, shell commands, diffs, file contents, raw trace
+payloads, or local file paths. Project `publish.trajectory.yaml` files cannot
+enable this path.
 
 Trace export is off by default. Set `export.traces` explicitly when you want
 sessions published to LLM Observability. Rerunning `trajectory setup` preserves
