@@ -121,6 +121,46 @@ health/privacy counters. Destination tags and marker dimensions may also be
 present where those publish paths support them. Keep custom tags low-cardinality
 and non-sensitive.
 
+### CODEOWNERS Attribution Tags
+
+When a repository has a GitHub-compatible `CODEOWNERS` file, Trajectory
+attributes successful file modifications, proven commit membership, and
+durable PR-scoped turn or local branch ranges to the owning users or teams.
+Attribution is enabled by default. It is derived from an immutable session
+snapshot and is projected onto eligible turn, task, and session metric records
+without cloning a metric point once per owner. Commit and PR attribution is
+published by the dedicated scope metrics below.
+
+| Tag | Meaning |
+|---|---|
+| `trajectory.codeowner` | Owner identity. Existing base metrics include it for single-owner scopes; dedicated association metrics include one value per retained owner. LLM Obs and local-ui roots preserve up to five repeated values in deterministic rank order. |
+| `trajectory.codeowner_scope` | Attribution grain: `turn`, `task`, `commit`, `pr`, or `session` |
+| `trajectory.codeowner_source` | Bounded evidence source such as `write`, `commit`, `pr_turn_range`, `pr_local_branch_range`, `task_turn_range`, `session_union`, or `mixed` |
+| `trajectory.codeowner_status` | `owned`, `partially_owned`, or `unowned` |
+| `trajectory.codeowner_truncated` | `true` when more than five eligible owners existed for the scope |
+| `trajectory.codeowner_kind` | `user` or `team`; present on per-owner association metrics |
+
+Turn and session LLM Obs roots carry the same repeated owner values and scope,
+source, status, and truncation tags. Their metadata also carries exact bounded
+diagnostic counts under `trajectory.codeowner_total`,
+`trajectory.codeowner_retained`, `trajectory.codeowner_dropped`,
+`trajectory.codeowner_matched_files`, `trajectory.codeowner_unowned_files`, and
+`trajectory.codeowner_email_owners_ignored`. Local UI/Lapdog exposes the same
+root contract.
+
+Datadog Metrics cannot independently index multiple values for one tag key on
+one metric point. For multi-owner scopes, query
+`trajectory.codeowner.associations.total` or
+`trajectory.codeowner.files.total` by `trajectory.codeowner`; existing base
+metrics keep their original cardinality and totals and omit the ambiguous owner
+tag. Base metrics still carry the scope, source, status, and truncation tags.
+
+Owner identities are normalized GitHub user/team identifiers. Trajectory never
+publishes source file paths, CODEOWNERS patterns, email owners, snapshot
+digests, or commit SHAs as part of this attribution. Email-only owners are
+excluded and counted. Configured tags cannot override derived
+`trajectory.codeowner*` values.
+
 ### Cost Overlap Tags
 
 Trajectory cost metrics carry bounded tags that let dashboards avoid summing
@@ -274,6 +314,32 @@ publish outputs with `segmentation.enabled: false`.
 | `trajectory.task.complexity_score` | gauge | score |
 | `trajectory.task.risk_score` | gauge | score |
 
+## CODEOWNERS Attribution Metrics
+
+These metrics are emitted from durable scope summaries. During turn publish,
+only the current turn summary is emitted. Finalized task, commit, PR, and
+session summaries are emitted at session end. The common
+`trajectory.codeowner_scope`, `trajectory.codeowner_source`,
+`trajectory.codeowner_status`, and `trajectory.codeowner_truncated` tags state
+which scope each sample represents.
+
+| Metric | Type | Value |
+|---|---|---|
+| `trajectory.codeowner.scopes.total` | count | `1` per evaluated scope |
+| `trajectory.codeowner.owners.total` | distribution | Exact eligible owner count before the five-owner cap |
+| `trajectory.codeowner.owners.retained` | distribution | Retained owner count after the cap |
+| `trajectory.codeowner.owners.dropped` | distribution | Owner count omitted by the cap |
+| `trajectory.codeowner.truncated.total` | count | `1` for each scope whose owner set was truncated |
+| `trajectory.codeowner.email_owners_ignored.total` | count | Email owner identities excluded from the scope |
+| `trajectory.codeowner.associations.total` | count | `1` per retained owner and scope; carries `trajectory.codeowner` and `trajectory.codeowner_kind` |
+| `trajectory.codeowner.files.total` | distribution | Distinct associated files for one retained owner and scope |
+
+`trajectory.codeowner.associations.total` is intentionally non-exclusive: one
+co-owned file contributes an association to each retained owner. Do not sum it
+as a global file count. Use `trajectory.codeowner.owners.dropped` and
+`trajectory.codeowner.truncated.total` to measure how often the five-owner cap
+loses owner dimensions.
+
 ## Built-In Marker Metrics
 
 Marker metrics are resolved from the active marker catalog at publish time.
@@ -303,6 +369,17 @@ surfaces:
 - native transcript assistant messages with `attributionSkill`, stamped onto
   the Trajectory `turn_end` event and converted into `skill-invoked` markers
   tagged `detected_from:claude_native_transcript`.
+
+When multiple high-confidence surfaces describe the same skill in the same
+turn, Trajectory emits one invocation. Native Claude OTel or transcript
+attribution takes precedence over generic `Skill` tool evidence.
+
+Codex skill activation is recovered from the structured `<skill>` envelope in
+the native rollout and tagged `detected_from:codex_skill_prompt`. cursor-agent
+loads an activated project or user skill through its Read tool; reads under the
+native `.cursor/skills/<name>/SKILL.md` path are tagged
+`detected_from:cursor_skill_read`. Other direct `SKILL.md` reads remain
+lower-confidence observations.
 
 Setup enables Claude log detail locally so skill names are available when
 Claude exposes them.

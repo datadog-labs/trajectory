@@ -200,6 +200,9 @@ source.
 Use OS keychain storage for secrets. Avoid putting API keys or provider keys in
 YAML files.
 
+See [API-APP-KEY-MANAGEMENT.md](API-APP-KEY-MANAGEMENT.md) for the complete API
+and application key storage, resolution, managed-mode, and rotation contract.
+
 `trajectory config set-secret` updates keychain values defensively: it checks
 for an existing value first, writes the new value, and attempts to restore the
 previous value if the write fails. If setup or `set-secret` reports a keychain

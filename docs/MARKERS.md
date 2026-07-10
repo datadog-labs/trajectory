@@ -8,6 +8,13 @@ A concise version of this guide is built into the binary:
 trajectory user-guide markers
 ```
 
+If you want a repo to carry its own marker file and Datadog marker metric
+overlay, start with [REPO-MARKERS.md](REPO-MARKERS.md) or:
+
+```bash
+trajectory user-guide repo-markers
+```
+
 Use markers when you want durable answers to questions such as:
 
 - Did the agent force-push, run a destructive command, or expose a secret in a shell command?
@@ -28,6 +35,11 @@ The marker resolver layers configs in this order:
 Later layers override earlier layers by marker name. An org marker with `enforced: true` cannot be overridden by user, add-on, or project layers.
 
 `trajectory setup` deploys the Datadog default marker profile to `~/.trajectory/markers.yaml`. That profile layers on top of the embedded built-ins; it does not replace them.
+
+For repo-level setup, keep `.trajectory/markers.yaml` and
+`publish.trajectory.yaml` separate: the project marker file defines marker
+rules, while the publish overlay selects destinations and enables marker
+metrics. See [REPO-MARKERS.md](REPO-MARKERS.md).
 
 ## Built-ins, defaults, and the security add-on
 
@@ -540,7 +552,10 @@ Marker metric series include top-level Datadog publish `tags:`, destination `tag
 
 Keep metric tags low-cardinality. Avoid full prompts, command lines, paths, URLs, emails, SHAs, random IDs, and secret-looking values. Confirm tag presence in Metrics Explorer before wiring dashboards or monitors to them.
 
-To publish marker metrics, enable markers for a Datadog destination in publish config and validate the destination:
+To publish marker metrics, enable markers for a Datadog destination in publish
+config and validate the destination. For repo-owned marker rollout, put marker
+definitions in `.trajectory/markers.yaml` and put the destination overlay in
+`publish.trajectory.yaml`; see [REPO-MARKERS.md](REPO-MARKERS.md).
 
 ```yaml
 # trajectory-doc-snippet: publish-config

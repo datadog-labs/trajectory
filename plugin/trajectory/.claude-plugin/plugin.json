@@ -1,7 +1,7 @@
 {
   "name": "trajectory",
   "description": "Turnkey observability for AI coding agents - captures sessions and exports to Datadog LLM Observability",
-  "version": "1.2.5",
+  "version": "1.2.6",
   "author": {
     "name": "Datadog",
     "email": "no-reply@datadoghq.com"

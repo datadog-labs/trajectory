@@ -26,6 +26,8 @@ trajectory modules capabilities <id> # Show one module's declared capabilities
 trajectory modules install-plan <id> # Preview setup-managed module hooks
 trajectory modules records --limit 20 # Show recent local module decisions
 trajectory features list             # Show feature flags and effective sources
+trajectory disable                   # Stop all new capture for this user
+trajectory enable                    # Resume capture for this user
 trajectory diagnose publish          # Explain capture, local mapping, and publish expectations
 trajectory logs [-f] [--grep PAT]   # View capture server logs
 trajectory version                   # Print version
@@ -68,7 +70,7 @@ lifecycle phase. Foreground module evaluator decisions are recorded
 locally in `~/.trajectory/modules/decisions.jsonl` and can be inspected with
 `trajectory modules records --module <id>`.
 
-Use `trajectory local-ui` to start the local inspection API and browser viewer on `http://127.0.0.1:8888`, or on the next available port if the default is occupied by another process. For hosted Lapdog backed by local Trajectory data, run `trajectory local-ui --lapdog` and use the printed Lapdog URL; its `portOverride` matches the active local-ui port.
+Use `trajectory local-ui` to start the local inspection API and browser viewer on `http://127.0.0.1:8888`, or on the next available port if the default is occupied by another process. Use `trajectory view` to open the browser viewer directly; it reuses a viewer-aware local-ui, or starts the current viewer on a fallback port when an older local-ui is still occupying the preferred port. For hosted Lapdog backed by local Trajectory data, run `trajectory local-ui --lapdog` and use the printed Lapdog URL; its `portOverride` matches the active local-ui port.
 
 Use `trajectory diagnose publish --session <id>` when Datadog data is missing or surprising. It compares local capture and local JSONL-to-span mapping against the transcript, then adds a metric publish plan from the local SQLite cache: expected metric counts, durable outbox row counts, missing expected rows, and the exact readback follow-up command. It does not query Datadog readback.
 
@@ -100,7 +102,20 @@ trajectory config set-secret <name>  # Store a secret in the OS keychain
 trajectory config get <key>          # Read a single value
 trajectory features enable <name>    # Persist a user feature-flag override
 trajectory features disable <name>   # Persist a user feature-flag kill switch
+trajectory disable                   # Persistently stop all capture for this user
+trajectory enable                    # Clear the user-scoped capture kill switch
 ```
+
+`trajectory disable` writes `~/.trajectory/capture.disabled`. New hook,
+watcher, and OTLP events are discarded without JSONL writes, including by
+already-running Trajectory servers. Use `trajectory enable` to resume. For one
+process tree only, use `TRAJECTORY_DISABLED=1`; the environment override wins
+over the durable user state and must be unset before that process is relaunched.
+
+Use `trajectory user-guide config` for the full config schema, settable key
+table, config layering rules, environment overrides, and transport values. Use
+`trajectory user-guide publish` for repo `publish.trajectory.yaml` overlays and
+destination-level publish controls.
 
 Common settings:
 
@@ -131,15 +146,15 @@ shape changes report restart-required keys and use the safe replacement
 fallback.
 
 After a binary update, existing `trajectory serve` processes keep running the
-old executable image until replaced. Run `trajectory update reconcile` to
-compare per-PID serve health against the installed binary version. The default
-dry-run reports old-version standalone serve processes and blockers. With
-`--yes`, Trajectory starts a target-version replacement first, waits for fresh
-target-version health, then signals only old-version standalone `serve` PIDs
-that have no fresh session heartbeat or active publish outbox claim. Automatic
-post-update signaling is guarded off by default; set
-`TRAJECTORY_UPDATE_RECONCILE_PROCESSES=1` only when you want `trajectory update`
-to run that `--yes` path after a successful binary replacement.
+old executable image until replaced. `trajectory update` and serve's startup
+auto-update now run the guarded version reconciliation path automatically after
+a successful update; `trajectory update` also runs it when the binary is already
+current. The reconcile path starts a target-version replacement first, waits for
+fresh target-version health, then signals only old-version standalone `serve`
+PIDs that have no fresh session heartbeat or active publish outbox claim. Run
+`trajectory update reconcile` to preview the same decision surface, or
+`trajectory update reconcile --yes` to apply it explicitly. Set
+`TRAJECTORY_UPDATE_RECONCILE_PROCESSES=0` for report-only post-update behavior.
 
 For metrics-only Datadog export, keep `export.traces` off and set
 `export.metrics` true:
@@ -604,6 +619,13 @@ metrics, must read back exactly from Datadog. Strict mode fails if expected
 source-tagged rows are missing, extra rows are present, rows are not `sent`,
 source labels are unknown, or readback is incomplete.
 
+For older sessions, strict outbox correlation can surface rows emitted before
+the current metric catalog provenance tags existed. The audit reports those as
+`historical_contract_drift` while still keeping the missing/unexpected parity
+counts visible. That state is expected for pre-contract historical rows; seeing
+it on a fresh session or canary means the current instrumentation is not
+emitting the required provenance tags.
+
 `trajectory publish sync` creates log-based metric definitions through the
 Datadog Logs configuration API. That path needs the Datadog API key used for
 publish plus a Datadog application key. `publish validate` can accept the API
@@ -791,9 +813,12 @@ Read the full guide in [MARKERS.md](MARKERS.md), or from the binary:
 
 ```bash
 trajectory user-guide markers
+trajectory user-guide repo-markers
 ```
 
-Trajectory layers embedded built-ins, org markers, user add-ons in `~/.trajectory/markers.d/*.yaml`, user markers in `~/.trajectory/markers.yaml`, and project markers in `.trajectory/markers.yaml`. To opt in to the optional security catalog:
+Trajectory layers embedded built-ins, org markers, user add-ons in `~/.trajectory/markers.d/*.yaml`, user markers in `~/.trajectory/markers.yaml`, and project markers in `.trajectory/markers.yaml`. For repo-level rollout, keep marker definitions in `.trajectory/markers.yaml` and destination selection or marker metric enablement in `publish.trajectory.yaml`.
+
+To opt in to the optional security catalog:
 
 ```bash
 trajectory markers enable-security
@@ -816,6 +841,7 @@ trajectory user-guide publish        # Per-repo publish config
 trajectory user-guide dashboards     # Datadog dashboard export and MCP import
 trajectory user-guide skill-observability # Skill usage and attribution
 trajectory user-guide markers        # Marker authoring and metrics
+trajectory user-guide repo-markers   # Repo marker file plus publish overlay workflow
 trajectory user-guide metrics        # Metric gates, names, tags, and queries
 trajectory user-guide mcp            # MCP tools, resources, and SQL query workflow
 trajectory user-guide query          # Local cache data and guarded MCP SQL workflow

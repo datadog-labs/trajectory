@@ -434,7 +434,7 @@ Earlier versions may have partial support (marketplace without hook discovery, o
 
 Codex uses two capture mechanisms:
 
-1. **Command hooks (primary)** - the plugin's `hooks.json` registers 12 lifecycle hooks using Codex's documented PascalCase hook keys, and each hook invokes the installed `trajectory capture-hook --client codex --ensure-serve` binary path with the same event name. Codex hooks stay in the foreground long enough to notify the local capture server so prompt, tool, stop, and session-end events cannot overtake each other. The hook verifies or starts a watcher-capable rescue `serve` process, overrides Codex watcher-disable variables for that rescue process, and suppresses unrelated client watchers so the rollout watcher fallback stays available. `TRAJECTORY_DISABLED=1` remains the all-capture suppression switch. Codex accepts `type: "command"` hook entries; it does not accept Claude-style `type: "http"` hook entries.
+1. **Command hooks (primary)** - the plugin's `hooks.json` registers 12 lifecycle hooks using Codex's documented PascalCase hook keys, and each hook invokes the installed `trajectory capture-hook --client codex --ensure-serve` binary path with the same event name. Codex hooks stay in the foreground long enough to notify the local capture server so prompt, tool, stop, and session-end events cannot overtake each other. The hook verifies or starts a watcher-capable rescue `serve` process, overrides Codex watcher-disable variables for that rescue process, and suppresses unrelated client watchers so the rollout watcher fallback stays available. `trajectory disable` provides the durable user-scoped all-capture switch; `TRAJECTORY_DISABLED=1` remains the process-scoped override. Codex accepts `type: "command"` hook entries; it does not accept Claude-style `type: "http"` hook entries.
 
 2. **Rollout watcher (fallback)** - the trajectory binary tails `~/.codex/sessions/` for rollout JSONL files. This captures sessions that started before the plugin was installed, or if hooks aren't firing.
 
@@ -742,7 +742,10 @@ on `session_start` for traceability and also marks the session headless, so
 sensitivity scanning and segmentation are skipped for this headless path.
 Because the current headless transcript format does not
 expose token or cost fields, cursor-agent metrics are limited to tool, turn, and
-session counts until Cursor adds those fields. `CURSOR_AGENT_MODEL` is optional;
+session counts until Cursor adds those fields. Project or user skill activation
+is represented as a Read of `.cursor/skills/<name>/SKILL.md`; Trajectory emits
+that native load as a high-confidence skill invocation tagged
+`detected_from:cursor_skill_read`. `CURSOR_AGENT_MODEL` is optional;
 leave it unset to use the configured Cursor account default.
 
 Install cursor-agent: `curl -fsSL https://cursor.com/install | bash`

@@ -172,11 +172,16 @@ MCP configuration, and the `/incognito` skill. Codex hook configs must use
 `type: "command"`; `type: "http"` is not a supported Codex hook variant.
 
 Codex also has a rollout watcher fallback that tails `~/.codex/sessions/`.
+The rollout contains assistant messages, reasoning, non-shell tools,
+permissions, compaction records, subagent activity, model and token details,
+and structured `<skill>` activation envelopes that are not fully available in
+hook payloads.
 When `capture-hook --ensure-serve` runs for Codex, it ensures a
 watcher-capable rescue `serve` process is present so the rollout fallback stays
 available. For that rescue process only, it overrides Codex watcher-disable
 environment variables and suppresses unrelated client watchers;
-`TRAJECTORY_DISABLED=1` still suppresses all capture.
+`trajectory disable` and `TRAJECTORY_DISABLED=1` still suppress all capture.
+The durable user-scoped command also suppresses an already-running watcher.
 Hook-active sentinels under `~/.trajectory/state/codex-hook-active/` prevent
 the watcher from duplicating events while live hooks are firing.
 
@@ -319,7 +324,10 @@ transcript files under `~/.cursor/projects/*/agent-transcripts/` when
 while preserving `transcript_path`, so sensitivity scanning and segmentation
 are skipped for the supported `cursor-agent --print` path. Current cursor-agent
 transcripts do not expose token or cost fields, so metrics are limited to
-activity that can be derived from transcript structure.
+activity that can be derived from transcript structure. cursor-agent activates
+skills by reading `.cursor/skills/<name>/SKILL.md`; Trajectory treats that
+client-native read as a high-confidence skill invocation while keeping other
+skill-file reads as lower-confidence observations.
 
 ## Factory Droid
 

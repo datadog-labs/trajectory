@@ -92,6 +92,7 @@ agent behavior becomes something you can graph, alert on, compare, and improve.
 - **Investigation tools** including `trajectory status`, `trajectory view`,
   diagnostics, support bundles, MCP tools, and historical backfill.
 - **Privacy and capacity controls** including `/incognito`, local-only capture,
+  durable `trajectory disable` / `trajectory enable` capture control,
   sensitivity scanning, configurable trace detail, and controls for
   Trajectory-owned LLM calls.
 - **Workflow attribution** across repositories, commits, pull requests, and
@@ -176,6 +177,7 @@ This repository accepts changes to public docs, marketplace metadata, plugin ass
 
 - [docs/USER-GUIDE.md](docs/USER-GUIDE.md): CLI workflows and day-to-day operation
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md): config files, managed defaults, environment overrides, and common settings
+- [docs/API-APP-KEY-MANAGEMENT.md](docs/API-APP-KEY-MANAGEMENT.md): Datadog API/application key storage, resolution, permissions, and rotation
 - [docs/FEATURE-FLAGS.md](docs/FEATURE-FLAGS.md): feature-flag commands, runtime overrides, and registered flags
 - [docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md): supported coding-agent clients and version requirements
 - [docs/CLIENT-INSTRUMENTATION.md](docs/CLIENT-INSTRUMENTATION.md): per-client hook, watcher, MCP, and backfill surfaces
@@ -185,6 +187,7 @@ This repository accepts changes to public docs, marketplace metadata, plugin ass
 - [docs/LLM-CAPACITY.md](docs/LLM-CAPACITY.md): which features use additional LLM capacity and how to control them
 - [docs/METRICS-REFERENCE.md](docs/METRICS-REFERENCE.md): emitted metric names, types, tags, and query guidance
 - [docs/MARKERS.md](docs/MARKERS.md): marker authoring and marker-derived metrics
+- [docs/REPO-MARKERS.md](docs/REPO-MARKERS.md): repo-level marker files and publish overlays
 - [docs/SKILL-OBSERVABILITY.md](docs/SKILL-OBSERVABILITY.md): skill usage, attribution, and dashboard guidance
 - [docs/DATA-FORMATS.md](docs/DATA-FORMATS.md): materialized session fields and LLM Observability export fields
 - [docs/SUBAGENT-TRACE-MODEL.md](docs/SUBAGENT-TRACE-MODEL.md): semantic subagent trace rendering and span-link behavior
