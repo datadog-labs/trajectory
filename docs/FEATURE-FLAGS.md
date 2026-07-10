@@ -88,3 +88,5 @@ locally re-enable an admin-disabled feature.
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `claude_native_otlp_interposer` | on | Allows `trajectory claude` to route Claude Code native OTLP through local `trajectory serve` for that launched process. Setup does not write Claude settings files. Disable this flag to keep `trajectory claude` from injecting native OTLP env vars. |
+| `session_trace_snapshot_publish` | off | Allows an explicitly confirmed snapshot of one captured session to publish to a destination independently authorized by managed `session_trace_publish` policy. The flag alone never authorizes a destination. |
+| `trajectory_disable_command` | on | Allows the explicit `trajectory disable` action to create `~/.trajectory/capture.disabled`. Managed config or `TRAJECTORY_DISABLE_FEATURES` can disable new use during rollout. `trajectory enable` remains available even when this flag is off so rollback cannot strand a user in the disabled state; existing markers remain honored until cleared. |
