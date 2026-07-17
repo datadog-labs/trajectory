@@ -17,8 +17,7 @@
 #                                Auto-enabled when --non-interactive is passed
 #                                and the binary is already present.
 #
-# Optional: set GH_TOKEN or GITHUB_TOKEN for higher GitHub API rate limits.
-# Public installs require only curl and python3.
+# Public installs require only curl.
 set -e
 
 INSTALL_DIR="$HOME/.trajectory"
@@ -138,74 +137,25 @@ detect_platform() {
     echo "${os}-${arch}"
 }
 
-# Resolve an optional GitHub token for authenticated API/download requests.
-resolve_github_token() {
-    if [ -n "${GH_TOKEN:-}" ]; then echo "$GH_TOKEN"; return; fi
-    if [ -n "${GITHUB_TOKEN:-}" ]; then echo "$GITHUB_TOKEN"; return; fi
-    return 1
-}
+# Download the latest stable public release without using the rate-limited API.
+download_latest_binary() {
+    local asset="$1" dest="$2" url attempt
+    url="https://github.com/$REPO/releases/latest/download/$asset"
 
-curl_github_api() {
-    local url="$1"
-    local token
-    if token=$(resolve_github_token 2>/dev/null) && [ -n "$token" ]; then
-        curl -sfL \
-            -H "Authorization: Bearer $token" \
-            -H "Accept: application/vnd.github+json" \
-            "$url"
-    else
-        curl -sfL \
-            -H "Accept: application/vnd.github+json" \
-            "$url"
-    fi
-}
-
-# Resolve the tag of the newest release (includes pre-releases).
-resolve_release_tag() {
-    local tag
-    tag=$(curl -sfL \
-        -H "Accept: application/vnd.github+json" \
-        "https://api.github.com/repos/$REPO/releases?per_page=1" \
-        | python3 -c "import sys,json; r=json.load(sys.stdin); print(r[0]['tag_name'] if r else '')" 2>/dev/null) || true
-    if [ -n "$tag" ]; then echo "$tag"; return 0; fi
-
-    tag=$(curl_github_api "https://api.github.com/repos/$REPO/releases?per_page=1" \
-        | python3 -c "import sys,json; r=json.load(sys.stdin); print(r[0]['tag_name'] if r else '')" 2>/dev/null) || true
-    if [ -n "$tag" ]; then echo "$tag"; return 0; fi
-
-    return 1
-}
-
-# Download release asset by explicit tag using curl.
-download_binary() {
-    local tag="$1" asset="$2" dest="$3"
-
-    info "      Downloading via public GitHub release URL..."
-    if curl -fSL --progress-bar \
-        -o "$dest" "https://github.com/$REPO/releases/download/$tag/$asset"; then
-        return 0
-    fi
-
-    # Optional authenticated API fallback for environments that require API asset URLs.
-    local token
-    if token=$(resolve_github_token 2>/dev/null) && [ -n "$token" ]; then
-        info "      Downloading via GitHub API (token auth)..."
-        local api_asset_url
-        api_asset_url=$(curl_github_api "https://api.github.com/repos/$REPO/releases/tags/$tag" \
-            | python3 -c "import sys,json; assets=json.load(sys.stdin).get('assets',[]); [print(a['url']) for a in assets if a['name']=='$asset']" 2>/dev/null \
-            | head -1) || true
-
-        if [ -n "$api_asset_url" ]; then
-            if curl -fSL --progress-bar \
-                -H "Authorization: Bearer $token" \
-                -H "Accept: application/octet-stream" \
-                -o "$dest" "$api_asset_url"; then
-                return 0
-            fi
+    for attempt in 1 2 3; do
+        if curl -fL --connect-timeout 15 --max-time 600 --progress-bar \
+            -o "$dest" "$url"; then
+            return 0
         fi
-    fi
 
-    fail "Download failed. Check the release tag, asset name, network connection, or optional GH_TOKEN/GITHUB_TOKEN for authenticated GitHub requests."
+        rm -f "$dest"
+        if [ "$attempt" -lt 3 ]; then
+            warn "Download attempt $attempt of 3 failed; retrying in 1 second..."
+            sleep 1
+        fi
+    done
+
+    fail "Could not download $asset from the latest public GitHub release after 3 attempts. Check https://github.com/$REPO/releases/latest and your network connection."
 }
 
 install_intercept_assets() {
@@ -297,16 +247,10 @@ if [ "$SKIP_DOWNLOAD" = "1" ]; then
     info "[2/5] Skipping download - using existing binary at $BINARY"
     info "[3/5] Codesign skipped (binary pre-staged)"
 else
-    info "[2/5] Resolving latest release..."
-
-    RELEASE_TAG="$(resolve_release_tag)" || fail "Could not find any release on $REPO. Check network access or optional GH_TOKEN/GITHUB_TOKEN for authenticated GitHub requests."
-    info "      Release: $RELEASE_TAG"
+    info "[2/5] Downloading latest release..."
 
     _PARTIAL_INSTALL=1
-
-    if ! download_binary "$RELEASE_TAG" "$ASSET" "$BINARY"; then
-        fail "Download failed. Check your network connection, optional GitHub token, and that a release exists for $PLATFORM."
-    fi
+    download_latest_binary "$ASSET" "$BINARY"
 
     chmod +x "$BINARY"
 
