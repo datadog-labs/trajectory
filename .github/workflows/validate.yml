@@ -45,6 +45,16 @@ jobs:
           unexpected = set(releases) - {"stable", "beta"}
           if unexpected:
               raise SystemExit(f"unexpected release channels: {sorted(unexpected)}")
+
+          installer = (root / "install.sh").read_text(encoding="utf-8")
+          latest_asset_url = "https://github.com/$REPO/releases/latest/download/$asset"
+          if latest_asset_url not in installer:
+              raise SystemExit("installer must download from the public latest-release asset URL")
+          for forbidden in ("api.github.com", "GH_TOKEN", "GITHUB_TOKEN", "python3"):
+              if forbidden in installer:
+                  raise SystemExit(f"public installer must not depend on {forbidden}")
+          if "Download attempt $attempt of 3 failed" not in installer:
+              raise SystemExit("public installer must retain bounded download retries")
           PY
       - name: Validate shell syntax
         run: bash -n install.sh
