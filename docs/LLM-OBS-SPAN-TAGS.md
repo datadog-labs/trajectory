@@ -35,6 +35,17 @@ conditional so missing source data does not invent false attribution.
 | `trajectory.cost_role` | Conditional | Captured cost-overlap evidence | Trajectory span metadata uses `attribution`; proxied native client metrics use `client_telemetry`. |
 | `trajectory.cost_dedupe_group` | Conditional | Captured cost-overlap evidence | Stable provider/route bucket such as `anthropic:direct`, `anthropic:llm_gateway`, or `anthropic:mixed`. |
 | `trajectory.cost_dedupe_confidence` | Conditional | Captured cost-overlap evidence | Values include `high`, `medium`, `low`, and `mixed`. |
+| `trajectory.token_source` | Conditional | Captured turn token provenance | For Cursor native turns, values distinguish `cursor_hook_turn_ended` from `cursoragent_watcher`; missing provenance is not inferred. |
+| `trajectory.token_fidelity` | Conditional | Captured turn token provenance | Cursor native terminal aggregates use `native_turn_aggregate`; watcher fallback remains `transcript_fallback`. |
+| `trajectory.token_correlation` | Conditional | Captured turn token provenance | `exact_generation_id` means model and token quartet were correlated to the same Cursor generation. |
+| `trajectory.token_usage_provenance` | Conditional | Captured turn token provenance | Distinguishes `provider_native` from lower-fidelity fallback observations. |
+| `trajectory.cost_status` | Conditional | Explicit `cost_attribution` decision | `priced`, `unpriced`, `unavailable`, or `invalid`; an unpriced decision never becomes numeric zero. |
+| `trajectory.pricing_source` | Conditional | Explicit `cost_attribution` decision | Bounded provider, organization, local, public, client-telemetry, or turn-ledger source. |
+| `trajectory.cost_method` | Conditional | Explicit `cost_attribution` decision | For Cursor token pricing this is `four_component_token_rate_card`. |
+| `trajectory.cost_fidelity` | Conditional | Explicit `cost_attribution` decision | Includes `token_derived` and `unpriced`; this is independent of token fidelity. |
+| `trajectory.cost_basis` | Conditional | Explicit `cost_attribution` decision | Economic interpretation such as `gross_model_cost` or `usage_economic_cost`; it is not invoice fidelity. |
+| `trajectory.pricing_unit` | Conditional | Explicit `cost_attribution` decision | Cursor native rate cards use `tokens`. |
+| `trajectory.pricing_version` | Conditional | Explicit `cost_attribution` decision | Metric-safe bounded value; exact custom version remains in span metadata. |
 
 Publish destinations may also add configured global tags and destination tags.
 Those tags are destination-specific and are not part of the transport base
@@ -79,6 +90,37 @@ spans.
 When a span has a semantic event name, it may also carry
 `trajectory.semantic_name:<name>`.
 
+Completed turn roots with one unambiguous durable PR-work assignment carry
+`change_host`, `owner`, `repo`, `change_number`, `context_source`,
+`work_context_mode`, `identity_confidence`, and `local_range_status`. These
+fields come from local command evidence and bounded Git state; they exclude
+commands, paths, refs, URLs, and object IDs. They are root-only: child LLM,
+inference, and tool spans do not duplicate the assignment.
+
+Turn roots with eligible production ownership also carry up to five repeated
+`trajectory.codeowner:<normalized-owner>` values plus
+`trajectory.codeowner_scope:turn`, `trajectory.codeowner_source`,
+`trajectory.codeowner_status`, and `trajectory.codeowner_truncated`. Owner IDs
+do not include a leading `@`. Root metadata carries exact eligible, retained,
+dropped, matched-file, unowned-file, and ignored-email counts under the
+`trajectory.codeowner_*` keys. Child inference, LLM, and tool spans do not
+inherit the turn-root union. Task and session standalone roots use their own
+bounded summaries; Trajectory does not copy a session owner union onto every
+PR or turn.
+
+Production ownership is limited to successful writes and eligible exact files
+from immutable session-produced commit evidence. Entry baselines, downloaded
+or imported changes, and merge or cherry-pick alone do not add owner tags.
+Resolution is local and uses no provider API or user credentials; paths,
+patterns, commands, refs, object IDs, diffs, source content, email owners, and
+raw evidence are absent from the span contract.
+
+Retroactive PR creation can finalize an earlier `creation_window` context and
+sets `retroactive_membership:true` on that context's managed
+`pr_attribution` v2 record. It does not mutate or republish cloud turn-root
+spans that were accepted before PR identity was known. The finalized record
+and metrics are the durable retroactive surfaces.
+
 ## Local-UI Parity
 
 Local-ui/Lapdog has two span sources:
@@ -91,6 +133,14 @@ Local-ui/Lapdog has two span sources:
   local data contains them. Cost-overlap tags prefer turn-level cache columns,
   fall back to session-level columns, and finally use bounded Claude Code
   `unknown` fallback values for older caches without route evidence.
+- Durable PR-work dimensions are applied identically to cloud-published, live
+  local-EVP, and SQLite-reconstructed completed turn roots. Lapdog list, trace,
+  fetch, filter, group, facet, and cardinality views therefore expose the same
+  assignment, while child spans remain untagged.
+- CODEOWNER turn-root arrays and exact overflow metadata use the same durable
+  turn summary in cloud, live local-EVP, and SQLite reconstruction. Public
+  owner values are normalized without `@`; local legacy fixtures do not define
+  the current publish contract.
 
 For fields visible in both Datadog and local-ui, prefer this document over
 ad-hoc per-surface behavior. If a new common tag is useful on published spans,

@@ -1,5 +1,10 @@
 const CAPTURE_URL = "http://localhost:19222/capture/opencode";
 const POST_TIMEOUT_MS = 5000;
+const MAX_TRACKED_SESSIONS = 128;
+const MAX_TRACKED_MESSAGES_PER_TURN = 128;
+const MAX_BUFFERED_TEXT_PARTS_PER_TURN = 64;
+const MAX_BUFFERED_TEXT_CHARS_PER_TURN = 1024 * 1024;
+const MAX_AGENT_MESSAGE_CHARS = 256 * 1024;
 const PLUGIN_PROVENANCE = {
     plugin: {
         id: "trajectory-opencode",
@@ -25,6 +30,32 @@ interface OpenCodePayload extends Record<string, unknown> {
     parts?: unknown[];
     directory?: string;
     worktree?: string;
+}
+
+interface AssistantMessageMeta {
+    model?: unknown;
+    provider?: unknown;
+    timestamp?: string;
+    usage?: Record<string, number>;
+}
+
+interface BufferedAssistantPart {
+    messageID: string;
+    partID: string;
+    text: string;
+    originalLength: number;
+}
+
+interface SessionRuntimeState {
+    started: boolean;
+    turnOpen: boolean;
+    nativeAgentMessageSeen: boolean;
+    model?: string;
+    assistantMessages: Map<string, AssistantMessageMeta>;
+    bufferedTextParts: Map<string, BufferedAssistantPart>;
+    bufferedTextChars: number;
+    sentAgentMessages: Set<string>;
+    sentUsageMessages: Set<string>;
 }
 
 function payload(value: unknown): OpenCodePayload {
@@ -68,7 +99,7 @@ function withPluginProvenance(data: unknown): OpenCodePayload {
 
 async function postEvent(eventName: string, data: unknown): Promise<void> {
     try {
-        await fetch(`${CAPTURE_URL}/${eventName}`, {
+        await fetch(CAPTURE_URL + "/" + eventName, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(withPluginProvenance(data)),
@@ -102,6 +133,7 @@ function resolveSessionID(...values: unknown[]): string | undefined {
                 value?.properties?.session_id ??
                 value?.properties?.part?.sessionID ??
                 value?.properties?.info?.sessionID ??
+                value?.properties?.info?.id ??
                 value?.message?.sessionID ??
                 value?.info?.sessionID,
         );
@@ -123,16 +155,6 @@ function extractTextFromParts(parts: unknown): string {
         .filter((text) => text.trim().length > 0)
         .join("\n");
     return text.trim();
-}
-
-function extractToolUseIDs(parts: unknown): string[] | undefined {
-    if (!Array.isArray(parts)) return undefined;
-    const ids: string[] = [];
-    for (const part of parts) {
-        const item = payload(part);
-        if (item.type === "tool" && isNonEmptyString(item.callID)) ids.push(item.callID);
-    }
-    return ids.length > 0 ? ids : undefined;
 }
 
 function normalizeTimestamp(value: unknown): string | undefined {
@@ -169,6 +191,35 @@ function firstValue(...values: unknown[]): unknown {
         if (value != null) return value;
     }
     return undefined;
+}
+
+function nonNegativeNumber(value: unknown): number | undefined {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function nativeMessageUsage(rawInfo: unknown): Record<string, number> | undefined {
+    const info = payload(rawInfo);
+    const tokens = payload(info.tokens);
+    const cache = payload(tokens.cache);
+    const usage = {
+        input: nonNegativeNumber(tokens.input) ?? 0,
+        output: nonNegativeNumber(tokens.output) ?? 0,
+        reasoning: nonNegativeNumber(tokens.reasoning) ?? 0,
+        cacheRead: nonNegativeNumber(cache.read) ?? 0,
+        cacheWrite: nonNegativeNumber(cache.write) ?? 0,
+        cost: nonNegativeNumber(info.cost) ?? 0,
+    };
+    if (
+        usage.input === 0 &&
+        usage.output === 0 &&
+        usage.reasoning === 0 &&
+        usage.cacheRead === 0 &&
+        usage.cacheWrite === 0 &&
+        usage.cost === 0
+    ) {
+        return undefined;
+    }
+    return usage;
 }
 
 function normalizePermissionDecision(value: unknown): string | undefined {
@@ -221,95 +272,201 @@ function permissionPayload(properties: OpenCodePayload, event?: OpenCodePayload)
 }
 
 export const server = async (input: OpenCodePayload) => {
-    const startedSessions = new Set<string>();
-    const sessionsWithOpenTurn = new Set<string>();
-    const sentAgentMessages = new Set<string>();
-    const sessionModels = new Map<string, string>();
+    const sessionStates = new Map<string, SessionRuntimeState>();
     let lastSessionID: string | undefined;
 
+    function createSessionState(): SessionRuntimeState {
+        return {
+            started: false,
+            turnOpen: false,
+            nativeAgentMessageSeen: false,
+            assistantMessages: new Map(),
+            bufferedTextParts: new Map(),
+            bufferedTextChars: 0,
+            sentAgentMessages: new Set(),
+            sentUsageMessages: new Set(),
+        };
+    }
+
+    function sessionState(sessionID: string): SessionRuntimeState {
+        const existing = sessionStates.get(sessionID);
+        if (existing) {
+            sessionStates.delete(sessionID);
+            sessionStates.set(sessionID, existing);
+            return existing;
+        }
+        while (sessionStates.size >= MAX_TRACKED_SESSIONS) {
+            const oldest = sessionStates.keys().next().value;
+            if (typeof oldest !== "string") break;
+            sessionStates.delete(oldest);
+        }
+        const created = createSessionState();
+        sessionStates.set(sessionID, created);
+        return created;
+    }
+
+    function resetTurnState(state: SessionRuntimeState): void {
+        state.nativeAgentMessageSeen = false;
+        state.assistantMessages.clear();
+        state.bufferedTextParts.clear();
+        state.bufferedTextChars = 0;
+        state.sentAgentMessages.clear();
+        state.sentUsageMessages.clear();
+    }
+
     function recordSessionModel(sessionID: string, model: unknown): void {
-        if (isNonEmptyString(model)) sessionModels.set(sessionID, model);
+        if (isNonEmptyString(model)) sessionState(sessionID).model = model;
     }
 
     function markTurnOpen(sessionID: string): void {
-        sessionsWithOpenTurn.add(sessionID);
+        const state = sessionState(sessionID);
+        if (!state.turnOpen) resetTurnState(state);
+        state.turnOpen = true;
+    }
+
+    function rememberBounded(set: Set<string>, value: string): void {
+        if (set.has(value)) set.delete(value);
+        set.add(value);
+        while (set.size > MAX_TRACKED_MESSAGES_PER_TURN) {
+            const oldest = set.values().next().value;
+            if (typeof oldest !== "string") break;
+            set.delete(oldest);
+        }
+    }
+
+    function recordMessageInfo(sessionID: string, rawInfo: unknown): void {
+        const info = payload(rawInfo);
+        const messageID = firstString(info.id, info.messageID, info.message_id);
+        if (!messageID) return;
+        const state = sessionState(sessionID);
+        if (info.role === "user") {
+            markTurnOpen(sessionID);
+            return;
+        }
+        if (info.role !== "assistant") return;
+        state.assistantMessages.delete(messageID);
+        state.assistantMessages.set(messageID, {
+            model: info.modelID ?? info.model?.modelID,
+            provider: info.providerID ?? info.model?.providerID,
+            timestamp: normalizeTimestamp(info.time?.completed ?? info.time?.created),
+            usage: nativeMessageUsage(info),
+        });
+        while (state.assistantMessages.size > MAX_TRACKED_MESSAGES_PER_TURN) {
+            const oldest = state.assistantMessages.keys().next().value;
+            if (typeof oldest !== "string") break;
+            state.assistantMessages.delete(oldest);
+        }
+    }
+
+    function bufferMessagePart(sessionID: string, rawPart: unknown): void {
+        const part = payload(rawPart);
+        if (!isTextPart(part) || part.synthetic) return;
+        const messageID = firstString(part.messageID, part.message_id);
+        const partID = firstString(part.id, part.partID, part.part_id);
+        if (!messageID || !partID) return;
+        markTurnOpen(sessionID);
+        const state = sessionState(sessionID);
+        const key = messageID + ":" + partID;
+        const existing = state.bufferedTextParts.get(key);
+        if (existing) {
+            state.bufferedTextChars -= existing.text.length;
+            state.bufferedTextParts.delete(key);
+        }
+        const normalized = part.text.trim();
+        const text = normalized.slice(0, MAX_AGENT_MESSAGE_CHARS);
+        if (text.length === 0) return;
+        while (
+            state.bufferedTextParts.size > 0 &&
+            (state.bufferedTextParts.size >= MAX_BUFFERED_TEXT_PARTS_PER_TURN ||
+                state.bufferedTextChars + text.length > MAX_BUFFERED_TEXT_CHARS_PER_TURN)
+        ) {
+            const oldestKey = state.bufferedTextParts.keys().next().value;
+            if (typeof oldestKey !== "string") break;
+            const removed = state.bufferedTextParts.get(oldestKey);
+            if (removed) state.bufferedTextChars -= removed.text.length;
+            state.bufferedTextParts.delete(oldestKey);
+        }
+        state.bufferedTextParts.set(key, { messageID, partID, text, originalLength: normalized.length });
+        state.bufferedTextChars += text.length;
     }
 
     async function emitAgentMessage(sessionID: string, text: unknown, meta: Record<string, unknown> = {}): Promise<void> {
         if (!isNonEmptyString(text)) return;
+        const normalized = text.trim();
+        const boundedText = normalized.slice(0, MAX_AGENT_MESSAGE_CHARS);
+        const originalLength = typeof meta?.message_original_length === "number" && Number.isFinite(meta.message_original_length)
+            ? Math.max(normalized.length, meta.message_original_length)
+            : normalized.length;
         const messageID = meta?.messageID ?? meta?.message_id;
         const partID = meta?.partID ?? meta?.part_id;
         const key = isNonEmptyString(partID)
-            ? `${sessionID}:part:${partID}`
+            ? sessionID + ":part:" + partID
             : isNonEmptyString(messageID)
-              ? `${sessionID}:message:${messageID}`
-              : `${sessionID}:text:${text}`;
-        if (sentAgentMessages.has(key)) return;
-        sentAgentMessages.add(key);
+              ? sessionID + ":message:" + messageID
+              : sessionID + ":text:" + normalized.length + ":" + boundedText.slice(0, 1024);
         markTurnOpen(sessionID);
+        const state = sessionState(sessionID);
+        if (state.sentAgentMessages.has(key)) return;
+        rememberBounded(state.sentAgentMessages, key);
+        state.nativeAgentMessageSeen = true;
 
         await postEvent("AgentMessage", {
             session_id: sessionID,
-            text: text.trim(),
-            model: meta?.model ?? sessionModels.get(sessionID),
+            text: boundedText,
+            message_truncated: boundedText.length !== originalLength,
+            message_original_length: originalLength,
+            model: meta?.model ?? state.model,
             provider: meta?.provider,
             message_index: meta?.message_index,
             message_timestamp: meta?.message_timestamp,
             tool_use_ids: meta?.tool_use_ids,
             agent: meta?.agent,
+            usage: meta?.usage,
         });
-    }
-
-    async function fetchSessionMessages(sessionID: string): Promise<OpenCodePayload[]> {
-        const sessionAPI = input?.client?.session;
-        if (typeof sessionAPI?.messages !== "function") return [];
-
-        const attempts = [
-            { path: { id: sessionID }, query: { directory: input.directory } },
-            { path: { sessionID }, query: { directory: input.directory, workspace: input.worktree } },
-        ];
-
-        for (const options of attempts) {
-            try {
-                const response = await sessionAPI.messages(options);
-                const data = Array.isArray(response) ? response : payload(response).data;
-                if (Array.isArray(data)) return data as OpenCodePayload[];
-            } catch {
-                // Try the next SDK shape.
-            }
-        }
-        return [];
+        if (isNonEmptyString(messageID) && meta?.usage) rememberBounded(state.sentUsageMessages, messageID);
     }
 
     async function flushAssistantMessages(sessionID: string): Promise<void> {
-        const messages = await fetchSessionMessages(sessionID);
-        for (let index = 0; index < messages.length; index++) {
-            const message = messages[index];
-            const info = message?.info ?? message?.message ?? message;
-            if (info?.role !== "assistant") continue;
-            const textParts = Array.isArray(message?.parts)
-                ? message.parts.filter(isTextPart)
-                : [];
-            if (textParts.length === 0) continue;
-            recordSessionModel(sessionID, info?.modelID ?? info?.model?.modelID);
-            for (let partIndex = 0; partIndex < textParts.length; partIndex++) {
-                const part = textParts[partIndex];
-                await emitAgentMessage(sessionID, part.text, {
-                    messageID: info?.id,
-                    partID: part?.id ?? `${info?.id ?? `message-${index}`}:text:${partIndex}`,
-                    model: info?.modelID ?? info?.model?.modelID,
-                    provider: info?.providerID ?? info?.model?.providerID,
-                    message_index: index,
-                    message_timestamp: normalizeTimestamp(part?.time?.end ?? info?.time?.completed ?? info?.time?.created),
-                    tool_use_ids: extractToolUseIDs(message?.parts),
-                });
-            }
+        const state = sessionState(sessionID);
+        if (state.nativeAgentMessageSeen) return;
+        let index = 0;
+        for (const part of state.bufferedTextParts.values()) {
+            const meta = state.assistantMessages.get(part.messageID);
+            if (!meta) continue;
+            await emitAgentMessage(sessionID, part.text, {
+                messageID: part.messageID,
+                partID: part.partID,
+                model: meta.model,
+                provider: meta.provider,
+                message_index: index,
+                message_timestamp: meta.timestamp,
+                message_original_length: part.originalLength,
+                usage: meta.usage,
+            });
+            index++;
+        }
+    }
+
+    async function flushAssistantUsage(sessionID: string): Promise<void> {
+        const state = sessionState(sessionID);
+        for (const [messageID, meta] of state.assistantMessages) {
+            if (!meta.usage || state.sentUsageMessages.has(messageID)) continue;
+            rememberBounded(state.sentUsageMessages, messageID);
+            await postEvent("AgentUsage", {
+                session_id: sessionID,
+                message_id: messageID,
+                model: meta.model ?? state.model,
+                provider: meta.provider,
+                timestamp: meta.timestamp,
+                usage: meta.usage,
+            });
         }
     }
 
     async function ensureSessionStarted(sessionID: string): Promise<void> {
-        if (startedSessions.has(sessionID)) return;
-        startedSessions.add(sessionID);
+        const state = sessionState(sessionID);
+        if (state.started) return;
+        state.started = true;
         lastSessionID = sessionID;
         await postEvent("SessionStart", {
             session_id: sessionID,
@@ -327,9 +484,12 @@ export const server = async (input: OpenCodePayload) => {
     }
 
     async function ensureSessionStopped(sessionID: string): Promise<void> {
-        if (!sessionsWithOpenTurn.has(sessionID)) return;
+        const state = sessionState(sessionID);
+        if (!state.turnOpen) return;
         await flushAssistantMessages(sessionID);
-        sessionsWithOpenTurn.delete(sessionID);
+        await flushAssistantUsage(sessionID);
+        state.turnOpen = false;
+        resetTurnState(state);
         await postEvent("Stop", { session_id: sessionID });
     }
 
@@ -341,6 +501,14 @@ export const server = async (input: OpenCodePayload) => {
             const properties = event?.properties;
             const sessionID = (await resolveAndStartSession(ev, event, properties)) || lastSessionID;
             if (!sessionID) return;
+
+            if (type === "message.updated") {
+                recordMessageInfo(sessionID, properties?.info);
+            }
+
+            if (type === "message.part.updated") {
+                bufferMessagePart(sessionID, properties?.part);
+            }
 
             if (type === "session.next.text.ended") {
                 await emitAgentMessage(sessionID, properties?.text, {
@@ -378,6 +546,8 @@ export const server = async (input: OpenCodePayload) => {
             if (type === "server.instance.disposed" || type === "session.deleted") {
                 await ensureSessionStopped(sessionID);
                 await postEvent("SessionEnd", { session_id: sessionID });
+                sessionStates.delete(sessionID);
+                if (lastSessionID === sessionID) lastSessionID = undefined;
             }
         },
 

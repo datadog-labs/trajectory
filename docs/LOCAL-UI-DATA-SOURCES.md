@@ -53,11 +53,13 @@ it for datastore provenance.
 | `backfill_claude_transcripts` | `backfill` | Claude transcript scan conversion. |
 | `backfill_claude_force_replace` | `backfill` | Claude forced replacement conversion. |
 | `backfill_codex_sessions` | `backfill` | Codex rollout conversion. |
+| `backfill_copilot_sessions` | `backfill` | GitHub Copilot CLI session-state conversion. |
 | `backfill_gemini_transcripts` | `backfill` | Gemini transcript conversion. |
 | `backfill_cursor_chats` | `backfill` | Cursor chat conversion. |
-| `backfill_pi_sessions` | `backfill` | Pi or OMP session conversion. |
+| `backfill_pi_sessions` | `backfill` | Pi session conversion. |
+| `backfill_omp_sessions` | `backfill` | Explicit OMP effective-profile session conversion. |
 | `backfill_orphan_reindex` | `backfill` | Reindex of skipped sessions absent from SQLite. |
-| `local_ui_query_backfill` | `local_ui_background_backfill` | Local-ui background index-on-query. |
+| `local_ui_query_backfill` | `local_ui_background_backfill` | Quiet-window local-ui background index-on-query; foreground queries preempt it. |
 
 ## Update checklist
 

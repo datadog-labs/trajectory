@@ -4,10 +4,10 @@ Observe AI coding agents like production systems.
 
 See the whole run. Measure the behavior. Improve the workflow.
 
-Trajectory captures coding-agent sessions across Claude Code, Cline CLI,
-Codex, Gemini, Antigravity, Goose, Aider, Continue CLI, Mistral Vibe,
-Codebuff, Hermes Agent, Amp Code, Qwen Code, OpenHands, Kiro CLI, Kilo Code,
-Cursor, Pi, OpenCode, GitHub Copilot CLI, and Factory Droid, then turns them
+Trajectory captures coding-agent sessions across Claude Code, Claude Desktop,
+Cline CLI, Codex, Gemini, Antigravity, Goose, Aider, Continue CLI, Mistral
+Vibe, Codebuff, Hermes Agent, Amp Code, Qwen Code, OpenHands, Kiro CLI, Kilo
+Code, Cursor, Pi, OpenCode, GitHub Copilot CLI, and Factory Droid, then turns them
 into local timelines, Datadog LLM Observability traces, operational metrics,
 and Markers.
 
@@ -96,7 +96,9 @@ agent behavior becomes something you can graph, alert on, compare, and improve.
   sensitivity scanning, configurable trace detail, and controls for
   Trajectory-owned LLM calls.
 - **Workflow attribution** across repositories, commits, pull requests, and
-  completed-session samples.
+  completed-session samples, including CODEOWNER-aware production analysis.
+- **Preview integrations** for CommandCode, Devin CLI, ForgeCode, gptme, Kimi
+  Code CLI, Oh My Pi, Qoder CLI, VS Code Copilot Chat, Warp, Windsurf, and Zed.
 
 ## Install
 
@@ -124,6 +126,7 @@ trajectory-windows-amd64.exe
 Trajectory supports:
 
 - Claude Code
+- Claude Desktop (macOS)
 - Cline CLI
 - Codex CLI
 - GitHub Copilot CLI beta
@@ -144,6 +147,17 @@ Trajectory supports:
 - Factory Droid beta
 - Pi
 - OpenCode
+- CommandCode (preview)
+- Devin CLI (preview)
+- ForgeCode (preview)
+- gptme (preview)
+- Kimi Code CLI (preview)
+- Oh My Pi (preview)
+- Qoder CLI (preview)
+- VS Code Copilot Chat (preview)
+- Warp/Oz CLI (preview)
+- Windsurf (preview)
+- Zed (preview)
 
 See [docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md) for version
 requirements and [docs/CLIENT-INSTRUMENTATION.md](docs/CLIENT-INSTRUMENTATION.md)
@@ -182,6 +196,7 @@ This repository accepts changes to public docs, marketplace metadata, plugin ass
 - [docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md): supported coding-agent clients and version requirements
 - [docs/CLIENT-INSTRUMENTATION.md](docs/CLIENT-INSTRUMENTATION.md): per-client hook, watcher, MCP, and backfill surfaces
 - [docs/COSTS.md](docs/COSTS.md): local cost summaries, turn evidence, objective observations, and fidelity checks
+- [docs/COST-ATTRIBUTION.md](docs/COST-ATTRIBUTION.md): additive cost totals, overlapping CODEOWNER associations, and safe dashboard patterns
 - [docs/PRIVACY.md](docs/PRIVACY.md): incognito, sensitive tags, and sensitivity scanning
 - [docs/SECURITY-EVENT-STREAM.md](docs/SECURITY-EVENT-STREAM.md): managed security event log projection
 - [docs/LLM-CAPACITY.md](docs/LLM-CAPACITY.md): which features use additional LLM capacity and how to control them

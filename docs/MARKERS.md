@@ -515,11 +515,34 @@ Examples of the derivation:
 | measure `task-outcome-score`, scope `task` | `trajectory.task.outcome_score` |
 | measure `commit-cost-usd`, scope `commit`, distribution per commit | `trajectory.commit.cost.usd.total` |
 | built-in PR-attributed cost, distribution per PR | `trajectory.pr.cost.usd.attributed.total` |
+| built-in PR-created turn point, count per PR/MR creation turn | `trajectory.turn.prs` |
+| built-in PR work context, distribution per PR/MR context | `trajectory.pr.contexts.total`, `trajectory.pr.work_turns.total`, `trajectory.pr.work_duration_ms.total` |
+| built-in PR context turn point, count per PR/MR context observation turn | `trajectory.turn.pr_contexts` |
 | measure `test-fix-cycle-duration-ms`, scope `session`, distribution `@range_duration_ms` | `trajectory.session.test_fix_cycle.duration.ms` |
 
-Built-in per-turn metrics intentionally publish both gauges and distributions where the questions differ. `trajectory.turn.tool_uses` is a gauge split by `tool_name` for per-tool breakdowns within a turn; `trajectory.turn.tool_uses.total` is a distribution sample of the total tools used by a completed turn and does not carry `tool_name`. Similarly, `trajectory.turn.cost.usd` and `trajectory.turn.duration_ms` are gauges for the latest turn values, while `trajectory.turn.cost.usd.total` and `trajectory.turn.duration_ms.total` are completed-turn distribution samples for percentile queries. `trajectory.turn.permission_wait_ms.total` and `trajectory.turn.duration_ms.excluding_permission_wait.total` break out derivable human approval wait from completed-turn duration. PR attribution metrics are also completed samples: `trajectory.pr.cost.usd.attributed.total` is the cost attributed to turns that contributed to a PR, `trajectory.pr.attributed_turns.total` counts those turns, and `trajectory.pr.containing_session.cost.usd.total` records the cost of sessions containing PR activity. `trajectory.session.last_seen.unix` is a session-scoped gauge whose value is the latest observed session event time as Unix seconds; use it for recency-sorted session tables. Enable Historical Metrics Ingestion for this gauge before replaying sessions older than one hour.
+Built-in per-turn metrics intentionally publish both gauges and distributions where the questions differ. `trajectory.turn.tool_uses` is a gauge split by preserved `tool_name` and normalized `tool_type` for per-tool breakdowns within a turn; MCP calls also carry sanitized `mcp_server`, `mcp_tool`, and `mcp_source_scope` when derivable. `trajectory.turn.tool_uses.total` is a distribution sample of the total tools used by a completed turn and does not carry tool dimensions. Similarly, `trajectory.turn.cost.usd` and `trajectory.turn.duration_ms` are gauges for the latest turn values, while `trajectory.turn.cost.usd.total` and `trajectory.turn.duration_ms.total` are completed-turn distribution samples for percentile queries. `trajectory.turn.permission_wait_ms.total` and `trajectory.turn.duration_ms.excluding_permission_wait.total` break out derivable human approval wait from completed-turn duration. PR attribution metrics are also completed samples: `trajectory.pr.cost.usd.attributed.total` is the cost attributed to turns that contributed to a newly created PR, `trajectory.pr.attributed_turns.total` counts those creation-tail turns, and `trajectory.pr.containing_session.cost.usd.total` records the cost of sessions containing PR creation activity. Existing-PR work context metrics are range-backed: `trajectory.pr.contexts.total` counts detected PR/MR work contexts, `trajectory.pr.work_turns.total` samples the number of turns in each context, and `trajectory.pr.work_duration_ms.total` samples context duration. PR-specific metrics carry `change_host`, Git repository `owner`, `repo`, and `change_number` when Trajectory extracts a GitHub-compatible `/pull/<number>` URL or GitLab-compatible `/-/merge_requests/<number>` URL from prompts, successful PR/MR creation output, or common `gh pr ...` / `glab mr ...` command output. `trajectory.turn.prs` carries `session_id` and `trajectory.turn_id` for direct PR creation lookup; `trajectory.turn.pr_contexts` does the same for existing-PR context observations. `trajectory.session.last_seen.unix` is a session-scoped gauge whose value is the latest observed session event time as Unix seconds; use it for recency-sorted session tables. Enable Historical Metrics Ingestion for this gauge before replaying sessions older than one hour.
 
-Managed `required_destinations` can opt in to structured `pr_attribution` records for PR/MR drilldown. Those records are derived from persisted `pr-created` marker detail and session summaries. They may include PR/MR URL, owner, repo, number, bounded attributed cost/turns, and containing-session cost; they do not include prompts, tool input/output, commands, diffs, file contents, or local file paths. Repo `publish.trajectory.yaml` files cannot enable records, and security destinations never receive them. Historical replay uses `trajectory backfill-records --kind pr_attribution` for dry-run and `--yes` to submit.
+Durable PR CODEOWNER production emits six overlapping owner distributions:
+`trajectory.codeowner.pr.production.{turns,cost.usd,input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens}.total`.
+Owner IDs use `trajectory.codeowner` without a leading `@`. Show owner cost as
+a flat Top List only; never stack or sum owner groups. Eight exclusive coverage
+metrics use
+`trajectory.pr.work.codeowner_{attributed,unattributed}_{turns,cost.usd,input_tokens,output_tokens}.total`.
+Under identical filters, each attributed plus unattributed pair equals the
+matching canonical PR-work measurement. Coverage uses the eligible owner count
+before the five-owner retention cap; exact dropped and truncated diagnostics
+remain available through `trajectory.codeowner.owners.dropped` and
+`trajectory.codeowner.truncated.total`.
+
+Production ownership comes only from successful current-session writes and
+eligible exact files in immutable session-produced commit evidence. Entry
+baselines, downloaded PR contents, imported history, and merge or cherry-pick
+alone are excluded. Resolution is local: no provider API or user credential is
+used, and no source content, path, command, CODEOWNERS pattern, ref, object ID,
+diff, or email owner becomes a metric tag. Read/search attribution remains a
+later, separately labeled investigation surface.
+
+Managed `required_destinations` can opt in to structured `pr_attribution` records for PR/MR drilldown. Schema v2 emits one stable-dedup record per finalized durable context, with public `change_host`, `repo_owner`, `repo`, `change_number`, spend fields, and parallel cap-five `codeowners`/`codeowner_kinds` arrays. `retroactive_membership:true` applies only to its `creation_window` context; it does not rewrite previously accepted cloud turn roots. V2 requires finalized spend and CODEOWNER projection version 2. It includes no prompts, tool input/output, commands, URLs, diffs, file contents, CODEOWNERS patterns, refs, object IDs, email owners, or local paths. Repo `publish.trajectory.yaml` files cannot enable records, and security destinations never receive them. Historical replay uses `trajectory backfill-records --kind pr_attribution` for dry-run and `--yes` to submit.
 
 Any marker detail intended to feed a structured record must be durable,
 schema-stable, and safe to publish without reading raw transcript or tool
@@ -593,16 +616,23 @@ Trajectory submits marker metrics according to `metric_kind`. Most session measu
 | Force pushes by repo toplist | `sum:trajectory.session.force_pushes.completed_count{*} by {repo}.rollup(sum, 86400)` | Requires the repo tag to be resolved or supplied. |
 | Permission denials trend | `sum:trajectory.session.permissions_denied.completed_count{team:agent-platform}.rollup(sum, 3600)` | Useful for safety/friction dashboards. |
 | P95 tools per completed turn | `p95:trajectory.turn.tool_uses.total{repo:trajectory}` | Distribution sample per completed turn; use the gauge `trajectory.turn.tool_uses` only for `tool_name` breakdowns. |
-| P95 cost per completed turn | `p95:trajectory.turn.cost.usd.total{repo:trajectory}` | Distribution sample per completed turn. |
+| P95 cost per completed turn | `p95:trajectory.turn.cost.usd.total{trajectory.cost_contract:v2,trajectory.cost_role:attribution,repo:trajectory}` | Distribution sample per completed turn from the authoritative usage-integrity contract. |
 | P95 completed-turn duration | `p95:trajectory.turn.duration_ms.total{repo:trajectory}` | Requires clients to emit or derive turn duration. |
 | P95 permission wait per completed turn | `p95:trajectory.turn.permission_wait_ms.total{repo:trajectory}` | Estimated from permission request and matching tool result timing when derivable. |
 | P95 completed-turn duration excluding permission wait | `p95:trajectory.turn.duration_ms.excluding_permission_wait.total{repo:trajectory}` | Subtracts derivable approval wait; missing wait intervals remain part of duration. |
 | Average per-commit cost | `avg:trajectory.commit.cost.usd.total{repo:trajectory} by {branch}` | Uses the built-in commit-cost-usd branch tag; confirm the `branch` point dimension is present in Metrics Explorer. |
-| Total PR-attributed cost | `sum:trajectory.pr.cost.usd.attributed.total{repo:trajectory}` | Metrics aggregate. Optional managed `pr_attribution` records provide PR/MR drilldown separately from metric series. |
-| PR-attributed turns | `sum:trajectory.pr.attributed_turns.total{repo:trajectory}` | Counts turns attributed to PR activity. |
+| PR-attributed cost by PR | `sum:trajectory.pr.cost.usd.attributed.total{repo:trajectory,change_number:123} by {session_id}` | PR-specific metrics carry `change_host`, `owner`, `repo`, and `change_number` when extracted. |
+| PR-created turn lookup | `sum:trajectory.turn.prs{repo:trajectory,change_number:123} by {session_id,trajectory.turn_id}` | One point per PR/MR creation turn. |
+| Existing-PR work contexts | `sum:trajectory.pr.contexts.total{repo:trajectory,change_number:123} by {session_id,context_source}` | One sample per detected PR/MR work context. |
+| Existing-PR work turns | `sum:trajectory.pr.work_turns.total{repo:trajectory,change_number:123} by {session_id}` | Range-backed count of turns covered by PR/MR context. |
+| Canonical existing-PR work cost | `sum:trajectory.pr.work.cost.usd.total{source:prwork,repo:trajectory}` | Additive only inside mutually exclusive primary PR assignments; do not add to turn/session/creation-tail cost. |
+| CODEOWNER production involvement Top List | `sum:trajectory.codeowner.pr.production.cost.usd.total{source:prwork,repo:trajectory} by {trajectory.codeowner}` | Flat Top List only. Overlapping owner association; never stack or sum groups. |
+| CODEOWNER cost coverage | `100 * a / (a + u)`, where `a=sum:trajectory.pr.work.codeowner_attributed_cost.usd.total{source:prwork,repo:trajectory}` and `u=sum:trajectory.pr.work.codeowner_unattributed_cost.usd.total{source:prwork,repo:trajectory}` | Exclusive partition; eligible owner evidence is evaluated before the cap. |
+| CODEOWNER coverage reconciliation | `a + u - c`, where `c=sum:trajectory.pr.work.cost.usd.total{source:prwork,repo:trajectory}` | Expected zero with identical filters and aggregation. |
+| Existing-PR context turn lookup | `sum:trajectory.turn.pr_contexts{repo:trajectory,change_number:123} by {session_id,trajectory.turn_id,context_source}` | Point for prompt/tool evidence that established PR/MR context. |
+| PR-attributed turns | `sum:trajectory.pr.attributed_turns.total{repo:trajectory} by {change_number}` | Counts turns attributed to PR activity. |
 | Average containing-session cost for PRs | `avg:trajectory.pr.containing_session.cost.usd.total{repo:trajectory}` | Compares attributed PR cost with the broader session cost that contained PR activity. |
 | P95 range duration | `p95:trajectory.session.test_fix_cycle.duration.ms{*}` | Backed by a range distribution using `@range_duration_ms` and `metric_kind: distribution`. |
-| Range success ratio | `avg:trajectory.session.test_success_rate{repo:trajectory}` | Ratio measures are session-level gauges; graph with `avg:`. |
 | Marker density formula | `sum:trajectory.session.force_pushes.completed_count{*}.rollup(sum, 86400) / count_not_null(avg:trajectory.session.turns.total{*} by {gen_ai.conversation.id})` | Use a formula widget to normalize marker counts by completed sessions. |
 
 ### Monitor examples

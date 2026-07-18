@@ -2,6 +2,7 @@
   "name": "@datadog/trajectory-kilo",
   "version": "3.0.0",
   "description": "Trajectory capture plugin for Kilo Code",
+  "type": "module",
   "exports": {
     "./server": "./src/index.ts"
   },

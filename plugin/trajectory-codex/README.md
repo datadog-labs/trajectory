@@ -4,16 +4,18 @@ Codex marketplace plugin for trajectory agent observability.
 
 ## What It Does
 
-- **12 lifecycle hooks** capture every session event (tool calls, prompts, compaction, subagents) with foreground command hooks that invoke the installed `trajectory capture-hook --client codex --ensure-serve` binary path
+- **10 supported lifecycle hooks** provide the full compatibility surface. Setup enables `SessionStart`, `UserPromptSubmit`, and `Stop` plus Bash-only paired `PreToolUse` and `PostToolUse` by default, derives canonical detail and terminal completion from the rollout, and uses the paired hooks only for immediate PR-work evidence; `codex_boundary_capture` can restore all ten.
 - **MCP server** provides introspection tools (status, sessions, queries, incognito, flush, markers)
 - **`/incognito` skill** toggles publish suppression for the current session while local JSONL capture continues
 
-Codex capture is intentionally hybrid. Command hooks provide ordered lifecycle
-edges that Codex waits on, while Codex rollout JSONL under `~/.codex/sessions/`
-contains checkpoint-only details such as assistant messages, reasoning,
-permissions, non-shell tools, model metadata, and token snapshots. Trajectory
-merges those sources in `trajectory serve` before writing its normalized session
-JSONL under `~/.trajectory/trajectories/`.
+Codex capture is intentionally hybrid. Three lifecycle/turn hooks plus paired
+Bash-only evidence hooks provide ordered boundaries and immediate before/after
+Git snapshots, while Codex rollout JSONL under
+`~/.codex/sessions/` supplies tool phases, assistant messages, reasoning,
+permissions, compaction, subagent activity, model/token metadata, and
+`shutdown_complete`. Current Codex has no `SessionEnd` hook; the watcher emits
+the terminal event. Trajectory merges those sources in `trajectory serve`
+before writing normalized session JSONL under `~/.trajectory/trajectories/`.
 
 The built-in Codex watcher (rollout file tailing) serves as a fallback for
 sessions started before the plugin was installed or when hooks cannot notify
@@ -21,6 +23,16 @@ the local server. Codex hooks therefore use the `trajectory capture-hook`
 command path instead of direct `curl` or raw JSONL append: the server merge path
 owns checkpoint reconciliation, duplicate suppression, rollout cursor
 advancement, and token/model enrichment.
+Boundary mode drains every complete rollout record and commits its source
+cursor only after canonical persistence succeeds. Setup and update retain all
+ten hooks while an old, different-home, or ambiguous capture owner is running;
+updated-owner startup self-repairs to paired boundary mode after proving same-home support.
+
+`codex exec --ephemeral` writes no rollout, so default boundary mode cannot
+derive its per-tool detail. Disable `codex_boundary_capture` before a new
+ephemeral run when full direct-hook fidelity is required. Manual plugin installs
+do not receive setup-managed per-hook state and therefore use the full ten-hook
+compatibility surface.
 
 For CLI usage, run `trajectory user-guide` or see `docs/USER-GUIDE.md`.
 

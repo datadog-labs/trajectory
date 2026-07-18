@@ -2,31 +2,38 @@
  * Trajectory Capture Extension for Pi
  *
  * Subscribes to Pi lifecycle events and forwards them to the trajectory
- * HTTP capture server. Fire-and-forget with 2s timeout - Pi is never
- * blocked by trajectory being slow or unavailable.
+ * HTTP capture server. Capture runs through bounded background queues so Pi
+ * callbacks never wait on trajectory being slow or unavailable.
  *
  * Install: copy to ~/.pi/agent/extensions/trajectory/
  * Or symlink: ln -s /path/to/plugin/trajectory-pi ~/.pi/agent/extensions/trajectory
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { completeSimple, getModel } from "@mariozechner/pi-ai";
-import { Type } from "@sinclair/typebox";
-import { spawn, execFileSync } from "node:child_process";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { completeSimple, getModel } from "@earendil-works/pi-ai/compat";
+import { Type } from "typebox";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { BoundedSerialQueue } from "./async-queue.js";
+import { aggregatePiAgentRun, PiAgentRunTracker } from "./agent-run.js";
 import { buildTrajectorySchema, runTrajectoryQuery } from "./query-tools.js";
+import { piSessionIdentityFields, readPiSessionHeaderId } from "./session-identity.js";
+import { ensureTrajectoryServe as requestTrajectoryServe } from "./serve-ensure.js";
 
 const DEFAULT_PORT = 19222;
 const POST_TIMEOUT_MS = 2000;
 const HEALTH_TIMEOUT_MS = 1000;
-const SPAWN_WAIT_MS = 5000;
 /** Timeout for each sensitivity classification LLM call (ms). */
 const CLASSIFY_TIMEOUT_MS = 3000;
+const CAPTURE_HELPER_TIMEOUT_MS = 5000;
+const CAPTURE_QUEUE_CAPACITY = 256;
+const LIFECYCLE_QUEUE_CAPACITY = 64;
+const SHUTDOWN_DRAIN_MS = 100;
 const PLUGIN_PROVENANCE = {
 	plugin: {
 		id: "trajectory-pi",
-		version: "3.2.0",
+		version: "3.2.2",
 		source_scope: "trajectory_plugin",
 	},
 };
@@ -49,6 +56,16 @@ const V2_CATEGORIES_BY_LENGTH = [
 ] as const;
 
 type SensitivityCategory = typeof V2_CATEGORIES_BY_LENGTH[number];
+
+export interface TrajectoryExtensionRuntime {
+	captureQueue?: BoundedSerialQueue;
+	lifecycleQueue?: BoundedSerialQueue;
+	postCapture?: (path: string, body: Record<string, unknown>) => Promise<void>;
+	captureHook?: (eventType: string, body: Record<string, unknown>) => Promise<void>;
+	ensureServe?: () => Promise<boolean>;
+	classifyTurn?: (content: string) => Promise<SensitivityCategory | "">;
+	shutdownDrainMs?: number;
+}
 
 /** Label ordering for most-restrictive-wins comparison (higher index = more restrictive). */
 const LABEL_ORDER: Record<string, number> = {
@@ -96,26 +113,29 @@ function withPluginProvenance(body: Record<string, unknown>): Record<string, unk
 	};
 }
 
-export default function (pi: ExtensionAPI) {
+export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: TrajectoryExtensionRuntime = {}) {
 	const port = parseInt(process.env.TRAJECTORY_PORT ?? String(DEFAULT_PORT), 10);
 	const baseUrl = `http://127.0.0.1:${port}`;
 	const captureUrl = `${baseUrl}/capture/pi`;
+	const captureQueue = runtime.captureQueue ?? new BoundedSerialQueue(CAPTURE_QUEUE_CAPACITY);
+	const lifecycleQueue = runtime.lifecycleQueue ?? new BoundedSerialQueue(LIFECYCLE_QUEUE_CAPACITY);
 
 	let sessionId = "";
-	let turnCounter = 0;
+	let shuttingDown = false;
+	const agentRuns = new PiAgentRunTracker();
 
 	// ── Sensitivity pre-classification state ─────────────────────────
 	// Cached per session: the system prompt fetched from serve, and the
 	// current best (most-restrictive) verdict seen so far this session.
 	let sensitivityPrompt: string | null = null; // null = fetch pending/failed
 	let sessionSensitivityCategory = ""; // "" = no verdict yet this session
-	// Fire-once flag: classification runs at most once per session (first turn_end
+	// Fire-once flag: classification runs at most once per session (first agent_end
 	// only). Trajectory's periodic classifier loop provides refresh over the
 	// session lifetime via headless CLI / direct API backends.
 	let sensitivityClassified = false;
 
 	// Per-turn accumulators used to build the classifier content summary.
-	// Reset at each turn_end.
+	// Reset at each agent_end.
 	let currentTurnUserText = "";
 	let currentTurnToolNames: string[] = [];
 
@@ -179,6 +199,7 @@ export default function (pi: ExtensionAPI) {
 		if (!sensitivityPrompt) {
 			return "";
 		}
+		let timeout: ReturnType<typeof setTimeout> | undefined;
 		try {
 			const msg = await Promise.race([
 				completeSimple(
@@ -195,9 +216,10 @@ export default function (pi: ExtensionAPI) {
 					},
 					{ maxTokens: 10 },
 				),
-				new Promise<never>((_, reject) =>
-					setTimeout(() => reject(new Error("classify timeout")), CLASSIFY_TIMEOUT_MS),
-				),
+				new Promise<never>((_, reject) => {
+					timeout = setTimeout(() => reject(new Error("classify timeout")), CLASSIFY_TIMEOUT_MS);
+					(timeout as unknown as { unref?: () => void }).unref?.();
+				}),
 			]);
 			const raw = msg.content
 				.filter((b): b is { type: "text"; text: string } => b.type === "text")
@@ -221,18 +243,20 @@ export default function (pi: ExtensionAPI) {
 			}
 		} catch {
 			// timeout, API error, or any other failure - skip silently
+		} finally {
+			if (timeout !== undefined) clearTimeout(timeout);
 		}
 		return "";
 	}
 
 	// ── HTTP helpers ─────────────────────────────────────────────────
 
-	async function post(path: string, body: Record<string, unknown>): Promise<void> {
+	async function postCapture(path: string, body: Record<string, unknown>): Promise<void> {
 		try {
 			await fetch(`${captureUrl}/${path}`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(withPluginProvenance(body)),
+				body: JSON.stringify(body),
 				signal: AbortSignal.timeout(POST_TIMEOUT_MS),
 			});
 		} catch {
@@ -240,15 +264,14 @@ export default function (pi: ExtensionAPI) {
 		}
 	}
 
-	async function healthCheck(): Promise<boolean> {
-		try {
-			const res = await fetch(`${baseUrl}/health`, {
-				signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
-			});
-			return res.ok;
-		} catch {
-			return false;
-		}
+	const postCaptureTask = runtime.postCapture ?? postCapture;
+
+	function post(path: string, body: Record<string, unknown>): void {
+		captureQueue.enqueue(() => postCaptureTask(path, withPluginProvenance(body)));
+	}
+
+	function postTerminal(path: string, body: Record<string, unknown>): void {
+		captureQueue.enqueueTerminal(() => postCaptureTask(path, withPluginProvenance(body)));
 	}
 
 	// ── Binary lifecycle ─────────────────────────────────────────────
@@ -257,46 +280,23 @@ export default function (pi: ExtensionAPI) {
 		const candidates = [
 			join(process.env.HOME ?? "", ".trajectory", "bin", "trajectory"),
 			join(process.env.HOME ?? "", "bin", "trajectory"),
-			// Let PATH resolve it as a fallback (handled by spawn)
+			// Let PATH resolve it as a fallback (handled by execFile)
 		];
 		for (const p of candidates) {
 			if (existsSync(p)) return p;
 		}
-		// Fall back to bare name - spawn will search PATH
+		// Fall back to bare name - execFile will search PATH
 		return "trajectory";
 	}
 
 	async function ensureTrajectoryServe(): Promise<boolean> {
-		if (await healthCheck()) {
-
-			return true;
-		}
-
 		const binPath = findTrajectoryBinary();
 		if (!binPath) return false;
-
-		try {
-			const child = spawn(binPath, ["serve"], {
-				detached: true,
-				stdio: "ignore",
-				env: { ...process.env, TRAJECTORY_PORT: String(port) },
-			});
-			child.unref();
-		} catch {
-			return false;
-		}
-
-		// Poll for health up to SPAWN_WAIT_MS
-		const attempts = Math.floor(SPAWN_WAIT_MS / 100);
-		for (let i = 0; i < attempts; i++) {
-			await new Promise((r) => setTimeout(r, 100));
-			if (await healthCheck()) {
-
-				return true;
-			}
-		}
-		return false;
+		const result = await requestTrajectoryServe({ binary: binPath, client: "pi", port });
+		return result.ok;
 	}
+
+	const ensureServeTask = runtime.ensureServe ?? ensureTrajectoryServe;
 
 	// ── Tool registration ────────────────────────────────────────────
 
@@ -448,48 +448,57 @@ export default function (pi: ExtensionAPI) {
 	// Session lifecycle events (start/end) use CLI fallback to write directly
 	// to JSONL, independent of serve availability. Matches CC plugin pattern.
 
-	function captureHookCLI(eventType: string, body: Record<string, unknown>): void {
+	async function captureHookCLI(eventType: string, body: Record<string, unknown>): Promise<void> {
 		const binPath = findTrajectoryBinary();
 		if (!binPath) return;
-		try {
-			// --wait-notify 2s: wait deterministically for the CLI's serve
-			// notification to complete (or time out at 2s) before exiting. Pi can
-			// exit very quickly under `pi --print`, so the default 100ms grace
-			// period that Claude Code relies on is not long enough for the
-			// HTTP POST to reach serve. Without this, JSONL is durable but serve
-			// never sees the turn_end and publish never fires.
-			//
-			// --client pi routes the notify to /capture/pi/<EventType> so serve
-			// dispatches through processPiEvent (which calls notifyPublishTurnEnd).
-			// Without --client, the CLI posts to /capture/<EventType> which serve
-			// routes to the CC runtime; CC does not have a "TurnEnd" event and
-			// would reject it with 400.
-			execFileSync(binPath, ["capture-hook", "--client", "pi", "--wait-notify", "2s", eventType], {
-				input: JSON.stringify(withPluginProvenance(body)),
-				timeout: 5000,
-				stdio: ["pipe", "ignore", "ignore"],
-			});
-		} catch {
-			// Best-effort - don't block Pi
-		}
+		await new Promise<void>((resolve) => {
+			let child: ReturnType<typeof spawn>;
+			try {
+				// --client pi keeps the helper's notify on the Pi runtime. The helper
+				// writes JSONL before notifying serve, so it remains the durable
+				// fallback for short-lived `pi --print` sessions.
+				child = spawn(binPath, ["capture-hook", "--client", "pi", "--wait-notify", "2s", eventType], {
+					detached: true,
+					stdio: ["pipe", "ignore", "ignore"],
+				});
+			} catch {
+				resolve();
+				return;
+			}
+
+			let settled = false;
+			const finish = () => {
+				if (settled) return;
+				settled = true;
+				clearTimeout(killTimer);
+				resolve();
+			};
+			const killTimer = setTimeout(() => {
+				// Keep the queue occupied until close. If termination fails, one
+				// stuck helper cannot turn into unbounded helper process growth.
+				try {
+					child.kill();
+				} catch {
+					// Best-effort termination; the queue remains occupied until close.
+				}
+			}, CAPTURE_HELPER_TIMEOUT_MS);
+			(killTimer as unknown as { unref?: () => void }).unref?.();
+			child.once("error", finish);
+			child.once("close", finish);
+			child.stdin?.once("error", () => {});
+			child.stdin?.end(JSON.stringify(withPluginProvenance(body)));
+			child.unref();
+		});
 	}
 
-	function toTrajectoryUsage(usage: any): Record<string, unknown> | undefined {
-		if (!usage) {
-			return undefined;
-		}
-		const cost = usage.cost;
-		const out: Record<string, unknown> = {
-			input: usage.input,
-			output: usage.output,
-			cacheRead: usage.cacheRead,
-			cacheWrite: usage.cacheWrite,
-			totalTokens: usage.totalTokens,
-		};
-		if (cost !== undefined && cost !== null) {
-			out.cost = typeof cost === "object" ? cost : { total: cost };
-		}
-		return out;
+	const captureHookTask = runtime.captureHook ?? captureHookCLI;
+
+	function captureLifecycle(eventType: string, body: Record<string, unknown>): void {
+		lifecycleQueue.enqueue(() => captureHookTask(eventType, body));
+	}
+
+	function captureTerminalLifecycle(eventType: string, body: Record<string, unknown>): void {
+		lifecycleQueue.enqueueTerminal(() => captureHookTask(eventType, body));
 	}
 
 	function contentBlockTypes(blocks: any): string[] {
@@ -508,9 +517,12 @@ export default function (pi: ExtensionAPI) {
 
 	// ── Event subscriptions ──────────────────────────────────────────
 
-	pi.on("session_start", async (_event, ctx) => {
-		sessionId = ctx.sessionManager.getSessionId();
-		turnCounter = 0;
+	pi.on("session_start", async (event, ctx) => {
+		const parentProviderSessionId = await readPiSessionHeaderId(event.previousSessionFile);
+		const identity = piSessionIdentityFields(event, ctx.sessionManager, parentProviderSessionId);
+		sessionId = identity.session_id;
+		shuttingDown = false;
+		agentRuns.reset(sessionId);
 
 		// Reset sensitivity state for the new session.
 		sensitivityPrompt = null;
@@ -518,26 +530,26 @@ export default function (pi: ExtensionAPI) {
 		sensitivityClassified = false;
 
 		const body = {
-			session_id: sessionId,
+			...identity,
 			cwd: ctx.cwd,
 			model: ctx.model?.id,
 			provider: ctx.model?.provider,
 			timestamp: Date.now(),
 		};
 
-		// CLI writes directly to JSONL (always works)
-		captureHookCLI("SessionStart", body);
+		captureLifecycle("SessionStart", body);
 
-		// Also start serve for mid-session extension event capture
-		await ensureTrajectoryServe();
+		// Preserve startup ordering without making Pi wait for serve recovery.
+		captureQueue.enqueue(async () => {
+			await ensureServeTask();
+			await postCaptureTask("SessionStart", withPluginProvenance(body));
+			// The classifier prompt fetch is independent of capture ordering.
+			void fetchSensitivityPrompt();
+		});
+	});
 
-		// Notify serve of the session start (best-effort)
-		post("SessionStart", body);
-
-		// Fetch the sensitivity classifier system prompt from serve (once per
-		// session). Runs after ensureTrajectoryServe so serve is likely up.
-		// Failure is silent - older extensions without this change still work.
-		fetchSensitivityPrompt();
+	pi.on("agent_start", async () => {
+		agentRuns.start();
 	});
 
 	pi.on("message_end", async (event, ctx) => {
@@ -545,7 +557,6 @@ export default function (pi: ExtensionAPI) {
 		const msg = event.message;
 
 		if (msg.role === "user") {
-			turnCounter++;
 			const prompt =
 				typeof msg.content === "string"
 					? msg.content
@@ -554,9 +565,9 @@ export default function (pi: ExtensionAPI) {
 							.map((b) => b.text)
 							.join("\n");
 
-			// Capture user text for sensitivity summary at turn_end.
-			currentTurnUserText = prompt;
-			currentTurnToolNames = [];
+			// A Pi agent run may contain queued/steered user messages. Keep them in
+			// one summary until agent_end, which is the native outer-run boundary.
+			currentTurnUserText = [currentTurnUserText, prompt].filter(Boolean).join("\n");
 
 			post("UserPromptSubmit", {
 				session_id: sessionId,
@@ -582,7 +593,7 @@ export default function (pi: ExtensionAPI) {
 				}
 			}
 
-			await post("AgentMessage", {
+			post("AgentMessage", {
 				session_id: sessionId,
 				text: textParts.join("\n"),
 				has_thinking: hasThinking,
@@ -628,10 +639,10 @@ export default function (pi: ExtensionAPI) {
 		});
 	});
 
-	pi.on("turn_end", async (event, _ctx) => {
-		// Extract usage from the assistant message in this turn
-		const msg = event.message;
-		const usage = msg.role === "assistant" ? msg.usage : undefined;
+	pi.on("agent_end", async (event, _ctx) => {
+		const sourceEventId = agentRuns.complete();
+		if (!sourceEventId) return;
+		const aggregate = aggregatePiAgentRun(event.messages);
 
 		// Classify the turn content using a pinned Haiku model (non-blocking).
 		// We capture the user text and tool names before awaiting so they
@@ -642,25 +653,49 @@ export default function (pi: ExtensionAPI) {
 		currentTurnUserText = "";
 		currentTurnToolNames = [];
 
-		// Run classification at most once per session (first turn_end only).
-		// Uses a pinned Haiku model regardless of pi's main coding model.
-		// On failure or after the first attempt, skip - trajectory's periodic
-		// classifier loop provides refresh via headless CLI / direct API.
+		// Run classification at most once per session, but never await it from
+		// the lifecycle callback. A late verdict is sent as a phantom TurnEnd:
+		// the Go handler skips duplicate turn materialization while still applying
+		// the most-restrictive sensitivity watermark.
 		if (!sensitivityClassified) {
-			sensitivityClassified = true; // fire-once: mark before await so concurrent turns can't double-fire
+			sensitivityClassified = true;
 			const summary = buildTurnSummary(turnUserText, turnToolNames);
-			const newCategory = summary ? await classifyTurn(summary) : "";
-			if (newCategory) {
-				sessionSensitivityCategory = newCategory;
+			const classifiedSessionId = sessionId;
+			const classifiedSourceEventId = sourceEventId;
+			if (summary) {
+				const timer = setTimeout(() => {
+					if (shuttingDown || sessionId !== classifiedSessionId) return;
+					void (runtime.classifyTurn ?? classifyTurn)(summary).then((newCategory) => {
+						if (!newCategory || sessionId !== classifiedSessionId) return;
+						sessionSensitivityCategory = newCategory;
+						if (!shuttingDown) {
+							post("TurnEnd", {
+								session_id: classifiedSessionId,
+								source_event_id: classifiedSourceEventId,
+								source_dialect: "pi-agent-end",
+								sensitivity_category: newCategory,
+								timestamp: Date.now(),
+							});
+						}
+					}, () => {});
+				}, 0);
+				(timer as unknown as { unref?: () => void }).unref?.();
 			}
 		}
 
 		const body: Record<string, unknown> = {
 			session_id: sessionId,
-			turn_id: turnCounter,
-			usage: toTrajectoryUsage(usage),
+			source_event_id: sourceEventId,
+			source_dialect: "pi-agent-end",
+			usage: aggregate.usage,
+			native_request_count: aggregate.requestCount,
+			zero_usage_requests: aggregate.zeroUsageRequests,
+			usage_model_status: aggregate.modelStatus,
+			cost_status: aggregate.costStatus,
 			timestamp: Date.now(),
 		};
+		if (aggregate.model) body.model = aggregate.model;
+		if (aggregate.provider) body.provider = aggregate.provider;
 
 		// Attach v2.1 category when available. The Go handler maps category to
 		// a publish-gate label via CategoryToLabel and applies most-restrictive-
@@ -672,19 +707,8 @@ export default function (pi: ExtensionAPI) {
 		// CLI writes directly to JSONL (always works, even if pi exits before the
 		// async POST completes - e.g. under `pi --print`). JSONL is the source of
 		// truth; serve picks it up via fsnotify if the live POST is dropped.
-		captureHookCLI("TurnEnd", body);
-
-		// Also notify serve if still alive (best-effort, mirrors session_shutdown).
-		try {
-			await fetch(`${captureUrl}/TurnEnd`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(withPluginProvenance(body)),
-				signal: AbortSignal.timeout(POST_TIMEOUT_MS),
-			});
-		} catch {
-			// Best-effort
-		}
+		captureLifecycle("TurnEnd", body);
+		post("TurnEnd", body);
 	});
 
 	pi.on("session_compact", async (event, _ctx) => {
@@ -699,6 +723,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("session_shutdown", async (_event, _ctx) => {
+		shuttingDown = true;
 		const body: Record<string, unknown> = {
 			session_id: sessionId,
 			timestamp: Date.now(),
@@ -710,19 +735,17 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		// CLI writes directly to JSONL (always works, even if serve is dead)
-		captureHookCLI("SessionEnd", body);
+		captureTerminalLifecycle("SessionEnd", body);
+		postTerminal("SessionEnd", body);
 
-		// Also notify serve if still alive (best-effort)
-		try {
-			await fetch(`${captureUrl}/SessionEnd`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(withPluginProvenance(body)),
-				signal: AbortSignal.timeout(POST_TIMEOUT_MS),
-			});
-		} catch {
-			// Best-effort
-		}
+		// Pi permits an async shutdown callback. Give already-admitted work one
+		// short, explicit chance to finish without restoring the old multi-second
+		// shutdown stall. Detached helpers continue best-effort after this budget.
+		const drainMs = runtime.shutdownDrainMs ?? SHUTDOWN_DRAIN_MS;
+		await Promise.all([
+			lifecycleQueue.drain(drainMs),
+			captureQueue.drain(drainMs),
+		]);
 	});
 
 	pi.on("model_select", async (event, _ctx) => {
@@ -736,14 +759,8 @@ export default function (pi: ExtensionAPI) {
 		});
 	});
 
-	(pi.on as any)("session_fork", async (event: any, ctx: any) => {
-		post("Fork", {
-			session_id: sessionId,
-			parent_session_file: event.previousSessionFile,
-			timestamp: Date.now(),
-		});
+}
 
-		// Update session ID after fork - new session was created
-		sessionId = ctx.sessionManager.getSessionId();
-	});
+export default function trajectoryExtension(pi: ExtensionAPI): void {
+	registerTrajectoryExtension(pi);
 }

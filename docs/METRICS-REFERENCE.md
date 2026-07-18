@@ -1,15 +1,14 @@
 # Metrics Reference
 
-This page catalogs the metric surface emitted by the current Trajectory binary.
-It is intended as the public reference for metric names, tags, and dashboard
-semantics.
+This page catalogs the metric surface emitted by the current Trajectory
+release.
 
 For marker syntax and dashboard examples, see [MARKERS.md](MARKERS.md). For
 configuration and destination trust, see [USER-GUIDE.md](USER-GUIDE.md).
-For cross-agent source contracts, see
-[METRICS-CONSISTENCY-AUDIT.md](METRICS-CONSISTENCY-AUDIT.md).
-For Claude Code/provider cost-overlap, dedupe tags, and dashboard consumption guidance, see
-[COST-OVERLAP-CONSUMER-GUIDE.md](COST-OVERLAP-CONSUMER-GUIDE.md).
+For Agent Console and dashboard consumption guidance, see
+[`COST-OVERLAP-CONSUMER-GUIDE.md`](COST-OVERLAP-CONSUMER-GUIDE.md).
+For additive totals, CODEOWNER associations, coverage, and dashboard query
+patterns, see [Cost Attribution and Dashboarding](COST-ATTRIBUTION.md).
 For the built-in metric guide, run:
 
 ```bash
@@ -24,8 +23,8 @@ Trajectory metric names follow this shape:
 trajectory.<scope>.<concept>[.<measurement>]
 ```
 
-The common scopes are `turn`, `session`, `task`, `commit`, `pr`, `publish`,
-and `serve`. `gen_ai.usage.*` metrics use the OpenTelemetry GenAI naming
+The common scopes are `turn`, `session`, `task`, `oversight`, `commit`, `pr`,
+`publish`, and `serve`. `gen_ai.usage.*` metrics use the OpenTelemetry GenAI naming
 convention for token counts.
 
 Lifecycle suffixes are meaningful:
@@ -40,6 +39,11 @@ Lifecycle suffixes are meaningful:
 Metric type is part of the contract. A metric name should not be reused as both
 a gauge and a distribution. Completed samples use distinct names from live
 gauges for that reason.
+
+The `.total` suffix means “completed sample,” not “safe to add across every
+dimension.” Additivity still depends on the metric's grain and association
+semantics. Do not add turn, session, PR, or owner projections merely because
+each name ends in `.total`.
 
 ## Emission Gates
 
@@ -102,13 +106,13 @@ For the Datadog LLM Obs span tag contract, see
 | `trajectory.client_version` | Client or harness version from capture or cache | Omitted when unavailable |
 | `trajectory.turn_id` | Stable turn ordinal on turn-scoped metrics; prevents same-second turn samples from collapsing into one Datadog point | Omitted when the turn cannot be resolved |
 | `project_dir` | Project directory basename | Omitted |
-| `repo` | Git repository name from remote origin, or project directory basename when origin is unavailable | `unknown` when project directory is unavailable |
-| `owner` | Git repository owner from remote origin | `unknown` when remote origin is unavailable |
-| `git_remote_host` | Git remote host | `unknown` when remote origin is unavailable |
-| `trajectory.repo_source` | Provenance for `repo`, `owner`, and `git_remote_host`: `git_origin`, `git_origin_unparsed`, `project_dir`, `configured`, or `unknown` | `unknown` |
-| `trajectory.trace_type` | Metric grain: `turn`, `session`, `task`, `commit`, `pr`, or `serve` | Set by emitter |
+| `repo` | Git repository name from the selected remote, or project directory basename when remote attribution is unavailable | `unknown` when project directory is unavailable |
+| `owner` | Git repository owner from the selected remote | `unknown` when remote attribution is unavailable |
+| `git_remote_host` | Selected Git remote host | `unknown` when remote attribution is unavailable |
+| `trajectory.repo_source` | Provenance for `repo`, `owner`, and `git_remote_host`: `git_origin`, `git_remote`, `git_origin_unparsed`, `project_dir`, `configured`, or `unknown` | `unknown` |
+| `trajectory.trace_type` | Metric grain: `turn`, `session`, `task`, `oversight`, `commit`, `pr`, or `serve` | Set by emitter |
 | `trajectory.metric_lifecycle` | Metric catalog lifecycle: `current`, `legacy`, `debug`, or `unknown` | Set by metric catalog classification |
-| `trajectory.metric_provenance` | Bounded data provenance for the metric, such as `captured_session`, `activity_classifier`, `context_budget_estimator`, `waste_evaluator`, `skill_attribution`, `marker_evaluation`, `serve_process`, or `instrumentation_health` | Set by metric catalog classification |
+| `trajectory.metric_provenance` | Bounded data provenance for the metric, such as `captured_session`, `activity_classifier`, `context_budget_estimator`, `waste_evaluator`, `skill_attribution`, `marker_evaluation`, `repository_metadata`, `serve_process`, or `instrumentation_health` | Set by metric catalog classification |
 | `trajectory.metric_signal` | Intended use tier, such as `authoritative_usage`, `derived_behavior`, `operational`, `diagnostic`, or `investigate` | Set by metric catalog classification |
 | `trajectory.metric_family` | Current catalog family for built-in metrics | Omitted for legacy/debug/unknown classifications |
 
@@ -124,16 +128,18 @@ and non-sensitive.
 ### CODEOWNERS Attribution Tags
 
 When a repository has a GitHub-compatible `CODEOWNERS` file, Trajectory
-attributes successful file modifications, proven commit membership, and
-durable PR-scoped turn or local branch ranges to the owning users or teams.
-Attribution is enabled by default. It is derived from an immutable session
-snapshot and is projected onto eligible turn, task, and session metric records
-without cloning a metric point once per owner. Commit and PR attribution is
-published by the dedicated scope metrics below.
+attributes successful file modifications and eligible immutable commit
+membership to the owning users or teams. Durable PR production joins those
+rows only through exact assigned `pr_work_turns`; local branch composition is
+not production.
+Attribution is enabled by default. It is derived
+from an immutable session snapshot and is projected onto eligible turn, task,
+and session metric records without cloning a metric point once per owner.
+Commit and PR attribution is published by the dedicated scope metrics below.
 
 | Tag | Meaning |
 |---|---|
-| `trajectory.codeowner` | Owner identity. Existing base metrics include it for single-owner scopes; dedicated association metrics include one value per retained owner. LLM Obs and local-ui roots preserve up to five repeated values in deterministic rank order. |
+| `trajectory.codeowner` | Normalized owner identity without a leading `@`. Existing base metrics include it for single-owner scopes; dedicated association metrics include one value per retained owner. LLM Obs and local-ui roots preserve up to five repeated values in deterministic rank order. |
 | `trajectory.codeowner_scope` | Attribution grain: `turn`, `task`, `commit`, `pr`, or `session` |
 | `trajectory.codeowner_source` | Bounded evidence source such as `write`, `commit`, `pr_turn_range`, `pr_local_branch_range`, `task_turn_range`, `session_union`, or `mixed` |
 | `trajectory.codeowner_status` | `owned`, `partially_owned`, or `unowned` |
@@ -161,6 +167,9 @@ digests, or commit SHAs as part of this attribution. Email-only owners are
 excluded and counted. Configured tags cannot override derived
 `trajectory.codeowner*` values.
 
+`pr_local_branch_range` describes local composition only. It never enters the
+durable PR-production, coverage, session-production, or cost projections.
+
 ### Cost Overlap Tags
 
 Trajectory cost metrics carry bounded tags that let dashboards avoid summing
@@ -176,27 +185,89 @@ raw URLs, headers, credentials, helper commands, account IDs, or org IDs.
 | `trajectory.cost_overlap_risk` | `possible`, `aggregate_only`, `unknown`, `mixed` |
 | `trajectory.cost_overlap_signal` | `session_env`, `claude_settings`, `none`, `mixed` |
 | `trajectory.cost_role` | `attribution`, `client_telemetry` |
+| `trajectory.cost_contract` | `v2` on eligible live Trajectory cost samples that satisfy the current usage-integrity contract; historical imports/replays emit no Trajectory attribution cost samples |
 | `trajectory.cost_dedupe_group` | Provider/route bucket such as `anthropic:direct`, `anthropic:llm_gateway`, or `anthropic:mixed` |
 | `trajectory.cost_dedupe_confidence` | `high`, `medium`, `low`, `mixed` |
-| `trajectory.cost_source` | Source of the cost stream when different metric families can overlap; native Claude telemetry proxied by Trajectory uses `claude_native_otlp` |
+| `trajectory.cost_source` | Source of the cost stream when different metric families can overlap; Trajectory turn-derived attribution uses `turn_metrics`, while native Claude telemetry proxied by Trajectory uses `claude_native_otlp` |
+| `trajectory.cost_status` | `priced`, `unpriced`, `unavailable`, `invalid`, or `other` |
+| `trajectory.cost_reason` | Bounded attribution reason such as `model_missing`, `model_mismatch`, `rate_missing`, `pricing_source_unavailable`, or `other`; omitted when no reason applies |
+| `trajectory.pricing_source` | `provider_reported`, `organization_rate_card`, `local_rate_card`, `public_rate_card`, `client_telemetry`, `turn_attributions`, or `other` |
+| `trajectory.cost_method` | `provider_reported`, `four_component_token_rate_card`, `token_rate_card`, `request_rate`, `credit_rate`, `sum_of_turn_attributions`, or `other` |
+| `trajectory.cost_fidelity` | `native`, `token_derived`, `proxy`, `unpriced`, `aggregate`, or `other` |
+| `trajectory.cost_basis` | `gross_model_cost`, `usage_economic_cost`, `provider_rated_usage`, `amortized_seat`, or `other` |
+| `trajectory.pricing_unit` | `provider_amount`, `tokens`, `requests`, `credits`, or `other` |
+| `trajectory.pricing_version` | Shipped allowlisted version, bounded aggregate version, or `custom` for organization/local cards; exact custom versions stay in events and spans |
 
-The tags are applied to Trajectory-owned cost-bearing base metrics only:
-`trajectory.turn.cost.usd`, `trajectory.turn.cost.usd.total`,
-`trajectory.turn.web_search.cost.usd`,
+Local-ui/Lapdog spans additionally expose `trajectory.cost_state` with the
+customer-facing `available`, `partial`, or `unavailable` state and
+`trajectory.cost_reason_category` with a bounded operator category. Exact
+reasons, card IDs, catalog state, and severity stay in span metadata rather
+than metric tags. Unavailable cost never emits a monetary metric sample; an
+explicitly priced zero remains a present zero sample.
+
+The tags are applied to these Trajectory-owned cost-bearing base metrics:
+`trajectory.turn.cost.usd`, `trajectory.turn.cost.usd.additive`,
+`trajectory.turn.cost.usd.total`, `trajectory.turn.web_search.cost.usd`,
+`trajectory.turn.web_search.cost.usd.additive`,
 `trajectory.turn.web_search.cost.usd.total`,
 `trajectory.session.cost.usd.accumulated`,
 `trajectory.session.web_search.cost.usd.accumulated`,
 `trajectory.session.cost.usd.total`, and
 `trajectory.session.web_search.cost.usd.total`.
 
+The same `attribution` / `turn_metrics` identity is applied at serialization
+to turn-derived commit, PR, PR-work, and CODEOWNER cost projections:
+`trajectory.commit.cost.usd.total`,
+`trajectory.pr.cost.usd.attributed.total`,
+`trajectory.pr.containing_session.cost.usd.total`,
+`trajectory.pr.work.cost.usd.total`,
+`trajectory.codeowner.pr.production.cost.usd.total`, and the exclusive
+attributed/unattributed PR-work cost coverage metrics. These are projections of
+the same turn cost, not additional spend. The separate
+`trajectory.serve.llm_capacity.cost.usd.total` process-cost metric does not use
+`turn_metrics`.
+
 Claude Code native OTLP metrics proxied by Trajectory use
 `trajectory.cost_role:client_telemetry` and
 `trajectory.cost_source:claude_native_otlp` when that proxy path enriches the
-payload. Trajectory-owned cost metrics use `trajectory.cost_role:attribution`.
+payload. Trajectory turn-derived cost metrics use
+`trajectory.cost_role:attribution` and
+`trajectory.cost_source:turn_metrics`.
+
+`trajectory.cost_dedupe_group` identifies a low-cardinality provider/route
+bucket; it is not a request/event key. `trajectory.cost_dedupe_confidence`
+describes route-classification confidence, not record-match confidence.
+Historical points and already queued payloads may lack `trajectory.cost_source`
+because adding the tag creates a new metric-series identity. Keep those points
+visible as legacy/uncategorized and do not infer a source in the query layer.
+Authoritative cost totals must additionally require
+`trajectory.cost_contract:v2`. Untagged samples are legacy/unverified history;
+they remain queryable for investigation but must not be added to a v2 total.
+Generic historical backfill and provider-history replay emit no Trajectory token
+or cost attribution metrics. They may still materialize local sessions, publish
+eligible traces/session data, and emit non-attribution operational metrics. The
+`backfill-metrics` commands are local audit previews only; submit/readback modes
+are rejected. Legacy points already present in Datadog remain outside the v2
+contract and are not rewritten.
+
+Trajectory's durable metric outbox assigns each authoritative additive v2 cost
+sample a logical turn/session identity that excludes delivery timestamp,
+destination display name, and metrics transport. Exact local replays are
+skipped across restarts and config churn; a changed value for an existing
+identity fails closed. Once an HTTP submit begins, only an explicit 429 is
+automatically retryable. Network, timeout, 5xx, crash, or post-submit ledger
+ambiguity is terminal `ambiguous_delivery` to avoid a second additive point.
+This is Trajectory delivery idempotency, not cross-source provider/native cost
+deduplication.
 
 ## Per-Turn Metrics
 
 Per-turn metrics are emitted on completed turn events.
+Marker-derived `trajectory.turn.*` metrics follow the same lifecycle: Trajectory
+evaluates them after the completed turn is materialized, publishes only the
+current turn's points, and does not defer or replay those points in the normal
+session-end metric cycle. Their `trajectory.session.*` rollups remain
+session-end metrics.
 
 | Metric | Type | Unit | Notes |
 |---|---|---|---|
@@ -205,11 +276,14 @@ Per-turn metrics are emitted on completed turn events.
 | `gen_ai.usage.cache_creation_tokens` | count | token | Emitted when cache creation tokens are greater than zero |
 | `gen_ai.usage.cache_read_tokens` | count | token | Emitted when cache read tokens are greater than zero |
 | `trajectory.turn.number` | gauge | turn | One-indexed turn number when known |
-| `trajectory.turn.cost.usd` | gauge | USD | Point-in-time turn cost; zero is valid |
-| `trajectory.turn.cost.usd.total` | distribution | USD | Completed-turn cost sample; use `p95:`/`avg:` queries |
+| `trajectory.turn.cost.usd` | gauge | USD | Latest-value compatibility view of a completed turn's cost; zero is valid; do not use for spend totals |
+| `trajectory.turn.cost.usd.additive` | count | USD | Authoritative additive completed-turn cost stream; use `sum:...as_count()` for spend totals with the v2 attribution filters |
+| `trajectory.turn.cost.usd.total` | distribution | USD | One completed-turn cost observation; use for `p95:`/`avg:` population analysis, not authoritative spend totals |
 | `trajectory.turn.web_search.requests` | gauge | request | WebSearch requests in the completed turn |
+| `trajectory.turn.web_search.requests.additive` | count | request | Additive WebSearch request stream |
 | `trajectory.turn.web_search.requests.total` | distribution | request | Completed-turn WebSearch request sample |
 | `trajectory.turn.web_search.cost.usd` | gauge | USD | WebSearch cost in the completed turn at $0.01 per request |
+| `trajectory.turn.web_search.cost.usd.additive` | count | USD | Additive WebSearch cost stream |
 | `trajectory.turn.web_search.cost.usd.total` | distribution | USD | Completed-turn WebSearch cost sample |
 | `trajectory.turn.duration_ms` | gauge | ms | Point-in-time completed-turn duration when derivable |
 | `trajectory.turn.duration_ms.total` | distribution | ms | Completed-turn duration sample |
@@ -218,28 +292,76 @@ Per-turn metrics are emitted on completed turn events.
 | `trajectory.turn.thinking_tokens` | count | token | Reasoning/thinking token count when present |
 | `trajectory.turn.cache_efficiency` | gauge | ratio | Cache read share of cache read plus cache creation |
 | `trajectory.turn.files_modified` | gauge | file | Edit/write-style tool activity in the turn |
+| `trajectory.turn.files_modified.additive` | count | file | Additive edit/write operation stream; this is not a global distinct-file count |
 | `trajectory.turn.files_read` | gauge | file | Read tool activity in the turn |
+| `trajectory.turn.files_read.additive` | count | file | Additive read operation stream; this is not a global distinct-file count |
 | `trajectory.turn.subagent_invocations` | gauge | invocation | Subagent starts observed in the turn |
+| `trajectory.turn.subagent_invocations.additive` | count | invocation | Additive subagent-start stream |
 | `trajectory.turn.compactions` | gauge | compaction | Compactions observed in the turn |
+| `trajectory.turn.compactions.additive` | count | compaction | Additive completed-turn compaction stream |
 | `trajectory.turn.lines_of_code.count` | count | line | Per-turn added/removed line deltas; tagged with `type:added` or `type:removed` |
 
 Grouped per-turn metrics emit one data point per dimension value:
 
 | Metric | Type | Dimension |
 |---|---|---|
-| `trajectory.turn.tool_uses` | gauge | `tool_name` |
+| `trajectory.turn.tool_uses` | gauge | `tool_name`, `tool_type`; MCP calls also carry `mcp_server`, `mcp_tool`, and `mcp_source_scope` when derivable |
+| `trajectory.turn.tool_uses.additive` | count | Same dimensions as `trajectory.turn.tool_uses`; authoritative long-window tool-use totals |
 | `trajectory.turn.tool_uses.total` | distribution | No `tool_name`; total tools in the completed turn |
 | `trajectory.turn.permission_prompts` | gauge | `decision`, `permission_mode`, `approval_path` |
+| `trajectory.turn.permission_prompts.additive` | count | Same dimensions as `trajectory.turn.permission_prompts`; authoritative long-window prompt totals |
 | `trajectory.turn.tool_decision` | count | `tool_name`, `decision`, `source`, `permission_mode`, `approval_path`; legacy inferred accepts use `permission_mode:not_captured` instead of pretending a mode was observed |
 | `trajectory.turn.code_edit_tool.decision` | count | `tool_name`, `decision`, `source`, `permission_mode`, `approval_path`, `language`; legacy inferred accepts use `permission_mode:not_captured` instead of pretending a mode was observed |
 | `trajectory.turn.errors` | gauge | `category`; per-turn failed tool results. Uses explicit `turn_end.tool_error_categories` when an adapter supplies it, otherwise derives categories from completed `tool_use` events with `success:false`. This is not a Trajectory publish/tool-call transport failure metric. |
+| `trajectory.turn.errors.additive` | count | Same `category` dimension as `trajectory.turn.errors`; authoritative long-window error totals |
 
-For dashboard percentile queries, prefer the `.total` distributions. For
-per-tool breakdowns, use `trajectory.turn.tool_uses` grouped by `tool_name`.
+For dashboard total queries, prefer `.additive` counts with `.as_count()`.
+For percentile queries, prefer the `.total` distributions. For
+per-tool breakdowns, use `trajectory.turn.tool_uses` grouped by `tool_name` or
+the cross-client `tool_type`. `tool_name` preserves the captured name for
+backward compatibility. `tool_type` uses Trajectory's semantic tool catalog and
+falls back to `unknown`. MCP dimensions are derived from sanitized explicit or
+native MCP provenance, then from the canonical `mcp__<server>__<tool>` naming
+convention. They never include tool arguments, input, or output content.
+Historical records and publish-time metric backfills created before these tags
+were captured retain the legacy `tool_name`-only shape; do not interpret an
+absent `mcp_server` as proof that the call was not MCP.
 Turn-scoped gauges are completed-turn samples. Do not sum long-window gauge
 rollups as literal event counts unless the dashboard explicitly chooses a
 single point per turn; use `.total` distributions, `.count` metrics, or
 `.completed_count` mirrors where those exist.
+
+## Automated Oversight Metrics
+
+Automated oversight is a model-backed operation invoked automatically to judge
+another action or output. Its metrics use
+`trajectory.trace_type:oversight`; they are not turn or session metrics for the
+reviewer container.
+
+| Metric | Type | Unit | Emission rule |
+|---|---|---|---|
+| `trajectory.oversight.operations.total` | count | operation | One point per normalized `oversight_result` |
+| `trajectory.oversight.duration_ms.total` | distribution | ms | One non-cumulative operation duration when positive and derivable |
+| `trajectory.oversight.cost.usd.total` | distribution | USD | One authoritative operation cost when independently attributable |
+| `gen_ai.usage.input_tokens` | count | token | Oversight-scoped when native operation input usage is available |
+| `gen_ai.usage.output_tokens` | count | token | Oversight-scoped when native operation output usage is available |
+| `gen_ai.usage.cache_creation_tokens` | count | token | Oversight-scoped when native cache-write usage is available |
+| `gen_ai.usage.cache_read_tokens` | count | token | Oversight-scoped when native cache-read usage is available |
+
+Every operation metric includes `trajectory.oversight.kind` (`approval`,
+`safety`, or `quality`) and `trajectory.oversight.outcome` (`passed`, `blocked`,
+`flagged`, `failed`, or `unknown`) when known. Provider role and feature names
+remain trace diagnostics rather than metric dimensions. Permission-decision
+metrics still describe the reviewed action; oversight metrics describe the
+model-backed judgment, so the two are not duplicates. `off` publish mode
+suppresses oversight spans and metrics for that destination.
+
+`trajectory view` provides a local content-free Automated Oversight dashboard
+over the durable operation records. It derives operations per 100 ordinary
+turns, outcome rates, p50/p95 added latency, oversight-only tokens, and the sum
+of costs whose attribution status is `priced`. Its provider-role and
+provider-feature filters are local diagnostics only; they do not extend the
+public metric dimension contract above.
 
 ## Per-Session Metrics
 
@@ -267,12 +389,33 @@ Session-end metrics:
 | `trajectory.session.web_search.cost.usd.total` | distribution | USD | Completed-session WebSearch cost sample |
 | `trajectory.session.compactions.total` | distribution | compaction | Completed-session compaction sample |
 | `trajectory.session.lines_changed` | gauge | line | Added plus removed lines when known |
+| `trajectory.repo.resolution.total` | count | session | One live-only, privacy-bounded repository-attribution diagnostic per completed session; grouped by `trajectory.repo_resolution` and not reconstructable by historical local-session audit |
 | `trajectory.session.yield_commit_count` | gauge | commit | Real git commits found in the session window by the yield tracker |
 | `trajectory.session.yield_commit_count.completed_count` | count | commit | Completed-session mirror for dashboard totals; prefer this for sums |
 | `trajectory.session.yield_main_commit_count` | gauge | commit | Yield commits reachable from the resolved main branch |
 | `trajectory.session.yield_main_commit_count.completed_count` | count | commit | Completed-session mirror for dashboard totals; prefer this for sums |
 | `trajectory.session.yield_revert_count` | gauge | commit | Revert commits among yielded main-branch commits |
 | `trajectory.session.yield_revert_count.completed_count` | count | commit | Completed-session mirror for dashboard totals; prefer this for sums |
+
+Cost completeness and Cursor rollout diagnostics:
+
+| Metric | Type | Unit | Dimensions | Notes |
+|---|---|---|---|---|
+| `trajectory.session.cost.priced_turns` | gauge | turn | Cost-attribution tags | Number of explicitly priced turns seen for the session |
+| `trajectory.session.cost.unpriced_turns` | gauge | turn | Cost-attribution tags, including `trajectory.cost_reason` | Number of explicit unpriced, unavailable, or invalid turns; nonzero suppresses the complete session USD metrics. A present but unrecognized model uses `trajectory.cost_reason:model_mismatch`; an absent model uses `trajectory.cost_reason:model_missing`. |
+| `trajectory.cursor.token_capture.turns_total` | count | turn | `status`, `source`, `client_surface`, `trajectory.client_surface` plus canonical session tags | Eligible Cursor generations grouped at session end. Missing terminal generations use `source:unobserved`; full generation IDs are never metric tags. |
+| `trajectory.pricing.lookup.total` | count | lookup | `status`, `reason`, `client_surface`, `trajectory.client_surface` plus cost-attribution/session tags | One aggregated denominator count per bounded tuple for eligible live Cursor generations in `shadow` or `emit` mode. Historical Cursor records do not emit it. |
+
+An explicitly unpriced Cursor turn emits no `trajectory.turn.cost.usd*` point.
+A partially priced Cursor session emits no complete session USD gauge or
+distribution. A legitimate priced zero remains a present USD sample with
+`trajectory.cost_status:priced`.
+
+When captured, `trajectory.client_surface` is the agent-neutral bounded
+execution surface (`desktop`, `cli`, `cloud`, `workspace`, `web`, or
+`unknown`). It is applied to canonical token and cost series as well as the
+Cursor rollout diagnostics. The diagnostic-only `client_surface` dimension is
+retained for query compatibility.
 
 Derived session behavior metrics:
 
@@ -323,22 +466,107 @@ session summaries are emitted at session end. The common
 `trajectory.codeowner_status`, and `trajectory.codeowner_truncated` tags state
 which scope each sample represents.
 
-| Metric | Type | Value |
-|---|---|---|
-| `trajectory.codeowner.scopes.total` | count | `1` per evaluated scope |
-| `trajectory.codeowner.owners.total` | distribution | Exact eligible owner count before the five-owner cap |
-| `trajectory.codeowner.owners.retained` | distribution | Retained owner count after the cap |
-| `trajectory.codeowner.owners.dropped` | distribution | Owner count omitted by the cap |
-| `trajectory.codeowner.truncated.total` | count | `1` for each scope whose owner set was truncated |
-| `trajectory.codeowner.email_owners_ignored.total` | count | Email owner identities excluded from the scope |
-| `trajectory.codeowner.associations.total` | count | `1` per retained owner and scope; carries `trajectory.codeowner` and `trajectory.codeowner_kind` |
-| `trajectory.codeowner.files.total` | distribution | Distinct associated files for one retained owner and scope |
+| Metric | Type | Value | Additivity |
+|---|---|---|---|
+| `trajectory.codeowner.scopes.total` | count | `1` per evaluated scope | Additive across distinct scopes at the same grain; do not combine grains |
+| `trajectory.codeowner.owners.total` | distribution | Exact eligible owner count before the five-owner cap | Diagnostic distribution, not a unique owner total across scopes |
+| `trajectory.codeowner.owners.retained` | distribution | Retained owner count after the cap | Diagnostic distribution |
+| `trajectory.codeowner.owners.dropped` | distribution | Owner count omitted by the cap | Additive dropped-association volume when summed at one grain |
+| `trajectory.codeowner.truncated.total` | count | `1` for each scope whose owner set was truncated | Additive across distinct scopes at one grain |
+| `trajectory.codeowner.email_owners_ignored.total` | count | Email owner identities excluded from the scope | Additive diagnostic volume |
+| `trajectory.codeowner.resolution_failures.total` | count | Resolution failures emitted at session end; carries bounded scope, reason, and snapshot-source tags | Additive diagnostic volume by one identical tag set |
+| `trajectory.codeowner.associations.total` | count | `1` per retained owner and scope; carries `trajectory.codeowner` and `trajectory.codeowner_kind` | Non-exclusive across owners |
+| `trajectory.codeowner.files.total` | distribution | Distinct associated files for one retained owner and scope | Non-exclusive across owners |
 
 `trajectory.codeowner.associations.total` is intentionally non-exclusive: one
 co-owned file contributes an association to each retained owner. Do not sum it
 as a global file count. Use `trajectory.codeowner.owners.dropped` and
 `trajectory.codeowner.truncated.total` to measure how often the five-owner cap
 loses owner dimensions.
+
+`trajectory.codeowner.resolution_failures.total` carries exactly these
+diagnostic dimensions:
+
+- `trajectory.codeowner_scope`;
+- `trajectory.codeowner_failure_reason`: `missing`, `parse_error`,
+  `snapshot_store_error`, or `change_files_unavailable`; and
+- `trajectory.codeowner_snapshot_source`: `session_head`,
+  `persisted_snapshot`, or `pr_turn_range`.
+
+The metric is emitted at session end and contains categorical counts only. It
+never carries paths, Git object IDs, CODEOWNERS contents, or source content.
+Use `trajectory audit --source-data` for the matching local categorical
+summary.
+
+### PR production owner metrics
+
+These distribution samples are emitted once per retained owner and finalized
+PR context. They carry one scalar `trajectory.codeowner`, its
+`trajectory.codeowner_kind`, the common CODEOWNER tags above, and the durable
+PR-work identity/context tags listed below. Co-owned turns contribute their
+full values to every involved retained owner, so every row is non-exclusive.
+
+| Metric | Value | Additivity |
+|---|---|---|
+| `trajectory.codeowner.pr.production.turns.total` | Assigned completed turns whose eligible production involved the retained owner | Additive for one selected owner across mutually exclusive contexts; never sum across owners |
+| `trajectory.codeowner.pr.production.cost.usd.total` | Full completed-turn cost involving the retained owner | Overlaps across owners; never use as a global total, allocation, or chargeback |
+| `trajectory.codeowner.pr.production.input_tokens.total` | Full input-token count involving the retained owner | Overlaps across owners |
+| `trajectory.codeowner.pr.production.output_tokens.total` | Full output-token count involving the retained owner | Overlaps across owners |
+| `trajectory.codeowner.pr.production.cache_read_tokens.total` | Full cache-read-token count involving the retained owner | Overlaps across owners |
+| `trajectory.codeowner.pr.production.cache_creation_tokens.total` | Full cache-creation-token count involving the retained owner | Overlaps across owners |
+
+Use a flat Top List grouped by `trajectory.codeowner`. Never stack these
+groups, sum them into a total, or describe them as spend allocation. There is
+no honest formula that derives mutually exclusive per-owner allocation from
+these overlapping series. Use `trajectory.pr.work.cost.usd.total` for the
+canonical ungrouped PR-work total.
+
+### Exclusive PR production coverage
+
+Coverage omits `trajectory.codeowner`. Each completed assigned turn goes to
+exactly one side according to whether its turn summary had at least one
+eligible production owner before the five-owner cap.
+
+| Metric | Value | Additivity |
+|---|---|---|
+| `trajectory.pr.work.codeowner_attributed_turns.total` | Assigned turns with at least one eligible production owner | Add with the matching unattributed metric |
+| `trajectory.pr.work.codeowner_unattributed_turns.total` | Assigned turns with no eligible production owner | Add with the matching attributed metric |
+| `trajectory.pr.work.codeowner_attributed_cost.usd.total` | Cost in attributed turns | Add with the matching unattributed metric |
+| `trajectory.pr.work.codeowner_unattributed_cost.usd.total` | Cost in unattributed turns | Add with the matching attributed metric |
+| `trajectory.pr.work.codeowner_attributed_input_tokens.total` | Input tokens in attributed turns | Add with the matching unattributed metric |
+| `trajectory.pr.work.codeowner_unattributed_input_tokens.total` | Input tokens in unattributed turns | Add with the matching attributed metric |
+| `trajectory.pr.work.codeowner_attributed_output_tokens.total` | Output tokens in attributed turns | Add with the matching unattributed metric |
+| `trajectory.pr.work.codeowner_unattributed_output_tokens.total` | Output tokens in unattributed turns | Add with the matching attributed metric |
+
+Under identical filters, time windows, and aggregation, each attributed plus
+unattributed pair equals its exact canonical metric:
+
+- turns: `trajectory.pr.work_turns.total`;
+- cost: `trajectory.pr.work.cost.usd.total`;
+- input: `trajectory.pr.work.input_tokens.total`; and
+- output: `trajectory.pr.work.output_tokens.total`.
+
+Coverage uses eligible-before-cap, so a truncated six-owner turn is still
+attributed.
+
+All fourteen PR CODEOWNER metrics carry `source:prwork`, `change_host`, Git
+repository `owner`, `repo`, `change_number`, `context_source`,
+`work_context_mode`, `identity_confidence`, `signal_confidence`,
+`local_range_status`, `trajectory.codeowner_scope:pr`,
+`trajectory.codeowner_source`, `trajectory.codeowner_status`, and
+`trajectory.codeowner_truncated`. Cost/token metrics additionally carry
+`trajectory.cost_role:attribution` and bounded provider/overlap tags when
+available. Turns metrics do not carry cost-overlap tags.
+
+These fourteen names are current emitted metrics, not reserved or planned
+names. Their metric-catalog lifecycle is `current`. The bounded diagnostic
+dimensions above describe derivation state without exposing commands, paths,
+refs, object IDs, diffs, CODEOWNERS patterns, or source content. Read/search
+ownership is not part of this production family; a future read/search contract
+must use separately labeled metrics and semantics.
+
+For exact additive-total, owner-involvement, coverage, reconciliation, and
+dashboard-label rules, see [Cost Attribution and Dashboarding](COST-ATTRIBUTION.md).
 
 ## Built-In Marker Metrics
 
@@ -372,12 +600,17 @@ surfaces:
 
 When multiple high-confidence surfaces describe the same skill in the same
 turn, Trajectory emits one invocation. Native Claude OTel or transcript
-attribution takes precedence over generic `Skill` tool evidence.
+attribution takes precedence over generic `Skill` tool evidence. When both
+Claude-native surfaces are present, completed transcript attribution supplies
+the invocation's `detected_from` tag.
 
-Codex skill activation is recovered from the structured `<skill>` envelope in
-the native rollout and tagged `detected_from:codex_skill_prompt`. cursor-agent
-loads an activated project or user skill through its Read tool; reads under the
-native `.cursor/skills/<name>/SKILL.md` path are tagged
+Codex skill activation is recovered from either the structured `<skill>`
+envelope in the native rollout, tagged `detected_from:codex_skill_prompt`, or a
+runtime-managed `exec` wrapper whose nested `tools.exec_command` performs a
+read-only load of `SKILL.md`, tagged `detected_from:codex_skill_read`. These
+signals are deduplicated when both describe the same skill in one turn.
+cursor-agent loads an activated project or user skill through its Read tool;
+reads under the native `.cursor/skills/<name>/SKILL.md` path are tagged
 `detected_from:cursor_skill_read`. Other direct `SKILL.md` reads remain
 lower-confidence observations.
 
@@ -400,6 +633,7 @@ All skill complexity series carry `skill_name`, `detected_from`,
 | Metric | Type | Scope | Source |
 |---|---|---|---|
 | `trajectory.turn.skill_tool_uses` | gauge | turn | Same-turn tool-use count tagged by `skill_name`, `tool_name`, `tool_type`, and signal dimensions |
+| `trajectory.turn.skill_tool_uses.additive` | count | turn | Additive same-turn tool-use stream with the same skill and tool dimensions |
 | `trajectory.turn.skill_tool_uses.total` | distribution | turn | Total non-skill tool calls in the skill-assisted turn |
 | `trajectory.turn.skill_distinct_tools.total` | distribution | turn | Distinct non-skill tool names in the skill-assisted turn |
 | `trajectory.turn.skill_duration_ms.total` | distribution | turn | Skill-assisted turn duration when turn timestamps are available |
@@ -408,6 +642,11 @@ Count-like marker session gauges also have turn-level count samples for
 turn-native reporting. Permission reports should use
 `trajectory.turn.permissions_denied` grouped by `tool`, `category`, and `source`
 when turn visibility matters.
+
+These marker-derived turn samples publish at turn end. For example,
+`trajectory.turn.skill_invocations` becomes available after the invoking turn
+completes; deleting or otherwise ending the coding-agent session is not part of
+its publication contract.
 
 | Metric | Type | Scope | Source |
 |---|---|---|---|
@@ -476,9 +715,70 @@ Commit and PR attribution metrics are distribution samples:
 | `trajectory.pr.cost.usd.attributed.total` | distribution | pr | Cost attributed to the PR/MR creation tail; carries `change_host`, `owner`, `repo`, and `change_number` when extracted |
 | `trajectory.pr.attributed_turns.total` | distribution | pr | Turns attributed to the PR/MR creation tail; carries `change_host`, `owner`, `repo`, and `change_number` when extracted |
 | `trajectory.pr.containing_session.cost.usd.total` | distribution | pr | Containing-session cost sampled once per PR/MR; carries `change_host`, `owner`, `repo`, and `change_number` when extracted; do not sum |
-| `trajectory.pr.contexts.total` | distribution | pr | One sample per detected PR/MR work context; carries PR/MR identity plus `context_source` and `signal_confidence` when extracted |
-| `trajectory.pr.work_turns.total` | distribution | pr | Turns covered by each detected PR/MR work context; carries PR/MR identity plus `context_source` and `signal_confidence` when extracted |
-| `trajectory.pr.work_duration_ms.total` | distribution | pr | Duration of each detected PR/MR work context; carries PR/MR identity plus `context_source` and `signal_confidence` when extracted |
+| `trajectory.pr.contexts.total` | distribution | pr | One sample per finalized workspace/creation PR work context; durable projection rows carry `source:prwork` plus bounded identity and range tags |
+| `trajectory.pr.interactions.total` | count | pr | One point per deduplicated explicit PR interaction turn; carries `trajectory.turn_id` and does not create a second spend assignment when another workspace is primary |
+| `trajectory.pr.work_turns.total` | distribution | pr | Completed turns assigned to one finalized PR work context |
+| `trajectory.pr.work_duration_ms.total` | distribution | pr | Sum of completed assigned-turn duration for one finalized PR work context, not wall-clock time across gaps |
+| `trajectory.pr.work.cost.usd.total` | distribution | pr | Canonical PR-work cost from completed turns with one primary PR assignment; do not add to turn/session or creation-tail cost |
+| `trajectory.pr.work.input_tokens.total` | distribution | pr | Input tokens from completed turns assigned to one primary PR context |
+| `trajectory.pr.work.output_tokens.total` | distribution | pr | Output tokens from completed turns assigned to one primary PR context |
+| `trajectory.pr.work.cache_read_tokens.total` | distribution | pr | Cache-read tokens from completed turns assigned to one primary PR context |
+| `trajectory.pr.work.cache_creation_tokens.total` | distribution | pr | Cache-creation tokens from completed turns assigned to one primary PR context |
+| `trajectory.codeowner.pr.production.{turns,cost.usd,input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens}.total` | distribution | pr | Per-retained-owner production involvement; six overlapping metrics, never additive across `trajectory.codeowner` |
+| `trajectory.pr.work.codeowner_{attributed,unattributed}_{turns,cost.usd,input_tokens,output_tokens}.total` | distribution | pr | Eight exclusive coverage metrics; each attributed/unattributed pair reconciles to the matching canonical PR-work measurement under identical filters |
+
+Durable PR-work rows carry `source:prwork`, `change_host`, `owner`, `repo`,
+`change_number`, `context_source`, `work_context_mode`,
+`identity_confidence`, `signal_confidence`, and `local_range_status` when
+available. Cost- and token-bearing PR-work rows also carry
+`trajectory.cost_role:attribution` plus the bounded provider-route and
+cost-overlap tags derived from their assigned turns.
+
+Managed historical replay uses separate campaign-scoped contracts:
+
+| Metric | Type | Scope | Notes |
+|---|---|---|---|
+| `trajectory.historical.pr.ai_assisted.observed` | gauge | historical | Value `1` at the first eligible interaction on each campaign-local activity day. Carries normalized PR identity plus `campaign_id`, extractor, user, version, client, host, and OS provenance. It never carries session, turn, project, model, email, or provider-user identity. Use a `max` reducer grouped by PR identity before counting distinct PRs; never sum raw points. |
+| `trajectory.historical.turn.cost.usd.additive` | count | historical | One trustworthy completed-turn USD delta for a managed `turn_cost_additive` campaign. Sum only with `.as_count()` and an authoritative `campaign_id`. It carries the authoritative `trajectory.cost_contract:v2` label plus bounded user, client, model, host, extractor, and cost-attribution tags, but no session or turn identity. Never overlap it with the live additive namespace in one time range. |
+| `trajectory.historical.replay.completed` | gauge | historical | Current completion signal for one managed campaign and laptop provenance. |
+| `trajectory.historical.replay.source_coverage_days` | gauge | historical | Readable in-window source span by client; it does not claim activity on every day. |
+| `trajectory.historical.replay.sessions_scanned` | gauge | historical | Canonical sessions scanned by client during materialization. |
+| `trajectory.historical.replay.sources_failed` | gauge | historical | Provider or canonical-source gaps retained with the materialized receipt. |
+| `trajectory.historical.replay.observation_points` | gauge | historical | Sparse observation rows projected before destination fanout. |
+| `trajectory.historical.replay.turns_priced` | gauge | historical | In-window completed turns accepted by the cost projector, by client source. |
+| `trajectory.historical.replay.turns_unpriced` | gauge | historical | In-window completed turns rejected for missing, unknown, proxy, or invalid cost evidence, by client source. |
+
+Historical replay metrics are authorized only by managed campaign config and
+managed required destinations. User trace, marker, cost, incognito, and
+sensitivity settings do not suppress this metadata-only namespace. Imported
+provider events remain `_metric_ineligible` for every ordinary metric family.
+The destination organization must enable Datadog Historical Metrics Ingestion
+for `trajectory.historical.*`; replay uses the native Metrics v2 intake so
+backdated points follow that contract.
+
+The first cost campaign materializes 90 complete Eastern days through EOD July
+16, 2026, while its initial product view defaults to the most recent 60 days.
+Token-derived amounts are recomputed with the campaign extractor's verified
+public rate card; trustworthy native/provider amounts are retained; Cursor
+proxy history fails closed as unpriced. Campaigns have immutable bounds,
+an attribution allowlist, explicit coverage semantics, and successor rules.
+
+`trajectory.pr.work.cost.usd.total` is additive across its mutually exclusive
+primary PR assignments, but it reuses base completed-turn cost. Never add it to
+`trajectory.turn.cost.usd.additive`, `trajectory.turn.cost.usd.total`,
+`trajectory.session.cost.usd.total`, or the
+legacy creation-tail PR cost metrics. CODEOWNER association metrics can overlap
+and are not a mutually exclusive allocation. Do not derive mutually exclusive
+owner spend from them. Use the current exclusive coverage pairs and dashboard
+formulas in [Cost Attribution and Dashboarding](COST-ATTRIBUTION.md).
+
+CODEOWNER production uses only successful current-session writes and eligible
+immutable session-produced commits. Entry baselines, downloaded changes,
+fetch/pull/switch/rebase/reset imports, and merge or cherry-pick alone are
+excluded. Resolution is local and uses no provider API or user credentials;
+paths, patterns, commands, refs, object IDs, diffs, source content, and email
+owners are not metric tags. Read/search ownership is reserved for a later,
+separately labeled investigation surface.
 
 PR-specific marker point metrics carry the canonical `session_id` tag, and rows
 with a source turn also carry `trajectory.turn_id`. Use PR identity tags only on
@@ -511,7 +811,7 @@ privacy/publish diagnostics.
 | `trajectory.serve.goroutine.panic_recovered_total` | count | `goroutine`, `action` | Serve background goroutine panic was recovered; `action` is `restart` or `give_up` |
 | `trajectory.serve.local_state.live_session_files` | gauge | Canonical serve tags plus `stage`, `warning`, `scan_error` | Count of non-lock live-session projection files found during the local-state health scan |
 | `trajectory.serve.local_state.heartbeat_files` | gauge | Canonical serve tags plus `stage`, `warning`, `scan_error` | Count of active-session heartbeat sentinel files found during the local-state health scan |
-| `trajectory.serve.local_state.instrumentation_health_records` | gauge | Canonical serve tags plus `stage`, `warning`, `scan_error` | Count of locally spooled instrumentation-health records found during the local-state health scan |
+| `trajectory.serve.local_state.instrumentation_health_records` | gauge | Canonical serve tags plus `stage`, `warning`, `scan_error` | Count of records retained in the rolling local instrumentation-health diagnostic buffer during the local-state health scan |
 | `trajectory.serve.local_state.serve_log_bytes` | gauge | Canonical serve tags plus `stage`, `warning`, `scan_error` | Current `trajectory-serve.log` size in bytes at the local-state health scan |
 | `trajectory.serve.local_state.serve_diag_bytes` | gauge | Canonical serve tags plus `stage`, `warning`, `scan_error` | Current `serve-diag.ndjson` size in bytes at the local-state health scan |
 | `trajectory.serve.publish.sensitivity_suppressed` | count | `client_source`, `destination`, `category`, `label` | Sensitive spans dropped for a destination |
@@ -555,10 +855,12 @@ vocabulary above before forwarding to the upstream collector. It returns
 success to Claude even if enrichment or the upstream request fails; when
 enrichment fails, the original payload is forwarded unchanged.
 
-The serve-level forwarder does not correct native client cost values, drop
-invalid datapoints, or emit the companion diagnostic counters below. The legacy
-session-scoped companion metrics proxy still performs those sanitization and
-cost-correction steps when explicitly enabled.
+The serve-level forwarder preserves native client metric values while adding
+bounded identity and cost-overlap tags. It does not correct or drop native
+datapoints, infer usage completeness from arbitrary OTLP batches, or turn
+missing/unknown model evidence into session-scoped proxy counters. Usage and
+model fidelity are owned by the durable capture, ingest, and cost-attribution
+paths described below.
 
 Datadog validation for Trajectory-owned metrics should use
 `trajectory publish metrics audit --readback` or `--readback-all`. Native
@@ -583,9 +885,32 @@ client-telemetry comparison.
 | Metric | Type | Notes |
 |---|---|---|
 | `claude_code.token.usage` | sum | Forwarded Claude Code token usage, enriched with session tags |
-| `claude_code.cost.usage` | sum/gauge | Forwarded Claude Code cost usage, sanitized and corrected from token totals when possible |
-| `trajectory.companion.usage_data_missing` | count | Proxied usage data was missing, invalid, or inconsistent |
-| `trajectory.companion.unknown_model` | count | Cost correction saw an unknown normalized model |
+| `claude_code.cost.usage` | sum/gauge | Forwarded Claude Code cost usage with its native datapoint value preserved and Trajectory source-selection tags added |
+
+The legacy session-proxy counters
+`trajectory.companion.usage_data_missing` and
+`trajectory.companion.unknown_model` are retired. Their useful diagnostic
+cases now have bounded owners in the canonical pipeline:
+
+- a present but unrecognized cost model contributes to
+  `trajectory.session.cost.unpriced_turns{trajectory.cost_reason:model_mismatch}`;
+  an absent model uses `trajectory.cost_reason:model_missing`;
+- Claude transcript usage that is still absent after the reconciliation window
+  emits `trajectory.instrumentation.derivation.fallback{reason:transcript_usage_missing}`;
+- a turn that reaches the final content-estimation fallback emits
+  `trajectory.instrumentation.derivation.fallback{reason:estimated_last_resort}`;
+- a completed turn whose usage remains absent after reconciliation and
+  estimation emits
+  `trajectory.instrumentation.capture.gap{reason:usage_missing}` and is stored
+  with `tokens_status=missing`;
+- eligible Cursor generations without terminal token usage contribute to
+  `trajectory.cursor.token_capture.turns_total{status:missing}`.
+
+The missing-usage signals describe a failed expected derivation path. They do
+not fire for an explicit zero or for clients and events that do not promise
+provider usage. In live `trajectory serve`, the last-resort fallback is routed
+through the publish engine; standalone ingest retains the bounded local
+instrumentation-health record.
 
 ## Instrumentation Health Metrics
 
@@ -619,10 +944,63 @@ only by code paths that explicitly create health records.
 | `trajectory.instrumentation.health.spool_depth` | gauge |
 | `trajectory.instrumentation.health.emit_dropped` | count |
 
+### Managed cost-fidelity heartbeat
+
+The following metrics are emitted only when both the managed-only
+`cost_fidelity_heartbeat` feature and its separate managed aggregate-export
+policy are enabled for a named cohort:
+
+| Metric | Type | Bounded tags |
+|---|---|---|
+| `trajectory.instrumentation.fidelity.cost_audit.run` | count | `outcome`, `reason` |
+| `trajectory.instrumentation.fidelity.cost_audit.native_to_capture.session` | count | `client_source`, `outcome`, `reason` |
+| `trajectory.instrumentation.fidelity.cost_audit.capture_to_outbox.session` | count | `client_source`, `outcome`, `reason` |
+| `trajectory.instrumentation.fidelity.cost_audit.delivery.session` | count | `client_source`, `outcome`, `reason` |
+
+These are reconciliation counts, not usage or cost. Never add the three leg
+metrics together as a session denominator. Compute coverage and fidelity for
+one leg at a time. The payload contains no user, email, session, model,
+repository, project, path, prompt, response, diff, binary version, host, or USD
+value. `client_source`, `outcome`, and `reason` use fixed catalogs; unknowns
+collapse to `other`. A local day with fewer than 10 eligible sessions emits
+only `cost_audit.run{outcome:skipped,reason:insufficient_cohort}`. Sparse split
+cells are collapsed and then suppressed if they remain below 10.
+
+The heartbeat covers only the immediately previous fully closed UTC day after
+activation, with settle lag and installation-local jitter. It never publishes
+historical metrics, catches up missed days, or reads a full transcript corpus.
+It accepts only terminal compatible-v2 attribution rows, explicit public or
+internal sensitivity watermarks, non-incognito/non-estimated/non-control-plane
+receipts, and direct per-session indexes. Missing evidence is ineligible.
+Only managed required destinations participate; project destinations are not
+audited or exported. Local export is write-only and does not resolve an
+application key. The centrally operated dashboard contract owns readback and
+query conformance.
+
+Every day is frozen as one immutable local snapshot before network submission,
+including its complete bounded cell set and all managed export destinations.
+Generic metric-outbox drains exclude heartbeat rows; retry requires the exact
+period identity. Trajectory reloads managed authorization before freezing and
+before each destination. If authorization is revoked, unsent rows are dropped.
+If a destination is partial, the day remains incomplete and only its frozen
+rows may retry; evidence from a later audit cannot be added. Unsent older-day
+rows are dropped at rollover and never publish after re-enable.
+
+Candidate and evidence reads are indexed and bounded by session count, total
+bytes, per-session bytes, and outbox rows. All receipt, watermark, sidecar,
+session, native, and selected outbox evidence counts toward those budgets.
+Budget exhaustion emits only the bounded `budget_exceeded` run metric when
+export remains authorized. Missing or stale sensitivity watermarks exclude the
+affected sessions; when that leaves fewer than 10 eligible sessions, the only
+export is the `insufficient_cohort` run metric. With managed export disabled,
+there is no remote heartbeat.
+
 `trajectory.instrumentation.health.spool_depth` is emitted as a remote-only
-gauge with bounded `component`, `signal`, and `reason` tags. It intentionally
-does not append to the local instrumentation-health spool. When a health record
-cannot be sanitized or written to the local spool,
+gauge with bounded `component`, `signal`, and `reason` tags. The legacy metric
+name reports occupancy of the rolling local diagnostic buffer; reaching its
+bounded capacity is normal because producers compact the oldest half and keep
+the newest records. The gauge intentionally does not append to that buffer.
+When a health record cannot be sanitized or the rolling-buffer write fails,
 `trajectory.instrumentation.health.emit_dropped` emits a remote-only count with
 bounded `component`, `signal`, `error_class`, and `reason` tags.
 
@@ -647,11 +1025,30 @@ Use `p95:` or `avg:` on distribution metrics such as
 `trajectory.commit.cost.usd.total`. Enable Datadog distribution percentiles for
 those metrics before relying on percentile queries.
 
-For live cost and cohort usage over a recent window, use
-`sum:trajectory.turn.cost.usd.total{...}`. `trajectory.session.cost.usd.total`
+For authoritative live cost and cohort usage after the v2 cutover, use:
+
+```text
+sum:trajectory.turn.cost.usd.additive{trajectory.cost_contract:v2,trajectory.cost_role:attribution,...}.as_count()
+```
+
+The positive contract filter excludes polluted legacy series without trying to
+rewrite them. The `.additive` COUNT series is the correction and backfill
+surface; any historical publish must come from a reconciled, explicitly
+approved correction set. Datadog historical-metrics correction does not replace
+distribution samples, so old distribution points remain legacy/unverified and
+must not be mixed into totals. `trajectory.session.cost.usd.total`
 is a completed-session final sample and should be used for final-session
 percentiles or averages, not for counting active sessions or estimating
 in-progress spend.
+
+For three turns costing `$2`, `$3`, and `$1`, the additive stream receives
+three deltas and `sum:...as_count()` returns `$6`; the distribution receives
+the same three observations for percentile analysis. The cumulative session values would be
+`[$2, $5, $6]`; those belong to
+`trajectory.session.cost.usd.accumulated` and must not be summed across time.
+The unsuffixed turn-cost gauge exists for latest-value inspection and backwards
+compatibility. It does not add a second source of cost and should not be added to
+either the additive total or the distribution.
 
 Use `.completed_count` mirrors for count-like session markers such as
 `trajectory.session.commits.completed_count` and
@@ -676,14 +1073,43 @@ non-token metrics when the model tag is absent. Prefer model as a grouping on
 `gen_ai.usage.*` token widgets, or apply a model filter only on widgets that
 intentionally require model-tagged data.
 
-Treat `repo` as a grouping label, not proof of Git identity. For repository
-dashboards that should only include parsed remotes, filter
+Treat `repo` as a grouping label, not proof of Git identity. Repository
+attribution first uses a bounded absolute Git command so global includes and
+`url.*.insteadOf` rewrites retain canonical Git semantics. If Git is missing or
+refuses the directory, Trajectory reads bounded local `.git` metadata without
+requiring Git on `PATH`. It selects `origin`, then the current branch's upstream
+remote, then a sole unambiguous remote. Normal repositories, nested working
+directories, gitdir files, linked worktrees, submodules, and bare repositories
+are supported. Project publish trust remains separately command-backed and
+fail-closed on Git ownership/safe-directory checks; successful metadata
+attribution alone never activates a project publish configuration.
+
+For repository dashboards that should only include parsed remotes, filter
 `trajectory.repo_source:git_origin`. Use `trajectory.repo_source:project_dir`
 to audit fallback coverage, `trajectory.repo_source:configured` for custom
 config tags, and `trajectory.repo_source:unknown` when no usable project
 directory or remote was available. `git_origin_unparsed` means Trajectory found
 a Git origin host and path, but could not split the path into both owner and
-repo.
+repo. `git_remote` means attribution came from the current branch upstream or
+the sole unambiguous non-origin remote.
+
+`trajectory.repo.resolution.total` emits once per completed session and is the
+only metric carrying `trajectory.repo_resolution`; the dimension is never
+copied onto normal base metrics. Success values are `metadata_origin`,
+`metadata_upstream`, `metadata_sole_remote`, `command_origin`,
+`command_upstream`, or `command_sole_remote`. `cache_fallback` covers a missing
+in-memory session attribution cache. Failure values are bounded to
+project-directory, metadata, command, missing, ambiguous, or unparseable
+categories. Paths, remote names, URLs, credentials, and raw errors are never
+emitted.
+
+The session-end retry can improve final session metrics when a repository or
+remote is created after session start. It does not rewrite already-emitted turn
+points or historical Datadog series. Existing backfill/dedup behavior is
+unchanged. Historical metric backfill does not retroactively recompute or repair
+repository-owner attribution in this change; backfill parity requires separate
+deduplication design so corrected labels do not create duplicate historical
+series.
 
 Dashboard templates should default `repo_source` filters to `*` while a fleet is
 rolling forward to a binary that emits `trajectory.repo_source`; otherwise the

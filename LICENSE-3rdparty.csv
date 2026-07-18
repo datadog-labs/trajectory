@@ -1,10 +1,13 @@
 Component,Origin,License,Copyright
 actions/checkout@v4,https://github.com/actions/checkout,MIT,See upstream license notice
+@earendil-works/pi-ai@*,https://www.npmjs.com/package/@earendil-works/pi-ai,MIT,See upstream license notice
+@earendil-works/pi-coding-agent@*,https://www.npmjs.com/package/@earendil-works/pi-coding-agent,MIT,See upstream license notice
 @types/node@^22.19.0,https://www.npmjs.com/package/@types/node,MIT,See upstream license notice
 fastmcp>=3.2.4,https://pypi.org/project/fastmcp/,Apache-2.0,See upstream license notice
 mcp>=1.26.0,https://pypi.org/project/mcp/,MIT,See upstream license notice
 PyYAML>=6.0,https://pypi.org/project/PyYAML/,MIT,See upstream license notice
 typescript@^5.9.0,https://www.npmjs.com/package/typescript,Apache-2.0,See upstream license notice
+typebox@*,https://www.npmjs.com/package/typebox,MIT,See upstream license notice
 cel.dev/expr@v0.25.1,https://cel.dev/expr,Apache-2.0,See upstream license notice
 cloud.google.com/go/compute/metadata@v0.9.0,https://cloud.google.com/go/compute/metadata,Apache-2.0,See upstream license notice
 github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp@v1.31.0,https://github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp,Apache-2.0,See upstream license notice

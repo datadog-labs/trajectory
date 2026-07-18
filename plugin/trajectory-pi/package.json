@@ -1,21 +1,24 @@
 {
   "name": "@datadog/trajectory-pi",
-  "version": "3.2.0",
+  "version": "3.2.2",
   "description": "Trajectory capture and skills for Pi - AI coding agent observability by Datadog",
   "type": "module",
   "main": "src/index.ts",
+  "pi": {
+    "extensions": ["./index.ts"]
+  },
   "scripts": {
     "test": "node --test --experimental-strip-types test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
   },
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/datadog-labs/trajectory"
-  },
-  "pi": {
-    "extensions": [
-      "./src/index.ts"
-    ]
   }
 }
