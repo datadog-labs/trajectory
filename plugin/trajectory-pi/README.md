@@ -28,11 +28,17 @@ The package manifest declares the Pi extension entrypoint:
 ```
 
 Pi discovers the extension from `~/.pi/agent/extensions/trajectory/package.json`;
-you do not need to add `src/index.ts` to `~/.pi/agent/settings.json`. The root
-`index.ts` file is a shim that re-exports `./src/index.ts` for Pi versions or
-workflows that scan package-root extension entrypoints.
+you do not need to add `src/index.ts` to `~/.pi/agent/settings.json`.
+The root `index.ts` file is a shim that re-exports `./src/index.ts` for Pi
+versions or workflows that scan package-root extension entrypoints.
 
 Then point `~/.pi/agent/mcp.json` at `~/.pi/agent/extensions/trajectory/bin/trajectory mcp`.
+
+Current Pi reports fork and new-session transitions through `session_start`.
+The extension records the exact provider session and parent IDs when the new
+header confirms the provider's previous-session file. OhMyPi uses a different
+CLI, configuration root, extension manifest, and package namespace; this Pi
+extension is not an OhMyPi live-capture package.
 
 ## Tools
 

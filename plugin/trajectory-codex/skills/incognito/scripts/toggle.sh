@@ -432,6 +432,7 @@ if ! is_safe_session_id "$SESSION_ID"; then
 fi
 
 SENTINEL="$STATE_DIR/incognito-${SESSION_ID}"
+PROVIDER_EVIDENCE="$STATE_DIR/provider-incognito-${SESSION_ID}"
 if [ "$ENABLE" = "toggle" ]; then
     if [ -f "$SENTINEL" ]; then
         ENABLE="false"
@@ -454,8 +455,15 @@ fi
 mkdir -p "$STATE_DIR"
 if [ "$ENABLE" = "true" ]; then
     printf 'incognito\n' | atomic_write_file "$SENTINEL"
+    case "$SESSION_ID" in
+        devin-*) printf '%s\n' "$SESSION_ID" | atomic_write_file "$PROVIDER_EVIDENCE" ;;
+    esac
     echo "Incognito mode ENABLED via local sentinel -- Datadog publish suppressed for session ${SESSION_ID}; local JSONL capture continues (${RESOLUTION_SOURCE:-resolved})"
 else
     rm -f "$SENTINEL"
+    case "$SESSION_ID" in
+        devin-*) ;;
+        *) rm -f "$PROVIDER_EVIDENCE" ;;
+    esac
     echo "Incognito mode DISABLED via local sentinel -- Datadog publish resumed for session ${SESSION_ID} (${RESOLUTION_SOURCE:-resolved})"
 fi

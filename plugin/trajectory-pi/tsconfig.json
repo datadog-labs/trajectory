@@ -5,23 +5,14 @@
     "moduleResolution": "NodeNext",
     "strict": true,
     "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@mariozechner/pi-coding-agent": [
-        "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/dist/index.d.ts"
-      ],
-      "@mariozechner/pi-ai": [
-        "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/@mariozechner/pi-ai/dist/index.d.ts"
-      ],
-      "@sinclair/typebox": [
-        "/opt/homebrew/lib/node_modules/@mariozechner/pi-coding-agent/node_modules/typebox/build/index.d.mts"
-      ]
-    },
-    "allowImportingTsExtensions": true
+      "@earendil-works/pi-coding-agent": ["/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/dist/index.d.ts"],
+      "@earendil-works/pi-ai/compat": ["/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/compat.d.ts"],
+      "typebox": ["/opt/homebrew/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/typebox/build/index.d.mts"]
+    }
   },
-  "include": [
-    "index.ts",
-    "src"
-  ]
+  "include": ["index.ts", "src"]
 }

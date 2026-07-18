@@ -2,6 +2,7 @@
   "name": "@datadog/trajectory-opencode",
   "version": "3.0.0",
   "description": "Trajectory capture plugin for OpenCode",
+  "type": "module",
   "exports": {
     "./server": "./src/index.ts"
   },

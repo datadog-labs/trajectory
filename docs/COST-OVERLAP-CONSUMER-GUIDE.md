@@ -17,13 +17,25 @@ where another billing stream is likely already covering the same spend.
 
 Never sum cost series across roles by default.
 
+This guide addresses overlap between telemetry and billing source families. It
+does not deduplicate CODEOWNER groups. `trajectory.cost_dedupe_group` cannot
+turn overlapping owner associations into mutually exclusive allocations. For
+owner additivity, coverage, and dashboard recipes, use
+[Cost Attribution and Dashboarding](COST-ATTRIBUTION.md).
+
 Use `trajectory.cost_role` as the first partition:
 
 | Role | Meaning | Default UI treatment |
 |---|---|---|
 | `attribution` | Trajectory-derived local cost attribution | Use for user, project, session, turn, and model breakdowns. |
 | `client_telemetry` | Native client telemetry proxied through Trajectory | Show as a separate source or validation stream. |
-| Missing | Legacy or non-overlap-aware series | Keep visible; do not auto-hide. |
+| Missing | Legacy or non-overlap-aware series | Keep visible only in a legacy/unverified investigation view; exclude from authoritative totals. |
+
+Trajectory turn-derived cost metrics from current publishers always carry
+`trajectory.cost_role:attribution` and
+`trajectory.cost_source:turn_metrics`. Missing roles or sources therefore
+identify legacy/external or separately sourced series, not another Trajectory
+stream that should be added to totals.
 
 For total-spend cards, choose one source family for the card. Do not add
 Trajectory attribution to client telemetry, provider analytics, gateway
@@ -35,6 +47,7 @@ un-deduped comparison.
 | Tag | Use in UI decisions |
 |---|---|
 | `trajectory.cost_role` | Primary partition for attribution vs native client telemetry. |
+| `trajectory.cost_contract` | Positive integrity contract. Authoritative Trajectory totals require `v2`; generic backfill and legacy history omit it. |
 | `trajectory.cost_dedupe_group` | Stable grouping key for possible overlap buckets, for example `anthropic:direct`. |
 | `trajectory.cost_overlap_risk` | Main automatic dedupe signal. |
 | `trajectory.provider_cost_visibility` | Tells which external billing surface may contain the same spend. |
@@ -46,11 +59,306 @@ Use `trajectory.cost_dedupe_group` rather than raw model, service, or provider
 text for dedupe grouping. Model names can change within the same billing route;
 the dedupe group is intentionally stable and low-cardinality.
 
+The group is a route bucket, not an event identity. Likewise,
+`trajectory.cost_dedupe_confidence` is confidence in route classification, not
+confidence that two metric points are the same charge. Exact record-level
+deduplication requires a stable request/event identity shared by the sources.
+The currently available aggregate metrics do not provide that identity across
+Trajectory, Claude native OTel, Anthropic analytics, and Cursor Admin.
+
+PR-work and owner-production cost metrics are derived projections of
+Trajectory attribution, not new billing sources. They use the same
+`trajectory.cost_role:attribution`, `trajectory.cost_source:turn_metrics`, and
+bounded route/overlap vocabulary as their contributing turn cost. A mixed contributing
+set reduces to the documented `mixed` values. These source-overlap tags do not
+make owner groups additive.
+
+## Source Selection Versus Reconciliation
+
+Agent Console must keep these operations separate:
+
+1. **Availability:** Does this source have data for this agent, signal, scope,
+   and time window?
+2. **Selection:** Which one source answers the requested product question?
+3. **Comparison:** How do separately labeled sources differ after their scopes
+   are aligned?
+4. **Deduplication:** Can records be matched by a shared stable identity before
+   aggregation?
+
+Current Agent Console cost views should implement availability, exclusive
+selection, and side-by-side comparison. They must not claim record-level
+deduplication. Matching only by email, model, and timestamp is heuristic and is
+not safe for authoritative spend.
+
+The managed Trajectory cost-fidelity heartbeat does not change this rule. Its
+three leg metrics validate native-to-capture, capture-to-outbox, and delivery
+separately for a privacy-eligible local cohort. They do not mint a shared
+request identity across Trajectory, gateway, provider, native-client, and cloud
+billing sources, and they must not be used as an employee-spend total.
+
+Before using provider, gateway, cloud, or Cursor organization data as a total,
+align account/workspace, route, product, currency, included/BYOK/failed usage
+policy, event-time window, time zone, and late/replayed data behavior. A
+difference in coverage is not automatically a pricing error.
+
+For customers with different upstream collection:
+
+- if exactly one authoritative cost source is available, select it exclusively;
+- if multiple sources share a stable request/event identity, reconcile at that
+  identity before aggregation and report unmatched coverage;
+- if sources have only route/time/user/model overlap, keep them side by side and
+  label the comparison heuristic-do not add or auto-deduplicate them;
+- if BYOK, included usage, failed requests, currency, workspace, event time,
+  late-arrival, or replay policy differs, align those scopes before comparing;
+- if required provenance is absent, show an unverified/coverage state rather
+  than zero, “deduplicated,” or an authoritative combined total.
+
+## Agent Console Source Registry
+
+Agent Console currently treats an array of metric names as additive. Replace
+that implicit behavior with an explicit registry and per-signal policy. Do not
+reuse the widget query field named `data_source`; call the provenance field
+`telemetrySource`.
+
+```ts
+type TelemetrySourceId =
+  | 'trajectory'
+  | 'claude_otel'
+  | 'anthropic_usage'
+  | 'claude_code_integration'
+  | 'cursor_usage';
+
+type ValueSemantics =
+  | 'completed_sample'
+  | 'cumulative_counter'
+  | 'latest_gauge'
+  | 'event_count';
+
+type SourceDefinition = {
+  id: TelemetrySourceId;
+  label: string;
+  availabilityProbe: { metric: string; filter?: string; strategy: 'has_points' };
+  identity: {
+    userTag?: string;
+    modelTag?: string;
+    repoTag?: string;
+    sessionTag?: string;
+    turnTag?: string;
+    eventIdTag?: string;
+  };
+};
+
+type MetricBinding = {
+  metric: string;
+  telemetrySource: TelemetrySourceId;
+  signal: 'cost_usd' | 'input_tokens' | 'output_tokens' | 'sessions' |
+    'commits' | 'pull_requests' | 'llm_requests' | 'tool_uses' |
+    'web_search_requests';
+  filter?: string;
+  userTag?: string;
+  modelTag?: string;
+  repoTag?: string;
+  sessionTag?: string;
+  turnTag?: string;
+  eventIdTag?: string;
+  unit: 'usd' | 'cent' | 'token' | 'count';
+  unitScale?: number;
+  aggregation: 'sum' | 'count' | 'latest';
+  valueSemantics: ValueSemantics;
+  overlapGroup: string;
+  composition: 'exclusive' | 'additive_component';
+  compositionGroup?: string;
+  componentId?: string;
+};
+
+type SignalSourcePolicy = {
+  signal: MetricBinding['signal'];
+  strategy: 'exclusive_source' | 'set_union' | 'compare_only';
+  preferredSources: TelemetrySourceId[];
+};
+```
+
+Authority belongs to a signal policy, not globally to one producer. Provider
+analytics may be preferred for cost while Claude OTel or Trajectory is
+preferred for session activity.
+
+Every binding must declare source, signal, unit, value semantics, and overlap
+group. Remove bare string metric bindings or normalize them through an
+explicit source-specific helper. A missing provenance field must not silently
+default to an `integrations` bucket.
+
+## Resolver Contract
+
+Resolve one plan per agent, signal, view, and time window before constructing
+the value query:
+
+```ts
+type SourcePlan = {
+  agentId: string;
+  signal: MetricBinding['signal'];
+  mode: 'auto' | 'explicit' | 'compare';
+  selectedSources: TelemetrySourceId[];
+  bindings: MetricBinding[];
+  reason: 'configured' | 'preferred_available' | 'fallback_available';
+};
+```
+
+The resolver must enforce:
+
+1. `auto` chooses the first available source in the signal policy.
+2. `explicit` uses exactly the requested source. If it is unavailable, return
+   an unavailable state instead of zero or a silent fallback.
+3. `compare` keeps one separately labeled formula/column per source. It never
+   produces a combined scalar total.
+4. Bindings from different sources in the same `overlapGroup` are mutually
+   exclusive.
+5. `additive_component` bindings may be added only when they share both a
+   telemetry source and `compositionGroup`.
+6. A valid zero is data and never triggers fallback.
+7. Resolve availability before the value query. Neither
+   `default_zero(primary) + fallback` nor `max(primary, fallback)` selects a
+   source safely.
+8. Active-user counts use one source or a set union over canonical user IDs;
+   never add source-level active-user counts.
+9. Model option lists may union and deduplicate names, but Model Usage values
+   still follow the resolved cost source.
+
+Resolve the plan once at the Agent Console page boundary. Dashboard totals,
+Model Usage, User Analytics, agent details, and user/team side panels must
+receive the same effective plan rather than independently querying all metric
+bindings.
+
+## Agent Console Metric Mappings
+
+### Claude Code
+
+| Source | Cost metric | Identity tags | Recommended role |
+|---|---|---|---|
+| `anthropic_usage` | `anthropic.user_cost.amount` | `user_email`, `model` | Preferred provider-cost view after scope validation |
+| `claude_otel` | `claude_code.cost.usage` | `user.email`, `model`, and `session.id` when present | Native client telemetry and activity |
+| `trajectory` | `trajectory.turn.cost.usd.additive` filtered to `trajectory.client_source:claude-code` | `trajectory.user_email`, `gen_ai.request.model`, `session_id`, `trajectory.turn_id` | Local attribution and drilldown |
+| `claude_code_integration` | Legacy `claude_code.*` cost series | `actor_email`, `model`, `repo` | Legacy fallback only |
+
+Suggested source priority is per signal:
+
+```text
+cost_usd: anthropic_usage -> claude_otel -> trajectory -> claude_code_integration
+sessions/commits/pull_requests/activity: claude_otel -> trajectory -> claude_code_integration
+input/output/cache tokens: anthropic_usage -> trajectory
+```
+
+The product owner may choose Trajectory first for an attribution view. The key
+invariant is that only one source appears in an authoritative cost request.
+
+```text
+# Provider aggregate
+sum:anthropic.user_cost.amount{product:claude_code} by {user_email,model}.as_count()
+
+# Native client telemetry
+sum:claude_code.cost.usage{*} by {user.email,model}.as_count()
+
+# Trajectory completed-turn attribution
+sum:trajectory.turn.cost.usd.additive{trajectory.cost_contract:v2,trajectory.cost_role:attribution,trajectory.client_source:claude-code,trajectory.cost_source:turn_metrics}.as_count()
+  by {trajectory.user_email,gen_ai.request.model}
+```
+
+Do not query `trajectory.turn.cost.usd` for spend totals. It is a latest-value
+gauge. `.total` is one non-cumulative completed-turn sample and is the additive
+time-window metric. If one series reports `$1`, `$2`, and `$3`, the latest
+gauge is `$3`; the three completed-turn samples sum to `$6`. `.total` is not a
+running session total and therefore does not re-add earlier turns.
+
+### Cursor
+
+| Source | Metric | Semantics | Treatment |
+|---|---|---|---|
+| `cursor_usage` | `cursor.usage_events.total_cents` | Gross model economic usage | Sum events; do not label billed cash |
+| `cursor_usage` | `cursor.usage_events.charged_cents` | Provider-rated event debit | Candidate provider-rated usage view |
+| `cursor_usage` | `cursor.usage_events.cursor_token_fee` | Fee component already represented in `charged_cents` | Never add to `charged_cents` |
+| `cursor_usage` | `cursor.spending.spend_cents` | Current-cycle on-demand-spend gauge | Latest value for one cycle; never sum over time |
+| `trajectory` | `trajectory.turn.cost.usd.additive` filtered to `trajectory.client_source:cursor` | Local observed-turn token-derived attribution when complete and exactly priced | Attribution ledger; never add to Cursor organization cost |
+
+There is no current event ID shared by Cursor Admin and a Trajectory turn.
+User/model/time-bucket comparison is aggregate calibration, not per-turn
+deduplication.
+
+```text
+# Cursor gross model economic usage
+sum:cursor.usage_events.total_cents{*} by {user_email,model}.as_count()
+
+# Trajectory local observed-turn attribution
+sum:trajectory.turn.cost.usd.additive{trajectory.cost_contract:v2,trajectory.cost_role:attribution,trajectory.client_source:cursor,trajectory.cost_source:turn_metrics}.as_count()
+  by {trajectory.user_email,gen_ai.request.model}
+```
+
+The formula, public-rate provenance, organization-card override, and shadow
+gates are documented in `trajectory user-guide cursor-cost`.
+
+Cursor request counts, tool uses, and web searches are different signals. Do
+not reuse one metric array for all three because they currently appear under a
+shared API-request field.
+
+## Agent Console Change Locations
+
+The implementation should update these Agent Console responsibilities:
+
+| Location | Required change |
+|---|---|
+| `lib/agent/agent.types.ts` | Require `telemetrySource`, signal, semantics, unit, overlap, and composition metadata; remove implicit bare-string provenance. |
+| `toolkit/user-panel/agents/claude-code-agent.ts` | Replace additive cost bindings with per-signal source policies and use Trajectory `.total`. |
+| `toolkit/user-panel/agents/cursor-agent.ts` | Separate gross, charged, fee, spend-gauge, and Trajectory bindings; never add source families. |
+| `AgentConsolePageV2.heavy.tsx` | Resolve one page-level source plan before passing agents/data to dashboard and analytics views. |
+| `get-total-spend.scalar-request.ts` | Build the scalar from the selected source/composition group only. |
+| `get-model-usage.tile-def.ts` | Use the same resolved cost plan as Total Spend; do not add model groups across sources. |
+
+Current source filtering only affects User Analytics. The dashboard, Model
+Usage, detail pages, and side panels must inherit the same plan for the fix to
+be complete.
+
+## Customer Configuration Variants
+
+Support all of these without changing the resolver invariants:
+
+- **Static product defaults:** registry and source priorities live in web-ui.
+  This is acceptable initially but cannot express organization-specific
+  instrumentation.
+- **Organization policy:** configuration supplies preferred sources per
+  agent/signal. It may reorder sources but cannot make overlapping sources
+  additive.
+- **Backend-resolved policy:** preferred long-term; one endpoint returns the
+  effective source, available candidates, coverage, and reason for every
+  agent/signal/window, and all views consume it.
+- **Canonical upstream records:** required for future exact record-level
+  deduplication. Records need canonical and source event IDs, canonical user,
+  agent, session/turn/request, model, timestamp, signal, value, unit, source,
+  and ingestion time before aggregation.
+
+An organization policy can look like:
+
+```json
+{
+  "version": 1,
+  "agents": {
+    "claude-code": {
+      "signals": {
+        "cost_usd": {"preferred_sources": ["anthropic_usage", "claude_otel", "trajectory"]},
+        "sessions": {"preferred_sources": ["claude_otel", "trajectory"]}
+      }
+    },
+    "cursor": {
+      "signals": {
+        "cost_usd": {"preferred_sources": ["cursor_usage", "trajectory"]}
+      }
+    }
+  }
+}
+```
+
 ## Default Total Logic
 
 For each cost panel, first decide the product source:
 
-1. `Attributed cost`: Trajectory attribution only.
+1. `Attributed cost`: Trajectory attribution with `trajectory.cost_contract:v2` only.
 2. `Native client telemetry`: proxied Claude Code native telemetry only.
 3. `Provider or gateway billed cost`: external provider, gateway, or cloud
    billing analytics when available.
@@ -94,7 +402,7 @@ Default drilldown behavior:
 
 - Total cards should not sum across roles.
 - User, project, session, and turn breakdowns should prefer
-  `trajectory.cost_role:attribution`.
+  `trajectory.cost_contract:v2,trajectory.cost_role:attribution`.
 - Provider/gateway billing panels should not add Trajectory attribution when
   the same `trajectory.cost_dedupe_group` has likely overlap.
 - Compare views may show multiple roles side by side, but should label them as
@@ -125,13 +433,13 @@ Datadog query.
 
 | Intent | Required filters |
 |---|---|
-| Trajectory attribution totals | `trajectory.cost_role:attribution` |
+| Trajectory attribution totals | `trajectory.cost_contract:v2`, `trajectory.cost_role:attribution` |
 | Native client telemetry totals | `trajectory.cost_role:client_telemetry` |
 | Direct Anthropic attribution | `trajectory.cost_role:attribution`, `trajectory.provider_route:direct` |
 | Gateway-routed attribution | `trajectory.cost_role:attribution`, `trajectory.provider_route:llm_gateway` |
 | Cloud-provider-routed attribution | `trajectory.cost_role:attribution`, `trajectory.provider_route:bedrock` or `vertex` or `foundry` |
 | Likely aggregate-billing overlap | `trajectory.cost_overlap_risk:aggregate_only` |
-| Review-needed overlap | `trajectory.cost_overlap_risk:unknown` or `mixed`, or missing `trajectory.cost_role` |
+| Review-needed overlap | `trajectory.cost_overlap_risk:unknown` or `mixed`, missing `trajectory.cost_role`, or missing `trajectory.cost_contract` |
 | Stable source comparison | Group by `trajectory.cost_dedupe_group` and `trajectory.cost_role` |
 
 For Trajectory cost metrics, start with the cost-bearing metric names listed in
@@ -235,6 +543,19 @@ Before enabling dashboard UI overlap rendering, verify:
   when billed-total widgets prefer provider or gateway totals.
 - Compare views label each source family separately and avoid presenting a
   multi-role sum as deduped total spend.
+- Dashboard, Model Usage, User Analytics, details, and side panels receive the
+  same resolved source plan.
+- Claude cost snapshots contain only one of Anthropic, Claude OTel,
+  Trajectory, or the legacy integration.
+- Cursor cost snapshots never add `total_cents`, `charged_cents`, token fee,
+  spend gauge, and Trajectory attribution across incompatible semantics.
+- Trajectory spend uses `trajectory.turn.cost.usd.additive`, never the latest
+  gauge, and requires `trajectory.cost_contract:v2` plus
+  `trajectory.cost_role:attribution`.
+- Grouped queries use each binding's real user/model tags and do not invent an
+  `N/A` grouping dimension.
+- Active-user totals are source-exclusive or set-unioned by canonical user,
+  never numerically added.
 - Trace/span views display route and overlap context without trying to compute
   totals from spans.
 - Tests cover direct, gateway, cloud-provider, unknown, mixed, missing-tag, and

@@ -1,0 +1,49 @@
+{
+  "trajectory": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/agy/PreToolUse >/dev/null 2>&1 || true; printf '%s\\n' '{\"decision\":\"allow\"}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/agy/PostToolUse >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/agy/PreInvocation >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
+        "timeout": 5
+      }
+    ],
+    "PostInvocation": [
+      {
+        "type": "command",
+        "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/agy/PostInvocation >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
+        "timeout": 5
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/agy/Stop >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
+        "timeout": 10
+      }
+    ]
+  }
+}

@@ -12,9 +12,6 @@
     "PostToolUse": [{ "matcher": "", "hooks": [
       { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PostToolUse >/dev/null 2>&1 || true", "timeout": 8 }
     ] }],
-    "PostToolUseFailure": [{ "matcher": "", "hooks": [
-      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PostToolUseFailure >/dev/null 2>&1 || true", "timeout": 8 }
-    ] }],
     "Stop": [{ "matcher": "", "hooks": [
       { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s Stop >/dev/null 2>&1 || true", "timeout": 10 }
     ] }],
@@ -32,9 +29,6 @@
     ] }],
     "SubagentStop": [{ "matcher": "", "hooks": [
       { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s SubagentStop >/dev/null 2>&1 || true", "timeout": 8 }
-    ] }],
-    "SessionEnd": [{ "matcher": "", "hooks": [
-      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 5s SessionEnd >/dev/null 2>&1 || true", "timeout": 15 }
     ] }]
   }
 }

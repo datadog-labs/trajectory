@@ -39,7 +39,25 @@ Turn spans keep token and cost aggregates on the span itself. When turn metrics 
 
 The user config setting `export.placeholder_llm_span: false`, or publish destination setting `placeholder_llm_span: false`, disables Trajectory's synthetic LLM child span for turn-cost enrichment. It does not remove real LLM spans, and it does not remove the turn-level cost metric or fallback metadata above.
 
+Real `llm_call` records may include `cost_source` alongside
+`cost_nanodollars`. Cost components are always non-negative and their sum must
+equal `total`. When a provider exposes only an exact native total, Trajectory
+allocates the strict component fields proportionally using the best available
+model/token weights, preserves the exact total, and labels the source as
+native. Reasoning-output tokens remain a distinct usage counter but are priced
+as output tokens.
+
 Subagent spans default to `export.subagent_span_mode: semantic`: synchronous subagents attach under the launching Agent/Task tool span, while async background subagents attach under the task-notification join turn. The child session trace is still preserved through span links and child trace metadata. Set `export.subagent_span_mode: links_only`, or destination `subagent_span_mode: links_only`, to suppress the extra parent-side subagent task span and keep only links on the nearest existing parent span. See [Subagent Trace Model](SUBAGENT-TRACE-MODEL.md) for the client-by-client validation matrix.
+
+Automated model-backed reviewers emit content-free `oversight_start` and
+`oversight_result` lifecycle records with a stable `oversight_id`, bounded kind
+and outcome, proven correlation fields, duration, usage/cost, and provider
+diagnostics. These lifecycle records never copy the reviewed transcript, tool
+arguments or output, or reviewer rationale. The durable
+`oversight_operations` table is idempotent by `oversight_id`. External
+projection defaults to `export.oversight_publish_mode: summary`; `full` also
+publishes the separate reviewer trace, and `off` publishes neither oversight
+spans nor metrics.
 
 The Datadog LLM Observability span tag contract is tracked in
 [LLM Obs Span Tags](LLM-OBS-SPAN-TAGS.md).
