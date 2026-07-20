@@ -168,15 +168,23 @@ trajectory claude
 trajectory claude -- "work on the release checklist"
 ```
 
-Project `.claude/skills` file instrumentation is opt-in because it can touch
-version-controlled files. Enable project skill sync only when you want that
-fallback path:
+Claude skill-file instrumentation is default-off because it writes reversible
+hook metadata into real `SKILL.md` files. Enable it explicitly, then run setup
+to refresh an existing Trajectory plugin installation without changing Claude
+settings. An active Claude session can use `/reload-plugins` to load the new
+generation. Project scope also requires the project opt-in:
 
 ```bash
+trajectory features enable claude_skill_file_hooks
+trajectory setup --clients cc
 TRAJECTORY_CLAUDE_SKILLS_PROJECT=1 trajectory claude skills sync --project
 trajectory claude skills status
 trajectory claude skills restore --stale
 ```
+
+Normal setup and Claude integration removal never edit these files. The
+explicit `trajectory claude skills restore` command removes Trajectory-owned
+hook entries while preserving unrelated frontmatter and user edits.
 
 On supported macOS launch chains, the non-mutating read-virtualization path can
 serve virtualized `SKILL.md` bytes through a managed Claude launch copy:

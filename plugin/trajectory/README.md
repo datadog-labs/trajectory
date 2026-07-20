@@ -8,7 +8,7 @@ Capture plugin for AI coding agents. Registers lifecycle hooks that post session
 trajectory setup --clients cc
 ```
 
-Setup writes a local Claude Code marketplace under `~/.trajectory/claude-marketplace`, registers that local path, refreshes it, then installs `trajectory@trajectory` at user scope. Existing installs are updated with `claude plugin update trajectory@trajectory --scope user` after the local marketplace is refreshed.
+Setup writes a local Claude Code marketplace under `~/.trajectory/claude-marketplace` without invoking Claude or changing Claude-owned settings. Claude administrators can register, enable, and auto-update that staged directory through managed settings; users can also adopt it through Claude's plugin interface. Existing user-scope installations are refreshed through Trajectory-owned registry and cache entries.
 
 Manual fallback:
 

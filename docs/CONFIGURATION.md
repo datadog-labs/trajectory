@@ -203,6 +203,31 @@ YAML files.
 See [API-APP-KEY-MANAGEMENT.md](API-APP-KEY-MANAGEMENT.md) for the complete API
 and application key storage, resolution, managed-mode, and rotation contract.
 
+### Choose A Publish Backend And Transport
+
+For ordinary single-destination setup, do not set a backend or transport mode.
+The `export.*` fields create the Datadog destination `_config_datadog`, whose
+traces and metrics use agentless OTLP by default.
+
+Explicit destinations can select a backend:
+
+| Backend | Config value | Use when |
+|---|---|---|
+| Datadog | `type: datadog` | Trajectory should publish to Datadog with a Datadog API key; traces and metrics default to agentless OTLP |
+| Datadog Agent | `type: datadog_agent` | A local or managed Datadog Agent owns egress and credentials |
+| OpenTelemetry collector | `type: otlp` | Trajectory should publish traces, metrics, and marker logs to an OTLP HTTP collector |
+
+Trusted `datadog` destinations can set `traces_transport: direct` or
+`metrics_transport: dd_metrics_v2` for fallback transports. Omitting those
+fields keeps the OTLP defaults.
+
+Custom intake or forwarder destinations can set `bearer_token_ref` instead of
+`api_key_ref` after enabling the default-off `bearer_destination_auth` feature.
+The named secret is sent as `Authorization: Bearer`; the references are
+mutually exclusive, and bearer resolution never falls back to Datadog API-key
+environment variables. Bearer endpoints require HTTPS except for loopback HTTP
+development endpoints, and authenticated redirects are not followed.
+
 `trajectory config set-secret` updates keychain values defensively: it checks
 for an existing value first, writes the new value, and attempts to restore the
 previous value if the write fails. If setup or `set-secret` reports a keychain

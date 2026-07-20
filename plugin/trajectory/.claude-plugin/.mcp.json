@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "trajectory": {
-      "command": "/bin/sh",
-      "args": ["-c", "exec \"${HOME}/.trajectory/bin/trajectory\" mcp"],
-      "env": {}
-    }
-  }
-}

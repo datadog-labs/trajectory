@@ -110,6 +110,24 @@ destination. `app_key_ref` is consulted only by a command that needs Datadog
 readback or configuration access; its presence does not cause the normal
 publish engine to resolve or transmit an application key.
 
+Custom intake and forwarder destinations can use `bearer_token_ref` instead of
+`api_key_ref` when the default-off `bearer_destination_auth` feature is enabled.
+The fields are mutually exclusive. Bearer references use the configured source
+policy but resolve only the named environment variable, keychain account, or
+destination command; they never fall back to `DD_API_KEY`, `DATADOG_API_KEY`,
+or the default Datadog key provider. Trajectory sends the result as
+`Authorization: Bearer <token>` across the explicitly configured direct and
+OTLP publish requests. Bearer endpoints must use HTTPS; loopback HTTP is
+accepted only for local development and tests, and authenticated redirects are
+not followed.
+Managed direct-Datadog entries use the rollback-safe `type: datadog_bearer`
+shape with `level: off` and the active level in `bearer_level`. Project publish
+files use `version: 2` for bearer destinations. Bearer configuration must set
+explicit intake, OTLP trace, active metrics transport, and logs URLs; enabled
+evaluations and AI Usage also require their explicit endpoints.
+Managed bearer destinations use only the rollback-safe `datadog_bearer` shape;
+project schema version 2 also supports bearer-authenticated `otlp` collectors.
+
 For the implicit `_config_datadog` destination created from `export.*`, the API
 key ref defaults to `dd-api-key`. In standard mode, `dd-api-key` and
 `dd_api_key` are aliases for the same normalized keychain account. This is why

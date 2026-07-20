@@ -53,9 +53,10 @@ config, `export.site` plus `export.metrics: true` creates the built-in
 `_config_datadog` destination even when `export.traces: off`. In that mode
 metrics publish and LLM Obs trace spans do not.
 
-Destination `type` is the backend/transport selector, not the metrics switch.
-For `type: datadog`, metrics use Datadog Metrics v2 when the metric gates are
-enabled. Legacy `type: dd_llmobs` is accepted as an alias for `datadog`.
+Destination `type` selects the backend, not the metrics switch. For
+`type: datadog`, metrics use agentless OTLP by default. Trusted config can set
+`metrics_transport: dd_metrics_v2` for the deprecation-window fallback. Legacy
+`type: dd_llmobs` remains an alias for `datadog`.
 
 Marker-derived metrics require both marker evaluation and destination marker
 metrics:
@@ -76,8 +77,14 @@ enabled by `markers.enabled` or `markers.metrics`; a Datadog destination must se
 `markers.evaluations: true` explicitly before Trajectory submits marker results
 to the LLM Obs evaluation intake.
 
-Serve-side operational counters such as incognito and sensitivity health are
-best-effort Datadog Metrics API submissions. They are not tied to trace export.
+Serve-side operational counters emitted through the publish engine are
+best-effort submissions through each eligible destination's selected Datadog
+metrics transport: agentless OTLP by default, with Metrics v2 as a trusted
+fallback. Two early privacy/health signals,
+`trajectory.serve.incognito.enabled` and
+`trajectory.serve.sensitivity.classifier_unavailable`, submit directly through
+agentless OTLP and do not follow the Metrics v2 selector. These counters are not
+tied to trace export.
 
 ## Common Tags
 
@@ -803,8 +810,8 @@ privacy/publish diagnostics.
 | `trajectory.ops.agent.active_sessions` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source` | Hourly count of fresh active sessions by canonical client source, deduped across concurrent `trajectory serve` processes using per-PID heartbeat sentinels. Emits `0` for known clients with no fresh active sessions. |
 | `trajectory.ops.agent.active_session_version` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `client_version`, `trajectory.client_version`, `version_source` | Hourly active-session count by client version, using captured session-start state from heartbeat sentinels. Missing versions are reported as `client_version:unknown`. |
 | `trajectory.publish.active_destinations` | gauge | Canonical tags plus top-level and destination tags on DD destinations | Number of active destinations seen for a session |
-| `trajectory.publish.turns` | count | OTLP publish path tags | Internal publish turn counter |
-| `trajectory.serve.incognito.enabled` | count | `client_source` | User or tool enabled incognito; intentionally not tagged by session ID |
+| `trajectory.publish.turns` | count | OTLP publish path tags | Publish turn counter |
+| `trajectory.serve.incognito.enabled` | count | `client_source` | User or tool enabled incognito; intentionally not tagged by session ID; direct agentless OTLP submission |
 | `trajectory.serve.process.start_total` | count | `start_source` | Capture server listener started; `start_source:rescue_hook` identifies hook-driven recovery after a dead listener |
 | `trajectory.serve.process.exit_total` | count | `exit_reason`, optional `signal` | Capture server observed a graceful or error exit path before publish shutdown; hard kills are inferred from later rescue starts |
 | `trajectory.serve.capture.request_error_total` | count | `client`, `event_type`, `error_kind`, `http_status_class` | Capture HTTP request returned 4xx/5xx or hit a handler error |
@@ -820,7 +827,7 @@ privacy/publish diagnostics.
 | `trajectory.serve.publish.spans_held_total` | count | `client_source`, `destination` | Number of spans held pending sensitivity classification |
 | `trajectory.serve.llm_capacity.calls.total` | count | `feature`, `backend`, `gen_ai.request.model`, `pass`, `cost_source` | Successful Trajectory-owned background LLM calls for segmentation or sensitivity classification |
 | `trajectory.serve.llm_capacity.cost.usd.total` | count | `feature`, `backend`, `gen_ai.request.model`, `pass`, `cost_source` | Estimated USD cost for priced Trajectory-owned background LLM calls |
-| `trajectory.serve.sensitivity.classifier_unavailable` | count | `client_source`, `reason` | No classifier path was available; rate-limited |
+| `trajectory.serve.sensitivity.classifier_unavailable` | count | `client_source`, `reason` | No classifier path was available; rate-limited direct agentless OTLP submission |
 | `trajectory.serve.sensitivity.classifier_backend_error` | count | `backend`, `error_class` | One classifier backend failed before fallback |
 | `trajectory.serve.sensitivity.watermark_write_error` | count | `error_class` | Sensitivity watermark write failed |
 | `trajectory.serve.sensitivity.watermark_parse_error` | count | `error_class` | Sensitivity watermark read/parse failed |
@@ -943,6 +950,8 @@ only by code paths that explicitly create health records.
 | `trajectory.instrumentation.backfill.lag_ms` | distribution |
 | `trajectory.instrumentation.health.spool_depth` | gauge |
 | `trajectory.instrumentation.health.emit_dropped` | count |
+| `trajectory.instrumentation.runtime_reconcile.attempt` | count |
+| `trajectory.instrumentation.runtime_reconcile.duration_ms` | distribution |
 
 ### Managed cost-fidelity heartbeat
 
@@ -1003,6 +1012,16 @@ the newest records. The gauge intentionally does not append to that buffer.
 When a health record cannot be sanitized or the rolling-buffer write fails,
 `trajectory.instrumentation.health.emit_dropped` emits a remote-only count with
 bounded `component`, `signal`, `error_class`, and `reason` tags.
+
+Autonomous managed-post-install, MCP-startup, serve-owner-startup, and
+background-update repair attempts emit
+`trajectory.instrumentation.runtime_reconcile.attempt` and
+`trajectory.instrumentation.runtime_reconcile.duration_ms`. Their tags are the
+finite `trigger`, top-level `result_status`, `process_status`, `outcome`, and
+`reason` catalogs plus fixed component/signal values. They contain no path,
+PID, session identity, plugin output, or error text. An active owner reports
+`process_status:active_sessions_deferred`; a later automatic retry reports the
+eventual replacement outcome separately.
 
 ## Heartbeat Metric Definitions
 
