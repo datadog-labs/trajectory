@@ -1,5 +1,6 @@
 ---
 name: incognito
+managed-by: trajectory
 description: Toggle Trajectory incognito mode for the current OpenCode session. Use when the user says "/incognito", "go incognito", "pause capture", "stop recording", "private mode", or asks to temporarily suppress Datadog publish for sensitive work.
 ---
 

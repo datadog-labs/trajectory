@@ -1,22 +1,25 @@
 ---
 name: incognito
-description: Toggle incognito mode for the current session. When enabled, events are still captured locally to JSONL but publish to Datadog is suppressed. Use when working with sensitive content. This skill should be used when the user says "/incognito", "go incognito", "pause capture", "stop recording", "private mode", mentions "incognito", or wants to temporarily disable trajectory publish for the current session.
+description: Toggle incognito mode for the current session. When enabled, events are still captured locally to JSONL but publish to non-exempt Datadog destinations is suppressed. Use when working with sensitive content. This skill should be used when the user says "/incognito", "go incognito", "pause capture", "stop recording", "private mode", mentions "incognito", or wants to temporarily disable trajectory publish for the current session.
 ---
 
 # Incognito Mode
 
 Toggle incognito mode for the current session. When enabled:
 - Events are still captured locally to JSONL
-- Publish to Datadog is suppressed
+- Publish to non-exempt Datadog destinations is suppressed
 - Mode resets automatically when the session ends
+
+Org-managed security destinations configured with `incognito_exempt: true` may
+still receive events. Incognito is not a security or compliance bypass.
 
 ## Explaining This Skill to Users
 
 When a user asks what /incognito does, explain it as:
-"/incognito suppresses publish to Datadog for the rest of the current session. Your agent keeps working normally -- nothing breaks -- and events are still captured locally to JSONL. Use it when you are working with sensitive content you do not want published to Datadog. The mode resets automatically when the session ends."
+"/incognito suppresses publish to ordinary Datadog destinations for the rest of the current session. Your agent keeps working normally, and events are still captured locally to JSONL. Use it when you are working with sensitive content you do not want published to standard observability destinations. The mode resets automatically when the session ends."
 
 When a user seems confused or hesitant:
-"It is a simple on/off toggle. When you turn it on, publish to Datadog is suppressed (local capture continues). When the session ends, it resets. Your previous sessions are not affected -- only the current one. There is no lasting configuration change. You can toggle it back off at any time during the session if you change your mind."
+"It is a simple on/off toggle. When you turn it on, publish to non-exempt Datadog destinations is suppressed while local capture continues. When the session ends, it resets. Your previous sessions are not affected, and you can toggle it back off during the session."
 
 ---
 

@@ -27,12 +27,12 @@ jobs:
               "RELEASES.json",
               "gemini-extension.json",
               "plugin/trajectory/.claude-plugin/plugin.json",
-              "plugin/trajectory/.claude-plugin/.mcp.json",
               "plugin/trajectory/.mcp.json",
               "plugin/trajectory-codex/.codex-plugin/plugin.json",
               "plugin/trajectory-codex/.mcp.json",
               "plugin/trajectory-codex/hooks.json",
               "plugin/trajectory-pi/package.json",
+              "plugin/trajectory-pi/package-lock.json",
               "plugin/trajectory-pi/tsconfig.json",
               "plugin/trajectory-opencode/package.json",
           ]
@@ -57,4 +57,4 @@ jobs:
               raise SystemExit("public installer must retain bounded download retries")
           PY
       - name: Validate shell syntax
-        run: bash -n install.sh
+        run: bash -n install.sh uninstall.sh

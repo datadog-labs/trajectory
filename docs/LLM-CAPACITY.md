@@ -15,7 +15,7 @@ trajectory user-guide llm-capacity
 | Feature | Default | What it does | How often it can call an LLM | Primary controls |
 |---|---|---|---|---|
 | Task segmentation | On | Splits sessions into tasks and scores task dimensions such as outcome, autonomy, risk, and reversibility | About every `segmentation.interval` completed turns, default 10, plus one final pass at session end for sessions with at least 2 turns | `segmentation.enabled`, `segmentation.interval`, `segmentation.model`, `TRAJECTORY_SEGMENTATION_DISABLED=1` |
-| Sensitivity classification | Off in fresh single-user setup; managed configs may enable `near_realtime` | Classifies session content for the publish gate as public, internal, confidential, or restricted | In `near_realtime` mode, active sessions are scanned only when new content exists, default every 240 minutes, plus a session-end scan on the non-incognito publish path. In `balanced` mode, about every 10 completed turns, plus the session-end scan. | `export.sensitivity.scanning_mode`, `export.sensitivity.near_realtime_interval_minutes` |
+| Sensitivity classification | Off in fresh single-user setup; managed or explicit config may enable it | Classifies session content for the publish gate as public, internal, confidential, or restricted | In `near_realtime` mode, non-incognito active sessions are scanned only when new content exists, default every 240 minutes, plus a session-end scan. In `balanced` mode, about every 10 completed turns, plus the session-end scan. | `export.sensitivity.scanning_mode`, `export.sensitivity.near_realtime_interval_minutes` |
 
 For zero Trajectory-owned LLM calls from the capture server, disable both:
 
@@ -92,16 +92,16 @@ LLM capacity use.
 Fresh single-user `trajectory setup` writes
 `export.sensitivity.scanning_mode=off`, so initial minimal trace publishing is
 not held behind classification.
-Managed configs and explicit user config can enable sensitivity classification,
-usually in `near_realtime` mode. It is primarily used by trace publish privacy
-gates, but `export.traces=off` is not a guaranteed capacity control by itself.
-If you want no sensitivity-classifier LLM calls and no sensitivity publish gate,
-set `export.sensitivity.scanning_mode` to `off`.
+Managed policy or explicit user config can enable sensitivity classification,
+commonly in `near_realtime` mode. It is primarily used by trace publish privacy
+gates, but `export.traces=off` is not a guaranteed capacity control. To prevent
+classifier calls and disable the sensitivity publish gate, keep
+`export.sensitivity.scanning_mode` set to `off`.
 
 Scanning modes:
 
-- `near_realtime` scans active sessions on a time window when new content
-  exists. The default interval is 240 minutes.
+- `near_realtime` scans non-incognito active sessions on a time window when new
+  content exists. The default interval is 240 minutes.
 - `balanced` scans on the same default turn cadence as segmentation: about every
   10 completed turns, plus a final session-end scan on the non-incognito publish
   path.
@@ -166,8 +166,10 @@ active. Use `scanning_mode: off` for a capacity guarantee.
 
 ## Cost reporting
 
-Trajectory emits best-effort Datadog Metrics v2 points for Trajectory-owned LLM
-capacity when a `datadog` metrics destination is enabled:
+Trajectory emits best-effort metrics for Trajectory-owned LLM capacity when a
+Datadog-typed destination has marker metrics enabled. Each eligible destination
+uses its selected Datadog metrics transport: agentless OTLP by default, with
+`dd_metrics_v2` available as a trusted-config fallback:
 
 | Metric | Type | Tags | Notes |
 |---|---|---|---|

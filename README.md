@@ -97,8 +97,9 @@ agent behavior becomes something you can graph, alert on, compare, and improve.
   Trajectory-owned LLM calls.
 - **Workflow attribution** across repositories, commits, pull requests, and
   completed-session samples, including CODEOWNER-aware production analysis.
-- **Preview integrations** for CommandCode, Devin CLI, ForgeCode, gptme, Kimi
-  Code CLI, Oh My Pi, Qoder CLI, VS Code Copilot Chat, Warp, Windsurf, and Zed.
+- **Preview integrations** for CommandCode, Devin CLI, ForgeCode, gptme, Grok
+  Build, Kimi Code CLI, Oh My Pi, Qoder CLI, VS Code Copilot Chat, Warp,
+  Windsurf, ZCode, and Zed.
 
 ## Install
 
@@ -151,12 +152,14 @@ Trajectory supports:
 - Devin CLI (preview)
 - ForgeCode (preview)
 - gptme (preview)
+- Grok Build (preview)
 - Kimi Code CLI (preview)
 - Oh My Pi (preview)
 - Qoder CLI (preview)
 - VS Code Copilot Chat (preview)
 - Warp/Oz CLI (preview)
 - Windsurf (preview)
+- ZCode (preview)
 - Zed (preview)
 
 See [docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md) for version

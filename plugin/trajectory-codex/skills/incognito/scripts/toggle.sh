@@ -338,7 +338,7 @@ EOF
 }
 
 resolve_session_id() {
-    local id rc attempt mode source
+    local id rc attempt mode
     if id="$(session_id_from_env)"; then
         printf '%s\n' "$id"
         return 0

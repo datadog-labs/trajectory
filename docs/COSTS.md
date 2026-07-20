@@ -4,6 +4,20 @@ Trajectory records local token and cost telemetry for supported coding-agent
 sessions. Use `trajectory cost` when you want a local, read-only cost view
 without querying Datadog or inferring invoice totals.
 
+For Codex, summaries keep observed tokens, standard API-equivalent USD, and
+ChatGPT Codex credits separate. Guardian automatic-review sessions use an
+explicitly labeled provisional `codex-auto-review` proxy estimate based on
+third-party rate evidence pending provider billing validation. Unsupported,
+negative, incomplete, or session-only token evidence without the required
+cache breakdown remains unavailable instead of being treated as free.
+
+Codex cache rows created before the current ownership and rate derivation are
+excluded from cost, credit, session, turn, token, and top-session totals. If a
+stale row intersects the requested window, the overall result fails closed as
+unavailable and reports the repair command rather than presenting a partial
+ranking as complete. Normal `trajectory serve` startup performs a bounded,
+default-on repair for quiet retained sessions.
+
 ## Commands
 
 ```bash
@@ -16,7 +30,23 @@ trajectory cost validate --since 7d
 
 `trajectory cost` shows a recent summary by agent and the highest-cost local
 sessions in the selected window. Use `--since all`, `--since 24h`, or
-`--since 2026-06-01` when you need a different window.
+`--since 2026-06-01` when you need a different window. Finite windows are
+applied to observed turn activity, not to the session's original start time.
+A long-running session therefore contributes only observed turn activity inside
+the window. Summary totals and top-session rows use the same sliced population;
+JSON top rows expose `window_started_at` and `window_ended_at` separately from
+the session lifetime timestamps. Explicit whole-session aggregate evidence
+is included only when its session evidence timestamp falls inside the window
+because it has no finer-grained split. A missing evidence timestamp fails
+closed as unavailable in a finite window instead of assigning the lifetime
+amount to an arbitrary turn; `--since all` can still use the exact lifetime
+aggregate because no temporal placement is required. Session-wide aggregate
+authority wins over incidental turn rows whenever the aggregate is in scope.
+Turn timestamps are parsed chronologically, including RFC 3339 offsets, rather
+than compared as text. Legacy or malformed turn timestamps enter a finite
+window only when parseable session bounds or another valid turn prove possible
+overlap; those ambiguous rows remain unavailable rather than exposing a coarse
+fallback as precise turn cost.
 
 `trajectory cost inspect --session <session-id>` shows turn-level cost evidence:
 cost, model, token counts, tool counts, and cost provenance. This is the best
