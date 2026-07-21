@@ -194,16 +194,23 @@ place. Listener, capture, sensitivity, org-sync, module, and similar
 process-shape changes are reported as restart-required; config reload does not
 silently replace a live owner.
 
-After a binary update, existing `trajectory serve` processes keep running the
-old executable image until replaced. Post-update checks are report-only unless
-`TRAJECTORY_UPDATE_RECONCILE_PROCESSES=true` explicitly authorizes automatic
-reconciliation. The guarded path targets only the exact adopted coordinator
-owner, verifies its versioned lifecycle capability and safety gates, asks it to
-quiesce and exit, proves exact death, and only then elects the target-version
-replacement with the required config and credential profile. Run `trajectory
-update reconcile` to preview the decision or `trajectory update reconcile
---yes` to authorize it explicitly. External, legacy, discovery-only, and
-ambiguous owners remain fail-closed.
+After a binary update, Trajectory automatically hands a compatible exact
+`trajectory serve` owner to the updated binary. Active session generations stay
+open: the old owner quiesces, exits without fabricating terminal events, and the
+replacement resumes capture after exact process death is proven. This also
+works on the first upgrade into a handoff-capable release when the updater
+detects installed client integrations: their non-interactive refresh runs
+through the newly installed binary. With no detected integration, a skipped
+refresh, or a failed refresh, the existing owner keeps serving safely until a
+later new-binary setup, runtime-asset reconciliation, or explicit reconcile.
+
+Run `trajectory update reconcile` to inspect the decision or `trajectory update
+reconcile --yes` to retry a deferred handoff. Set
+`TRAJECTORY_UPDATE_RECONCILE_PROCESSES=false` only to disable automatic handoff,
+or disable the `seamless_update_handoff` feature through user, managed, or
+`TRAJECTORY_DISABLE_FEATURES` policy. External, legacy, discovery-only, and
+ambiguous owners remain fail-closed and continue serving until they stop
+naturally; users do not need to end active agent sessions for an update.
 
 For metrics-only Datadog export, keep `export.traces` off and set
 `export.metrics` true:
@@ -259,6 +266,18 @@ repo `publish.trajectory.yaml` project config. Datadog destinations send these
 as agentless OTLP traces, and `type: otlp` destinations send them directly to
 the configured collector. Use `otlp_traces_url` only for test or special
 Datadog trace-intake routing.
+
+Collectors that support native OTLP maps and arrays can opt in one module at a
+time with `module_spans.native_composite_attributes`. This setting belongs to
+each destination because receiver compatibility can differ: the same module
+can retain structure for one collector and keep JSON strings for another.
+Scalar values do not change. The default-on
+`module_span_native_composite_attributes` feature flag honors these allowlists;
+disabling it restores JSON-string compatibility globally. Receiver behavior is
+still destination-specific: a collector can accept native OTLP maps and arrays
+but flatten or stringify them during indexing, and nested JSON null values may
+be normalized from an empty OTLP `AnyValue`. Validate the destination's
+readback before broadening the module allowlist.
 
 `server.otlp_proxy` is separate from publish destinations. It controls the
 local `trajectory serve` OTLP listener for client-native logs, metrics, and
@@ -773,7 +792,9 @@ trajectory metrics open              # Reopen latest submitted Metrics Explorer 
 `trajectory publish validate` checks configuration, trust policy, and credentials,
 including credential source and non-secret value-shape diagnostics. `trajectory
 publish status` shows the effective mode, including metrics-only and trace-off
-states. Neither command verifies Datadog intake or readback.
+states, and warns when the configured `export.site` has no active destination
+(for example `metrics:false` with `traces:off`) while data flows to a different
+site. Neither command verifies Datadog intake or readback.
 
 Trace and final-session publish retries use a durable metadata outbox at
 `~/.trajectory/state/trace-publish-outbox.sqlite`. If one `trajectory serve`
@@ -892,6 +913,13 @@ run with `trajectory.canary_run`, submits through the same
 MetricRecord-to-Datadog path, and polls Datadog Metrics until every expected
 metric group reads back exactly. Use `--destination <name>` when multiple
 Datadog metric destinations are configured.
+
+To diagnose zero-valued task-score loss on an OTLP destination, add
+`--zero-task-score-probe`. The canary persists a distinct
+`trajectory.task.risk_score=0` row in an isolated durable outbox, verifies the
+encoded OTLP point, submits it through the production outbox drain, and reports
+intake acceptance separately from exact Datadog query readback. This probe
+requires exactly one destination and OTLP metrics transport.
 
 For the publish operations runbook covering validate/status/preview, missing
 Datadog data, `publish sync`, and publish ledger repair:

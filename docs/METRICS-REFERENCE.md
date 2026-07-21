@@ -743,6 +743,11 @@ cost-overlap tags derived from their assigned turns.
 
 Managed historical replay uses separate campaign-scoped contracts:
 
+These metrics do not inherit the Common Tags or metric-catalog classification
+tags. Their published tag maps are the fixed campaign allowlists described
+below; this prevents late transport enrichment from expanding campaign
+cardinality or its metadata-only privacy boundary.
+
 | Metric | Type | Scope | Notes |
 |---|---|---|---|
 | `trajectory.historical.pr.ai_assisted.observed` | gauge | historical | Value `1` at the first eligible interaction on each campaign-local activity day. Carries normalized PR identity plus `campaign_id`, extractor, user, version, client, host, and OS provenance. It never carries session, turn, project, model, email, or provider-user identity. Use a `max` reducer grouped by PR identity before counting distinct PRs; never sum raw points. |
