@@ -93,9 +93,9 @@ sensitivity classification and segmentation.
 |--------|--------------|-------------------|------------------|----------|--------|
 | Claude Code | Yes, HTTP hooks | Yes | Yes | Transcript backfill | Yes |
 | Codex CLI | Yes, command hooks plus rollout watcher fallback | Yes | Yes | Codex rollout backfill | Yes |
-| GitHub Copilot CLI | Beta Copilot plugin command hooks plus default-off bounded provider session-state watcher | Native live hooks provide command-level lifecycle, prompt, tool, and session events but no assistant response body; manual history backfill or the opt-in watcher adds assistant text/reasoning, tool results, permissions, and subagents | History preserves native shutdown model aggregates; cache categories are separated and never assigned to a turn | Explicit bulk backfill plus automatic discovery only when `copilot_cli_durable_history` is enabled | Not yet |
+| GitHub Copilot CLI | Beta Copilot plugin command hooks plus default-off bounded provider session-state watcher and content-disabled native OTel | Native hooks provide command lifecycle, prompt, tool, and session events; history adds assistant text/reasoning, tool results, permissions, subagents, and the request-model join used by native OTel | Native `chat` spans provide request-grain input/output/cache/reasoning usage and model-scoped public-rate-card USD when both managed features are enabled; shutdown aggregates remain a fallback | Explicit bulk backfill plus automatic discovery only when `copilot_cli_durable_history` is enabled | Not yet |
 | Gemini CLI | Yes, managed command hooks | Yes | Yes | Gemini transcript backfill | Yes |
-| Antigravity CLI (`agy`) | Yes, native plugin command hooks | Tool call/input, tool completion/error, invocation wake signals, execution-loop Stop metadata, and a non-authoritative hook model label; exact user prompts/timestamps/workspaces plus current schema-v1 generation models when `antigravity_durable_history` is enabled | Exact provider uncached-input, total-output, and cache-read counts; output includes thinking, no reasoning breakdown or provider-billed cost | Default-off watcher baselines existing JSONL/SQLite rows, then reconciles subsequent provider changes; `trajectory backfill --from-antigravity` explicitly repairs retained pre-baseline history | No setup-managed resume |
+| Antigravity CLI (`agy`) | Yes, native plugin command hooks | Tool call/input, tool completion/error, invocation boundaries, execution-loop Stop metadata, and a non-authoritative hook model label; exact user prompts/timestamps/workspaces plus current schema-v1 generation models when `antigravity_durable_history` is enabled | Live provider rows carry request-grain uncached input, total output including reasoning, cache-read, cache-creation, and public-rate-card USD joined to the official hook turn; retained history is metric-ineligible | Default-off watcher baselines retained JSONL/SQLite rows; a separate crash-safe live cursor captures post-boundary generations; explicit backfill repairs retained pre-baseline history | No setup-managed resume |
 | Goose | Yes, Open Plugins command hooks | Session, prompt, assistant, and canonical tool events; generic hooks omit provider tool IDs and result/error bodies, so same-name concurrent correlation is best-effort | Live hooks omit usage; `goose_durable_history` supplies validated model, input/output and optional cache categories plus compaction observations; only complete provider-reported USD is attributed | Bounded read-only SQLite reconciliation behind `goose_durable_history`; provider-owned passive traces retain exact metadata and tool facts, while native traces receive usage-only corrections | Native post-terminal hooks establish same-ID resume generations; no setup-managed resume command |
 | Cline CLI | Yes, file hooks | Lifecycle, prompt, tool, assistant-message, turn, and session-end events | Not exposed by current hook payloads; `turn_end.tokens_status=unavailable` | Not yet | No setup-managed resume |
 | Cursor Desktop | Yes, command hooks | Yes | Native input/output/cache-read/cache-write on by default (`cursor_native_token_usage`); exact-model rate-card cost defaults to `emit`/`org_file` and stays unpriced without a synced rate card | Cursor chat backfill; historical USD replay suppressed | Yes |
@@ -857,13 +857,20 @@ trajectory features clear codex_boundary_capture    # return to default
 ```
 
 A running Codex process keeps the hook snapshot it loaded at startup. Feature
-changes reconcile the installed plugin's enabled states and exact trusted
-hashes for new sessions; they do not install a second extension or opt an
-unconfigured user into setup.
-Setup-generated commands also carry the reconciled mode to the server. During
-autoupdate, an old, different-home, or ambiguous server response retains all ten
-hooks; updated-owner startup self-repairs to three only after the owner proves
-boundary support for the same Trajectory home.
+changes reconcile the installed plugin's enabled states for new sessions; they
+do not install a second extension or opt an unconfigured user into setup.
+During setup, Trajectory asks Codex's app server to enumerate the exact hooks
+loaded from the installed plugin cache, validates that all ten belong to
+`trajectory@trajectory`, and asks Codex to persist its own reported current
+hashes. A readback must report all ten as trusted before setup succeeds.
+Trajectory preserves those Codex-owned hashes during later mode, update, and
+startup repair runs. Codex's separate first-use workspace trust prompt is
+unchanged.
+Setup-generated commands also carry the reconciled mode to the server.
+Automatic update and startup repair activate runtime generations without
+changing matchers, commands, or trust identity. Explicit setup or feature
+reconciliation changes mode only after the owner proves boundary support for
+the same Trajectory home.
 
 `codex exec --ephemeral` writes no rollout. In default boundary mode,
 Trajectory therefore does not claim tool, permission, compaction, or subagent
@@ -875,7 +882,10 @@ Codex command hooks still use the release-owned minimal runtime and full-binary
 fallback. Codex starts a command shell for every enabled hook, which is why a
 direct `curl` command would not remove the dominant launch cost. The helper,
 relay, and optional Darwin launcher are embedded in the one Trajectory binary
-and installed as one verified content-addressed generation.
+and installed as one verified content-addressed generation. Hook commands read
+a stable `codex-hook/current` selector at dispatch time, allowing startup and
+update repair to activate a new generation without invalidating Codex's trusted
+command hash.
 
 Historical repair scans both `$CODEX_HOME/sessions/` and
 `$CODEX_HOME/archived_sessions/`, with active copies preferred when the same
@@ -896,7 +906,7 @@ For local development validation, start capture with `trajectory dev serve`. The
 
 The Codex marketplace plugin also ships the `/incognito` skill. It uses the `trajectory_incognito` MCP tool to suppress publish to non-exempt Datadog destinations for the current session while local JSONL capture continues.
 
-`trajectory setup --clients codex` writes a local marketplace under `~/.trajectory/codex-marketplace` and registers that local path with Codex. The embedded helper and optional launcher are installed together under `~/.trajectory/bin/codex-hook/<version>-<sha256>/`; setup, foreground update, background auto-update, serve-owner startup, config reconciliation, and doctor verify and repair the complete generation, hook commands, enabled states, and trusted hashes under one transaction lock. A state/trust failure restores the prior hook JSON. A failed asset repair installs and trusts the full-binary fallback. Old generations are pruned only after commit, with two retained for rollback and already-running sessions. A direct GitHub marketplace registration can still work, but it is not the recommended path for regular installs because Codex refreshes git marketplaces during startup, which can block the first screen on network or GitHub latency.
+`trajectory setup --clients codex` writes a local marketplace under `~/.trajectory/codex-marketplace` and registers that local path with Codex. The embedded helper and optional launcher are installed together under `~/.trajectory/bin/codex-hook/<version>-<sha256>/`; a stable `codex-hook/current` selector chooses the active generation without putting that content-addressed path in Codex's trusted hook command. Setup, explicit feature/config reconciliation, and doctor verify and repair the complete generation, selector, hook commands, and enabled states under one transaction lock while preserving Codex-owned trust hashes. Background auto-update, MCP startup, and serve-owner startup verify and activate only the runtime generation, leaving trusted hook JSON byte-identical. Setup obtains initial hashes from Codex's authoritative installed-cache discovery and verifies Codex's trusted readback, so Trajectory does not duplicate Codex's hash algorithm or hash the mutable marketplace source. A state failure restores the prior hook JSON. A failed explicit asset repair installs the full-binary fallback; rerun setup after that fallback changes the installed definition so Codex can authorize it. Old generations are pruned only after commit, with two retained for rollback and already-running sessions. A direct GitHub marketplace registration can still work, but it is not the recommended path for regular installs because Codex refreshes git marketplaces during startup, which can block the first screen on network or GitHub latency.
 
 Setup discovers Codex from `PATH`, common user install directories, Volta, nvm, fnm, npm, pnpm, yarn, asdf, and mise/rtx. For npm-style installs, setup also checks for the vendored native Codex binary before falling back to the node launcher. Each candidate must pass `codex --version`; setup skips broken candidates and uses the first working launcher.
 
@@ -904,13 +914,29 @@ If setup reports that every `codex --version` candidate failed with `ENOENT` und
 
 ## GitHub Copilot CLI
 
-**Trajectory status: Beta. Supported contract: public Copilot CLI plugin-hook contract.**
+**Trajectory status: Beta. Supported contract: public Copilot CLI plugin-hook, provider-history, and native OTel contracts.**
 
 Install the Copilot CLI plugin with setup:
 
 ```bash
 trajectory setup --clients copilot
 ```
+
+For request-grain token/cache and estimated USD fidelity, install the explicit
+transparent launcher and enable the default-off native OTel gate:
+
+```bash
+trajectory setup --clients copilot --install-client-shims
+trajectory features enable copilot_cli_native_otel
+trajectory config reload --yes
+```
+
+The launcher enables content-disabled OTLP only for Copilot processes launched
+through that shim. It preserves an existing non-Trajectory collector, custom
+scope, file exporter, or explicit telemetry disable and passes through
+unchanged. A safe managed rollout can therefore distribute the pass-through
+shim first, deploy the supporting binary everywhere, and enable
+`copilot_cli_native_otel` afterward without interrupting current sessions.
 
 Setup writes a local Copilot marketplace under `~/.trajectory/copilot-marketplace`, registers it with `copilot plugin marketplace add`, and installs `trajectory@trajectory`. The plugin includes `hooks.json`, `.mcp.json`, and an incognito skill. Copilot launches `trajectory mcp` from the plugin's MCP config; that MCP process starts Trajectory's embedded local capture server, matching the same setup-managed lifecycle path used by other local agents. The hooks are Copilot command hooks that `curl` POST the hook JSON from stdin to `/capture/copilot/<event>`.
 
@@ -955,6 +981,15 @@ final turn or session end. If live hooks already captured a matching lifecycle,
 prompt, tool, permission, or subagent event, that native event remains
 authoritative and provider history only enriches missing fields.
 
+With `copilot_cli_native_otel` enabled, strict first-party `chat` spans are
+joined to those durable provider records by session and service request ID.
+The root interaction maps all main and nested-subagent inference calls to one
+Trajectory turn, while span ancestry provides `query_source=main|subagent`.
+Copilot's cache-inclusive input total is normalized to exclusive input plus
+cache-read and cache-creation counters. The resolved provider model feeds the
+shared versioned rate card for estimated USD. Premium-request multipliers and
+nano-AIU are retained only as provider diagnostics.
+
 The watcher is default-off. It establishes a content-free startup baseline, so
 enabling it does not bulk-import retained history; use the explicit backfill
 command for that. Exact notifications and bounded polling cover current and
@@ -988,31 +1023,37 @@ trajectory setup --clients cc
 ```
 
 Setup stages a local Claude Code marketplace under
-`~/.trajectory/claude-marketplace`. It does not invoke the Claude CLI, register
-the marketplace, or install a missing plugin. Once `trajectory@trajectory` is
-installed at user scope, setup, binary update, and MCP startup reconcile that
-exact user-scope plugin registry entry and the
+`~/.trajectory/claude-marketplace`, registers that directory with Claude's
+plugin manager, and installs or repairs `trajectory@trajectory` at user scope.
+Setup, binary update, and MCP startup reconcile that exact user-scope plugin
+registry entry and the
 `~/.claude/plugins/cache/trajectory/trajectory/` subtree. Reconciliation
 materializes a fresh immutable generation when the installed payload is stale
-or invalid, atomically repoints only Trajectory's user-scope entry, leaves
-project and local scope entries unchanged, and retains the previous generation
-for active sessions. Concurrent workers coalesce through an account-scoped
-lock, and sequential starts inside a short
+or invalid. Setup also refreshes the generation after enabled module hooks are
+injected; background repair preserves those staged hooks and restores them if
+Claude replaces the same-version cache. Reconciliation atomically repoints only
+Trajectory's user-scope entry, leaves project and local scope entries unchanged,
+and retains the previous generation for active sessions. Concurrent workers
+coalesce through an account-scoped lock, and sequential starts inside a short
 input-fingerprinted success cooldown skip repeated work.
 
 Trajectory never directly writes, merges, or deletes Claude user settings,
 including `~/.claude.json`, `~/.claude/settings.json`, and settings variants.
+Explicit setup invokes Claude's supported plugin manager to install or repair
+the user-scope plugin. Autonomous startup and update repair invokes the manager
+only after verifying an existing owned user-scope installation, then
+reconciles the staged payload so enabled module hooks remain intact. Claude may
+update its own plugin registration fields while preserving unrelated settings.
 The standard plugin has one root `.mcp.json`; the manifest has no inline MCP
 block and no nested MCP file. Setup does not run `claude mcp add` or `claude mcp
 remove`. When a released explicit user MCP entry already exists, Trajectory
 leaves it byte-for-byte unchanged and stages a compatibility plugin generation
 with no MCP declaration. Legacy OTLP settings are diagnosed but left unchanged.
-Marketplace registration and initial enablement remain owned by Claude or
-managed Claude policy. For managed fleets, the Claude administrator may declare
-the staged directory as an
-`extraKnownMarketplaces.trajectory` directory source, set `autoUpdate: true`,
-can also update installed plugins in the background after startup. Trajectory's
-own repair path does not depend on that background update.
+For managed fleets, the Claude administrator may declare the staged directory
+as an `extraKnownMarketplaces.trajectory` directory source, set `autoUpdate:
+true`, and enable `trajectory@trajectory`. Claude can also update installed
+plugins in the background after startup. Trajectory's own repair path does not
+depend on that background update.
 
 An active Claude session continues using the plugin version it loaded while a
 background update changes the cache on disk. `/reload-plugins` can apply the
@@ -1026,8 +1067,8 @@ untouched, and relies on a later MCP or background retry. This avoids a capture
 blackout and never synthesizes `session_end`. Legacy, external, discovery-only,
 and ambiguous owners remain fail-closed and are never signaled by this path.
 
-If managed Claude policy is not available, a Claude administrator or the user
-can adopt the staged marketplace through Claude's supported plugin interface:
+For manual recovery or source-checkout development, a Claude administrator or
+the user can adopt the staged marketplace directly:
 
 ```bash
 claude plugin marketplace add ~/.trajectory/claude-marketplace
@@ -1220,7 +1261,8 @@ not yet honor `GEMINI_CLI_HOME` and is not used as path authority.
 ## Antigravity CLI (`agy`)
 
 **Trajectory status: Supported. No minimum version is established; 1.0.12 and
-1.1.2 are fixture/source-shape evidence only.**
+1.1.2 are fixture/source-shape evidence, and 1.1.5 provider generation metadata
+has been inspected against the current decoder contract.**
 
 Install with setup:
 
@@ -1256,16 +1298,29 @@ exact scoped rows from provider-owned `history.jsonl` and current schema-v1
 `conversations/<uuid>.db`; it baselines existing rows on first enable and
 reconciles later JSONL, database, WAL, or shared-memory changes without
 replacing native tool/Stop evidence. Strict bounded `gen_metadata` decoding
-preserves provider model, uncached-input, total-output, and cache-read counts.
-Output already includes thinking; no separate reasoning count exists. SQLite
-and WAL modification time is marked synthetic because the provider supplies no
-per-generation timestamp. The provider exposes no prompt-to-generation join
-key, so generation usage stays on stable provider-indexed canonical turns and
-is never attached to a prompt by ordinal. Token-only LLM spans keep cost unavailable because
-cache-write usage and provider-billed cost are not exposed. Provider-typed
-slash commands and unknown typed history rows are skipped, and unknown schemas,
-undecodable rows, rewrites, and removals fail closed rather than fabricating
-assistant/thinking text, tools, `turn_end`, or `session_end`.
+preserves the provider model, uncached input, total output, response output,
+reasoning output, cache read, cache creation, and retry-attempt usage. The
+provider's total output includes reasoning, and the attempt vectors must sum
+exactly to the aggregate or Trajectory falls back to one aggregate request.
+SQLite and WAL modification time is marked synthetic because the provider
+supplies no per-generation timestamp.
+
+For live hooks, a separate crash-safe cursor records the provider boundary at
+`PreInvocation` and joins newly appended generation rows to that invocation's
+official turn at `Stop`. The bounded post-Stop scan covers provider flush lag;
+cursor advance happens only after idempotent canonical append. Each request is
+metric-eligible and priced with the exact-model public Gemini rate card.
+Request attributions and recorded nanodollar totals must match exactly before
+publish promotes their completed-turn sum. This is the same estimated model
+cost semantic as Claude's native cost metric, not Antigravity subscription,
+credit, or invoice cost.
+
+Passive watcher and explicit-backfill generations remain metric-ineligible on
+stable provider-indexed turns; the provider exposes no historical
+prompt-to-generation join key. Provider-typed slash commands and unknown typed
+history rows are skipped, and unknown schemas, undecodable rows, rewrites, and
+removals fail closed rather than fabricating assistant text, tools, `turn_end`,
+or `session_end`.
 
 After enabling the feature, explicitly import retained history that predates
 the watcher's baseline with:
@@ -1278,8 +1333,9 @@ trajectory backfill --from-antigravity --session <conversation-id>
 Existing canonical sessions are skipped unless `--force` is supplied. Forced
 repair refreshes matching provider-derived facts under the same
 materialization lock as the watcher and preserves unmatched arrivals. Because
-the provider omits cache-write usage and completion status, those fields and
-derived cost remain unavailable rather than becoming zero or success.
+the provider omits completion status and historical hook correlation, retained
+rows remain metric-ineligible rather than becoming a live success or turn
+increment.
 
 Native hook events and incognito state are preserved, foreign canonical
 ownership is refused, provider files stay read-only, and the intentionally
@@ -1440,13 +1496,13 @@ trajectory setup --clients cursor
 
 This creates `~/.cursor/hooks.json` and `~/.cursor/mcp.json`. Capture uses Cursor's supported command hooks to `curl` POST payloads to the Trajectory capture server. Cursor does not currently accept every Claude Code lifecycle hook name; setup registers the supported Cursor event names and omits unsupported lifecycle hooks. When Claude Code is installed, Cursor uses the Claude Code Trajectory skill path for `/incognito`; otherwise setup installs a native Cursor fallback at `~/.cursor/skills/incognito/SKILL.md`. The `incognito` skill uses the shared `trajectory_incognito` MCP tool to suppress publish to non-exempt Datadog destinations for the active Cursor session while local JSONL capture continues.
 
-CI validates this Desktop install surface on macOS by running setup in an isolated home, checking the Cursor MCP/hooks files and incognito skill routing, replaying sanitized real Desktop payload fixtures into `/capture/cursor`, and verifying JSONL, materialization, SQL, LLM Obs, and Lapdog list/trace/fetch/scalar parity. With default-on `cursor_native_token_usage`, a complete generation publishes Cursor's native input, output, cache-read, and cache-write vector. `cache_write_tokens` is normalized exactly once to `cache_creation_tokens`. Partial, invalid, missing, conflicting, or unknown-model generations remain explicitly unpriced. `state.vscdb` and response-length estimates cannot price or complete the vector.
+CI validates this Desktop install surface on macOS by running setup in an isolated home, checking the Cursor MCP/hooks files and incognito skill routing, replaying sanitized real Desktop payload fixtures into `/capture/cursor`, and verifying JSONL, materialization, SQL, LLM Obs, and Lapdog list/trace/fetch/scalar parity. With default-on `cursor_native_token_usage`, a complete generation publishes Cursor's native input, output, cache-read, and cache-write vector. Cursor's hook `input_tokens` is the total including cache-read and cache-write quantities, so Trajectory retains that raw total and subtracts both cache components exactly once to produce canonical non-cached `input_tokens`; `cache_write_tokens` maps exactly once to `cache_creation_tokens`. Partial, invalid, missing, conflicting, or unknown-model generations remain explicitly unpriced. `state.vscdb` and response-length estimates cannot price or complete the vector.
 
 Pricing defaults to `pricing.cursor.mode: emit` with `source: org_file`. Managed policy can force `off` or `shadow`. `org_file` reads the validated effective-dated card at `~/.trajectory/org/pricing.yaml`; selecting the not-yet-implemented `datadog_reference_table` adapter fails closed with `pricing_source_unavailable`. Trajectory emits existing USD metric names only for explicitly priced new turns. Missing rate cards leave turns unpriced rather than $0. It performs no historical Cursor cost replay.
 
 ### cursor-agent (CLI)
 
-cursor-agent is a standalone CLI (`cursor-agent --print` for headless mode). Authenticated interactive dispatch on `2026.07.09-a3815c0` has been validated through a real Trajectory binary: the terminal hooks carried the exact model, generation, input, output, cache-read, and cache-write values and preserved trusted CLI surface attribution. The same version's `--print` JSON result exposed all four usage fields but did not dispatch native terminal hooks, so headless native cost remains unsupported and unpriced rather than inferred from response text. Capture also uses one shared passive JSONL source for watcher and backfill: current main files at `~/.cursor/projects/*/agent-transcripts/<session>/<session>.jsonl`, current nested child and side-chat files at `~/.cursor/projects/*/agent-transcripts/<parent>/subagents/<child>.jsonl`, current CLI Task children written as sibling main transcripts, and legacy flat `agent-transcripts/<session>.jsonl` files.
+cursor-agent is a standalone CLI (`cursor-agent --print` for headless mode). Authenticated interactive dispatch on `2026.07.20-8cc9c0b` has been validated through a real Trajectory binary: the terminal hooks carried exact model, generation, input, output, cache-read, and cache-write values and preserved trusted CLI surface attribution. The live Sonnet turn proved that Cursor's hook `input_tokens` is inclusive: `42,420 - 21,162 cache-read - 21,251 cache-write = 7` non-cached input tokens, exactly matching Cursor's own turn display. Trajectory preserves the raw total, publishes the normalized exclusive quartet, and derives estimated USD only from that quartet plus an exact effective rate card. An impossible inclusive vector fails closed and remains unpriced. The separately tested `--print` JSON result exposed usage but did not dispatch native terminal hooks, so headless native cost remains unsupported and unpriced rather than inferred from response text; that narrower path does not downgrade supported interactive CLI coverage. Capture also uses one shared passive JSONL source for watcher and backfill: current main files at `~/.cursor/projects/*/agent-transcripts/<session>/<session>.jsonl`, current nested child and side-chat files at `~/.cursor/projects/*/agent-transcripts/<parent>/subagents/<child>.jsonl`, current CLI Task children written as sibling main transcripts, and legacy flat `agent-transcripts/<session>.jsonl` files.
 
 Cursor Desktop 3.11 stores canonical relationship metadata in the typed
 `composerHeaders` table of global `state.vscdb`, with the exact

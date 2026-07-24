@@ -23,11 +23,12 @@ Some managed destinations can be configured with `incognito_exempt: true`.
 Those destinations may still receive spans during incognito for approved
 security or audit use cases. Managed security destinations may also enable the
 security event stream, which publishes one Datadog log per canonical event. Its
-default `security` profile keeps structural metadata and pre-tool arguments
-such as commands and file paths, while omitting prompts, assistant responses,
-thinking text, post-tool outputs/results, raw payloads, error text, summaries,
-and user email fields. Security destinations are managed-config only and cannot
-be changed by project `publish.trajectory.yaml`. See
+default `security` profile preserves the complete captured event, including
+prompts, responses, thinking, tool inputs and outputs, diffs, file content,
+errors, raw payloads, summaries, and identity fields when captured. Use the
+`minimal` profile for structural-only events. Security destinations are
+managed-config only and cannot be changed by project
+`publish.trajectory.yaml`. See
 [SECURITY-EVENT-STREAM.md](SECURITY-EVENT-STREAM.md).
 
 ## Sensitive Tags

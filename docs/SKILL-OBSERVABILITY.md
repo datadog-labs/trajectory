@@ -113,6 +113,11 @@ When comparing Claude native telemetry with Trajectory attribution cost, keep
 Skill invocation metrics are derived from the high-confidence
 `skill-invoked-turn-count` marker point. Prefer
 `trajectory.turn.skill_invocations` for trusted usage reports.
+This metric publishes when the invoking turn completes; the corresponding
+`trajectory.session.skill_invocations` rollup is finalized at session end. If
+final ingestion discovers an invocation that was unavailable at turn end, the
+session-end cycle reconciles the missing turn-count point through the
+replay-safe metric outbox alongside the completed-session rollup.
 
 Common `detected_from` values:
 

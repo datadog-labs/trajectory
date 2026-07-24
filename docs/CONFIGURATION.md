@@ -96,10 +96,11 @@ required_destinations:
 ```
 
 The stream is off unless `event_stream.enabled: true` is set. The default
-`security` profile keeps structural event metadata plus pre-tool arguments for
-detections, while omitting prompts, assistant text, thinking text, post-tool
-outputs/results, diffs, file contents, raw payloads, error text, summaries, and
-user email fields. See [SECURITY-EVENT-STREAM.md](SECURITY-EVENT-STREAM.md).
+`security` profile preserves the complete captured event for the approved
+managed destination, including prompts, responses, thinking, tool inputs and
+outputs, diffs, file content, raw payloads, errors, summaries, and identity
+fields when captured. Use `minimal` for structural-only events. See
+[SECURITY-EVENT-STREAM.md](SECURITY-EVENT-STREAM.md).
 
 Trace export is off by default. Rerunning `trajectory setup` preserves an
 existing non-off trace setting and prints the effective level. If the existing
@@ -287,7 +288,10 @@ For session privacy where local capture should continue, use `/incognito` inside
 
 ## LLM Capacity Controls
 
-Most capture, marker evaluation, local UI, and Datadog publish paths do not ask another LLM to process a session. The default features that may consume additional LLM capacity are task segmentation and sensitivity classification.
+Most capture, marker evaluation, local UI, and Datadog publish paths do not ask
+another LLM to process a session. The two main paths that may consume
+additional LLM capacity are task segmentation and sensitivity classification.
+Optional meta-task grouping is independently off by default.
 
 Disable both Trajectory-owned LLM paths:
 
@@ -297,6 +301,18 @@ trajectory config set export.sensitivity.scanning_mode off
 ```
 
 For more detail, see [LLM-CAPACITY.md](LLM-CAPACITY.md).
+
+## Managed Pricing Catalogs
+
+Managed configuration can provide two catalogs under `~/.trajectory/org/`:
+
+- `provider-pricing.yaml` defines effective-dated provider pricing, including
+  cache, fast-mode, and long-context rules.
+- `model-equivalence.yaml` maps exact observed aliases to canonical provider
+  models while keeping thinking, speed, billing, and context modes distinct.
+
+Exact catalog matches can authorize cost calculation. Heuristic model
+candidates are diagnostic-only and do not authorize pricing.
 
 ## Identity Tags
 
@@ -310,6 +326,25 @@ trajectory config set identity.github_username your-github-username
 ```
 
 GitHub identity can also resolve from repository-local Git config and then global Git config.
+
+## Automatic Updates
+
+`auto_update` controls background update checks and defaults to `true`:
+
+```yaml
+auto_update: true
+```
+
+Set it to `false` in `config.yaml` to opt out on one machine. A managed
+`auto_update: false` in `config.defaults.yaml` is authoritative over user
+config.
+
+Update checks and release downloads use GitHub API and HTTPS authentication
+from `GITHUB_TOKEN` or `gh auth token` when available. They do not invoke Git
+credential helpers or use SSH keys.
+
+Use `trajectory update converge --dry-run` to inspect a deferred update
+handoff, then `trajectory update converge --yes` to retry it.
 
 ## Environment Overrides
 
@@ -338,6 +373,7 @@ Environment variables are best for temporary overrides, CI jobs, or one launched
 |---|---|---|
 | `tags` | `{}` | Low-cardinality deployment tags added to published Datadog spans and Trajectory Datadog metrics; managed defaults win on shared keys |
 | `deployment.ring` | `stable` | Release channel for updates, usually `stable` or `beta` |
+| `auto_update` | `true` | Automatic background update checks |
 | `auth.credential_source` | `auto` | Pin standard Datadog credential resolution to `env`, `key_provider`, `keychain`, or `api_key_command`; `auto` uses the fallback chain |
 | `server.port` | `19222` | Local capture server port |
 | `local_ui.auto_start` | `true` | Automatic local-ui startup from non-manual flows |
@@ -352,6 +388,7 @@ Environment variables are best for temporary overrides, CI jobs, or one launched
 | `export.sensitivity.scanning_mode` | `balanced` | Sensitivity classification mode: `balanced`, `near_realtime`, or `off` |
 | `segmentation.enabled` | `true` | Async task segmentation |
 | `segmentation.interval` | `10` | Number of turns between segmentation passes |
+| `segmentation.model` | empty | Optional override for the provider-specific default: Claude Haiku, Codex GPT-5.4 Mini, or Gemini Flash-Lite |
 | `segmentation.publish_metrics` | `false` | Publish task-derived segmentation metrics |
 | `segmentation.publish_traces` | `false` | Publish segmentation task traces and logs |
 | `publish_trust.allowed_origins` | empty | Git origins allowed to load project `publish.trajectory.yaml` overlays |

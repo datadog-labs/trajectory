@@ -19,7 +19,7 @@ trajectory user-guide clients
 |---|---|---|---|
 | Claude Code | `trajectory setup --clients cc` (`--install-client-shims` optional) | Marketplace plugin hooks plus MCP; optional transparent `trajectory claude` launcher | Transcript backfill |
 | Codex CLI | `trajectory setup --clients codex` (`--install-client-shims` optional) | Three boundary command hooks plus authoritative rollout reconciliation by default; optional full ten-hook compatibility and transparent `trajectory codex` launcher | Codex rollout backfill |
-| GitHub Copilot CLI | `trajectory setup --clients copilot`; optionally enable `copilot_cli_durable_history` | Beta plugin command hooks plus MCP and default-off bounded session-state reconciliation | Enable `copilot_durable_history`; `trajectory backfill --from-copilot-sessions` remains the explicit bulk-history and repair path |
+| GitHub Copilot CLI | `trajectory setup --clients copilot`; optionally install the explicit command shim and enable `copilot_cli_durable_history` / `copilot_cli_native_otel` | Beta plugin command hooks plus MCP, bounded session-state reconciliation, and strict content-disabled native OTel request capture | Enable `copilot_durable_history`; `trajectory backfill --from-copilot-sessions` remains the explicit bulk-history and repair path |
 | Gemini CLI | `trajectory setup --clients gemini` | Managed command hooks plus MCP | Gemini transcript backfill |
 | Antigravity CLI (`agy`) | `trajectory setup --clients agy` | Antigravity plugin command hooks plus MCP | Default-off exact prompt plus schema-v1 generation-usage reconciliation |
 | Goose | `trajectory setup --clients goose` | Open Plugins command hooks | Default-off bounded schema-v15 SQLite reconciliation and native-trace usage enrichment via `goose_durable_history` |
@@ -218,16 +218,21 @@ the live local-ui database selected by `TRAJECTORY_CACHE_DB` or the cache under
 ## Claude Code
 
 Setup writes a local Claude Code marketplace under
-`~/.trajectory/claude-marketplace` without registering it or installing a
-missing `trajectory@trajectory`. Claude Code caches installed plugins by plugin
-version, so setup generates the marketplace and plugin manifest with
-Trajectory's bundled version rather than copying the development manifest
-verbatim. For an existing user-scope installation, setup, binary update, and
-MCP startup validate the exact `trajectory@trajectory` registry entry and cache
-ownership root, materialize the current versioned payload, and atomically
-repoint only that user-scope entry. Project and local scope entries remain
+`~/.trajectory/claude-marketplace`, registers it through Claude's plugin
+manager, and installs or repairs `trajectory@trajectory` at user scope. Claude
+Code caches installed plugins by plugin version, so setup generates the
+marketplace and plugin manifest with Trajectory's bundled version rather than
+copying the development manifest verbatim. Setup, binary update, and MCP startup
+validate the exact `trajectory@trajectory` registry entry and cache ownership
+root, materialize the current versioned payload, and atomically repoint only
+that user-scope entry. Setup refreshes after enabled module hooks are injected,
+and background repair restores preserved `hook-dispatch` entries after a
+same-version Claude cache refresh. Project and local scope entries remain
 unchanged. The old generation remains available to an active Claude process.
-These paths never invoke Claude or write or delete Claude settings; unknown
+Trajectory does not directly write Claude settings. Explicit setup invokes
+Claude's plugin manager to install or repair the plugin; autonomous repair
+invokes it only after verifying an existing owned user-scope installation, then
+reconciles the staged payload so enabled module hooks remain intact. Unknown
 paths, symlinks, malformed registries, and ambiguous ownership fail closed.
 
 The plugin ships Claude `hooks/hooks.json`, which Claude Code loads
@@ -511,16 +516,27 @@ full-hook compatibility path.
 Setup extracts a same-platform minimal hook helper and, on Darwin, native relay
 assets from the single installed Trajectory binary. It verifies each asset's
 digest, protocol, platform, executable mode, and self-check before committing
-an immutable generation. Hook JSON, per-hook enabled states, and exact Codex
-trusted hashes are reconciled under the same transaction lock. A failed state
-or trust commit restores the prior hook JSON; a failed asset install commits a
-trusted full-binary fallback. Setup, update, background auto-update, owner
-startup, config reconciliation, and doctor use this transaction. Background
-repair does not create plugin config for a user who has not configured Codex.
-An update only selects paired boundary mode after the running capture owner
-advertises boundary support for the same Trajectory home. An old, wrong-home,
-timed-out, or otherwise ambiguous owner keeps all ten hooks until the updated
-owner starts and self-repairs them.
+an immutable generation. A stable selector under `~/.trajectory/bin/codex-hook`
+chooses that generation, so startup and update repair can replace the runtime
+without changing the command identity Codex trusted. The command also retains
+the stable installed Trajectory binary path and resolves an inherited capture
+port only when the hook runs. Hook JSON and per-hook enabled states are
+reconciled under the same transaction lock. On setup, Codex's app server enumerates the
+exact installed-cache hooks and supplies their current hashes; Trajectory
+validates the `trajectory@trajectory` ownership, asks Codex to persist those
+hashes, and requires a trusted readback. Later repair preserves that
+Codex-owned trust and leaves hook JSON byte-identical when only the runtime
+generation changes. A failed state commit restores the prior hook JSON; a failed
+asset install commits a full-binary fallback that setup must authorize from
+Codex's installed-cache readback.
+Setup, explicit feature/config reconciliation, and doctor use the full
+definition transaction. Background auto-update, MCP startup, and owner startup
+verify and activate only the immutable runtime generation; they never rewrite
+the trusted hook definition. Background repair does not create plugin config
+for a user who has not configured Codex. If an update lands while the existing
+definition is still on full-hook compatibility mode, explicit setup or feature
+reconciliation selects paired boundary mode after the current owner advertises
+support for the same Trajectory home.
 
 Codex hooks use `type: "command"`; current Codex does not support a Trajectory
 HTTP hook variant. The full
@@ -589,7 +605,9 @@ When changing Codex capture behavior, preserve these invariants: every accepted
 canonical event is durable before acknowledgement; boundary, full-hook,
 watcher, and backfill paths materialize the same available evidence; rollout
 cursors advance through the server merge path; and feature/setup repair keeps
-hook commands, enabled states, and trust hashes in one recoverable transaction.
+hook commands and enabled states in one recoverable transaction while
+preserving Codex-owned trust hashes. Never compute trust from the mutable local
+marketplace: Codex executes and hashes its installed plugin cache.
 Uninstall removes Trajectory-owned hook state and cached plugin references
 before runtime assets, and leaves those assets intact if either cleanup cannot
 be committed.
@@ -1416,6 +1434,28 @@ restart. Provider files remain read-only, native hook facts win during atomic
 merge, active/resumed tails remain open, and deletion is a source tombstone-not
 a fabricated `session_end`. The explicit backfill command remains the bulk
 historical import and repair surface.
+
+Request-grain native usage is available through an explicit transparent
+launcher:
+
+```bash
+trajectory setup --clients copilot --install-client-shims
+trajectory features enable copilot_cli_native_otel
+trajectory config reload --yes
+```
+
+When enabled, the launcher injects content-disabled OTLP endpoints only for a
+Copilot process that has no external exporter, custom OTel scope, file
+exporter, or explicit telemetry disable. `trajectory serve` accepts only
+first-party `service.name=github-copilot` / `github.copilot` spans. It retains
+split-batch ancestry until the top-level default-agent root proves the provider
+session, maps nested agent calls from span ancestry, joins the service request
+ID to provider history for the resolved model and durable user interaction,
+and acknowledges deduplication only after the canonical JSONL merge succeeds.
+Copilot's cache-inclusive input count is converted to exclusive input,
+cache-read, and cache-creation categories. The shared model rate card produces
+labeled estimated USD; premium-request multipliers and nano-AIU remain
+separate provider diagnostics.
 
 ## Gemini CLI
 

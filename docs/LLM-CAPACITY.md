@@ -15,6 +15,7 @@ trajectory user-guide llm-capacity
 | Feature | Default | What it does | How often it can call an LLM | Primary controls |
 |---|---|---|---|---|
 | Task segmentation | On | Splits sessions into tasks and scores task dimensions such as outcome, autonomy, risk, and reversibility | About every `segmentation.interval` completed turns, default 10, plus one final pass at session end for sessions with at least 2 turns | `segmentation.enabled`, `segmentation.interval`, `segmentation.model`, `TRAJECTORY_SEGMENTATION_DISABLED=1` |
+| Meta-task grouping | Off | Optionally groups finalized leaf tasks into a higher-level hierarchy | At most one additional session-end call, and only when at least 3 finalized tasks exist | `task_meta_segmentation` feature flag; also requires `task_segmentation_metrics_v2` |
 | Sensitivity classification | Off in fresh single-user setup; managed or explicit config may enable it | Classifies session content for the publish gate as public, internal, confidential, or restricted | In `near_realtime` mode, non-incognito active sessions are scanned only when new content exists, default every 240 minutes, plus a session-end scan. In `balanced` mode, about every 10 completed turns, plus the session-end scan. | `export.sensitivity.scanning_mode`, `export.sensitivity.near_realtime_interval_minutes` |
 
 For zero Trajectory-owned LLM calls from the capture server, disable both:
@@ -48,6 +49,24 @@ floor(N / 10) incremental calls + 1 final call
 For example, a 23-turn session normally means about 3 segmentation calls: turn
 10, turn 20, and final session end. Adaptive backoff can reduce that.
 
+Segmentation prefers the captured session's own locally available coding-agent
+CLI in headless mode. Claude sessions use `claude-haiku-4-5-20251001`, Codex
+sessions use an ephemeral read-only `codex exec` with `gpt-5.4-mini` at low
+reasoning effort, and Gemini sessions use `gemini-2.5-flash-lite`. If that CLI
+is unavailable, Trajectory retains its normal CLI fallback order. Set
+`segmentation.model` to override the provider-specific model.
+
+The default-off `task_meta_segmentation` feature can add one more final-session
+call when at least three finalized leaf tasks are available. That pass groups
+leaf tasks into higher-level meta-tasks:
+
+```bash
+trajectory features enable task_meta_segmentation
+```
+
+The pass remains inert unless `task_segmentation_metrics_v2` is also enabled,
+and it skips sessions with fewer than three finalized tasks.
+
 Headless coding-agent sessions are included in capture and publish by default
 when export is configured. Sensitivity/classification and segmentation always
 skip headless sessions. To opt out of capture/publish for all non-internal
@@ -58,10 +77,6 @@ trajectory config set capture.include_headless_agents false
 ```
 
 Trajectory-owned classifier and segmenter subprocesses remain suppressed.
-
-Segmentation uses a headless CLI provider. The default model is
-`claude-haiku-4-5-20251001`; set `segmentation.model` to override it when the
-selected provider supports a model flag.
 
 Disable segmentation:
 
@@ -101,7 +116,8 @@ classifier calls and disable the sensitivity publish gate, keep
 Scanning modes:
 
 - `near_realtime` scans non-incognito active sessions on a time window when new
-  content exists. The default interval is 240 minutes.
+  content exists. The default interval is 240 minutes, and the durable
+  per-session window is enforced across concurrent serve processes.
 - `balanced` scans on the same default turn cadence as segmentation: about every
   10 completed turns, plus a final session-end scan on the non-incognito publish
   path.
@@ -125,7 +141,8 @@ direct provider APIs. In practice, capacity may come from the installed agent
 CLI account, MCP sampling, or direct provider API keys such as
 `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY`. If no classifier
 path is available, Trajectory fails closed for publish gating and does not make
-a paid classifier call.
+a paid classifier call. The direct Google backend currently uses
+`gemini-2.5-flash-lite`.
 
 Disable sensitivity classification:
 
@@ -159,10 +176,9 @@ near_realtime: active windows with new content / interval + at most 1 session-en
 off:           0 calls
 ```
 
-Incognito is a privacy control, not a capacity control. It suppresses publish
-for ordinary destinations and skips the final non-incognito publish-drain scan,
-but active-session sensitivity scanning can still run while the session is
-active. Use `scanning_mode: off` for a capacity guarantee.
+Incognito suppresses publish for ordinary destinations and skips active-session
+and final sensitivity scans for that session. Use `scanning_mode: off` when you
+want a configuration-wide guarantee of zero sensitivity-classifier calls.
 
 ## Cost reporting
 
@@ -210,6 +226,7 @@ trajectory config get segmentation.enabled
 trajectory config get segmentation.interval
 trajectory config get export.sensitivity.scanning_mode
 trajectory config get export.sensitivity.near_realtime_interval_minutes
+trajectory features status task_meta_segmentation
 ```
 
 Check recent activity in the serve logs:
