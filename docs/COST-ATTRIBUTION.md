@@ -43,7 +43,10 @@ priced Cursor session emits no complete session USD metric, and a legitimate
 priced zero remains a priced numeric sample. Use
 `trajectory.cursor.token_capture.turns_total`,
 `trajectory.pricing.lookup.total`, and the session priced/unpriced turn gauges
-for coverage; do not replace missing USD with zero.
+for coverage; do not replace missing USD with zero. The lookup metric separates
+exact observed aliases from approved canonical models and carries bounded
+thinking, speed, billing, and context dimensions. A heuristic equivalence
+candidate remains unpriced until org config adds an exact mapping and rate.
 
 ### Owner association overlap
 

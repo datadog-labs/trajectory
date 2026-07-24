@@ -41,23 +41,21 @@ enabled:
 
 | Profile | Behavior |
 |---|---|
-| `security` | Default detection-focused fidelity: structural metadata plus pre-tool input/argument fields; prompts and post-tool outputs are omitted. |
-| `minimal` | Structural metadata only. Pre-tool input, command, and argument fields are also omitted. |
-| `full` | Original event fields are included for explicit managed investigations. |
+| `security` | Default. Complete captured-event fidelity for the approved security destination, including prompts, responses, thinking, tool inputs and outputs, diffs, file content, errors, raw payloads, summaries, and identity fields when captured. |
+| `minimal` | Structural metadata only. Content-bearing prompt, response, tool, diff, file, raw payload, error, summary, and user-email fields are omitted. |
+| `full` | Compatibility spelling for the same complete captured-event fidelity as `security`. |
 
 The stream itself remains off unless `event_stream.enabled: true` is set.
 
-The default `security` profile keeps fields such as `event_type`, `session_id`,
-`sequence_number`, `turn_id`, `tool_name`, `phase`, `success`, `duration_ms`,
-`client_source`, token and cost summaries, provenance, MCP identity, and
-pre-tool input fields such as `input`, `tool_input`, `args`, `arguments`,
-`cmd`, and `command`. Those input fields are omitted outside pre-tool events.
+Accepted event aliases and registered coding-agent tools use the shared
+canonical contract before privacy filtering. The original spellings remain
+available in `trajectory.original_event_type` and `native_tool_name` when
+identity changes.
 
-It omits prompt, assistant response, thinking text, post-tool output/result
-payloads, raw payloads, error text, summaries, and user email fields. This is
-the detection-focused middle ground: security detections can see what a tool
-was asked to do without receiving the user's prompt or the tool's returned
-content.
+The default `security` profile preserves every captured event field. This
+includes prompts, assistant responses, thinking text, pre- and post-tool
+payloads, raw payloads, error text, summaries, diffs, file content, and user
+email fields when the source provides them.
 
 `event_stream.include_private_fields: true` is a deprecated compatibility alias
 for `privacy_profile: full` when `privacy_profile` is omitted.
@@ -69,15 +67,28 @@ Each event stream log uses:
 - `ddsource: trajectory-event-stream`
 - `service`: the destination service
 - `ddtags`: destination tags plus event tags such as `ml_app`, `session_id`,
-  `event_type`, `client_source`, `turn_id`, `tool_name`, `phase`, and
-  `sequence_number` when present
+  `event_type`, `client_source`, `turn_id`, `tool_name`, `tool_type`,
+  `tool_operation`, `phase`, and `sequence_number` when present
 - `message`: a short event summary such as `tool_use: Bash (pre)`
 
 The log body includes event-stream metadata such as
 `event_stream_schema_version`, `event_stream_privacy`,
 `private_fields_included`, `destination_name`, `destination_type`, `ml_app`,
 `trajectory_version`, and the canonical event fields allowed by the privacy
-profile.
+profile. Event-stream schema version 2 adds the vendor-neutral
+`tool_operation` detection contract and makes `security` full-fidelity.
+
+Registered common tools retain three complementary identities:
+
+- `tool_operation`, such as `shell.execute`, is the vendor-neutral field for
+  security detections and cross-agent queries.
+- `tool_name`, such as `Bash`, is the canonical compatibility and display name.
+- `native_tool_name`, such as `exec_command`, preserves source provenance when
+  canonicalization changed the name.
+
+Detection rules should prefer `tool_operation`. For example,
+`shell.execute`, `file.read`, `file.write`, `file.edit`, `code.search`, and
+`web.fetch` remain stable across clients that use different native tool names.
 
 ## Delivery Semantics
 
@@ -102,6 +113,10 @@ Enabling `event_stream` does not enable marker logs, structured records,
 metrics, segmentation logs, or traces. Those outputs keep their existing gates.
 Security destinations with `incognito_exempt: true` still do not receive
 structured records or metrics.
+
+The security event stream does not enable or depend on the optional
+`agent-security` runtime module. That module may produce derived findings or
+policy decisions, but it is not required for full-fidelity security logs.
 
 For destination configuration, see `trajectory user-guide publish` and
 `trajectory user-guide deploy`. For privacy controls, see

@@ -13,6 +13,12 @@ The UI should not suppress Trajectory cost. It should decide where Trajectory
 cost is counted as a total, where it is shown as an attribution breakdown, and
 where another billing stream is likely already covering the same spend.
 
+Provider activity integrations are a separate axis. An audit webhook can fill
+web-agent session and action gaps without being a cost source. The UI should
+retain those activity records, join them into user-visible sessions when the
+provider supplies a correlation ID, and refuse to synthesize billed cost from
+missing cost fields.
+
 ## Core Rule
 
 Never sum cost series across roles by default.
@@ -90,6 +96,11 @@ selection, and side-by-side comparison. They must not claim record-level
 deduplication. Matching only by email, model, and timestamp is heuristic and is
 not safe for authoritative spend.
 
+Activity correlation and cost reconciliation are different operations. A
+provider session ID can join a query, answer, and agent action while still
+being too coarse to prove which model request or economic charge overlaps a
+client-observed turn.
+
 The managed Trajectory cost-fidelity heartbeat does not change this rule. Its
 three leg metrics validate native-to-capture, capture-to-outbox, and delivery
 separately for a privacy-eligible local cohort. They do not mint a shared
@@ -126,7 +137,9 @@ type TelemetrySourceId =
   | 'claude_otel'
   | 'anthropic_usage'
   | 'claude_code_integration'
-  | 'cursor_usage';
+  | 'cursor_usage'
+  | 'perplexity_audit'
+  | 'perplexity_computer_analytics';
 
 type ValueSemantics =
   | 'completed_sample'
@@ -138,6 +151,11 @@ type SourceDefinition = {
   id: TelemetrySourceId;
   label: string;
   availabilityProbe: { metric: string; filter?: string; strategy: 'has_points' };
+  sourceCapabilities: {
+    activity: boolean;
+    usage: boolean;
+    cost: boolean;
+  };
   identity: {
     userTag?: string;
     modelTag?: string;
@@ -151,9 +169,9 @@ type SourceDefinition = {
 type MetricBinding = {
   metric: string;
   telemetrySource: TelemetrySourceId;
-  signal: 'cost_usd' | 'input_tokens' | 'output_tokens' | 'sessions' |
-    'commits' | 'pull_requests' | 'llm_requests' | 'tool_uses' |
-    'web_search_requests';
+  signal: 'cost_usd' | 'credits' | 'input_tokens' | 'output_tokens' |
+    'sessions' | 'commits' | 'pull_requests' | 'llm_requests' | 'tool_uses' |
+    'web_search_requests' | 'queries' | 'answers' | 'agent_actions';
   filter?: string;
   userTag?: string;
   modelTag?: string;
@@ -161,7 +179,7 @@ type MetricBinding = {
   sessionTag?: string;
   turnTag?: string;
   eventIdTag?: string;
-  unit: 'usd' | 'cent' | 'token' | 'count';
+  unit: 'usd' | 'cent' | 'credit' | 'token' | 'count';
   unitScale?: number;
   aggregation: 'sum' | 'count' | 'latest';
   valueSemantics: ValueSemantics;
@@ -186,6 +204,55 @@ Every binding must declare source, signal, unit, value semantics, and overlap
 group. Remove bare string metric bindings or normalize them through an
 explicit source-specific helper. A missing provenance field must not silently
 default to an `integrations` bucket.
+
+An activity-only or usage-only source must not register a `cost_usd` binding.
+Missing cost is an unavailable signal, not a zero-valued cost point.
+
+## Canonical Record And Matching Contract
+
+Future exact reconciliation should happen on canonical records before metrics
+are aggregated. At minimum, preserve:
+
+| Field | Purpose |
+|---|---|
+| Source, account/workspace scope, and `sourceRecordId` | Idempotent ingestion of the same upstream record |
+| `sourceRevision` and `sourceObservedAt` | Replacement ordering for corrected events or refreshed snapshots |
+| `sourceIngestedAt` | Delivery-lag and replay diagnostics; never a substitute for event time |
+| Canonical and source user IDs | Explicit identity mapping without treating raw email as a record key |
+| Session/conversation and parent-action IDs | Activity correlation |
+| Canonical request/charge ID, when actually shared | Exact cross-source cost matching |
+| Signal, value, unit, currency, and value semantics | Prevent counts, gauges, deltas, distributions, and snapshots from being combined |
+| Cost role, authority, scope, and overlap group | Select one answer for a product question without deleting useful attribution |
+| Coverage window and time zone | Align aggregates and revisioned reports |
+
+Use the strongest matching rule supported by the records:
+
+1. **Source replay:** same source, account scope, and source record ID means one
+   record. Keep the newest documented revision.
+2. **Exact cross-source match:** a shared canonical request or charge ID,
+   compatible signal semantics, and aligned account/product scope can select
+   one cost authority while retaining the other record for provenance.
+3. **Aggregate selection:** aligned account, product, currency, dimensions,
+   and half-open time window can select one source for the total, but cannot
+   remove individual records as duplicates.
+4. **Heuristic comparison:** user, model, and time proximity can explain
+   coverage or variance only. It cannot drive an authoritative dedupe.
+
+For cost views, classify authority explicitly, for example:
+`provider_billed`, `provider_rated`, `client_reported`,
+`local_exact_rate`, `local_estimate`, or `none`. This is not a universal
+ranking across all questions. Provider billing can own an organization total
+while local exact-rate attribution owns the session breakdown. The resolver
+chooses one authority for each signal, scope, grain, and view.
+
+### Revisioned aggregates
+
+Provider APIs and scheduled SaaS reports often restate an earlier window.
+Treat a later record as a replacement, not an additive event, when it has the
+same source, account, product, currency, window, dimensions, and snapshot key.
+Keep the previous version for audit history but exclude it from the current
+total. If the provider does not document revision or watermark behavior, mark
+the window provisional until its settlement policy is known.
 
 ## Resolver Contract
 
@@ -315,6 +382,66 @@ Current source filtering only affects User Analytics. The dashboard, Model
 Usage, detail pages, and side panels must inherit the same plan for the fix to
 be complete.
 
+## SaaS Activity Streams
+
+A provider audit stream should have its own source definition and signal
+bindings. It can participate in activity source selection without becoming a
+cost fallback.
+
+For a Perplexity-style webhook:
+
+- use the provider event UUID for delivery idempotency;
+- use the provider session ID to correlate query, answer, and agent-action
+  events;
+- count each distinct event according to its event type;
+- preserve model metadata as activity context;
+- emit no `cost_usd` binding when tokens, price, currency, and billing
+  semantics are absent; and
+- do not suppress a client-attributed cost merely because both sources refer
+  to the same visible session.
+
+If a separate provider usage/cost export is added later, register it as a
+separate source with its real unit and semantics.
+
+Perplexity Computer Analytics currently supplies complete UTC hour or day
+buckets for credits and activity categories, plus per-member daily credit
+usage. The source is periodically synchronized and a recent zero can mean "not
+synced yet." Register credits as a provider consumption signal, not
+`cost_usd`; `paid` and `promo` are credit-source dimensions, not a currency or
+cash amount. Its bucket has no documented request or audit-event ID, so it
+supports provider-credit totals and aggregate comparison, not exact matching
+to audit events or client turns.
+
+If a provider later adds currency-denominated usage or billing, prefer it for
+provider-rated or billed total views only after validating its account,
+product, currency, inclusion, window, refresh, and settlement semantics.
+Without a shared request or charge ID, keep local session attribution and
+provider totals at their respective grains.
+
+### SaaS integration contract gate
+
+Before an Agent Console source is enabled, its discovery and implementation
+must document:
+
+- source capabilities: activity, provider usage, cost, or any explicit
+  combination;
+- supported signals and the exact grain of each value;
+- account, workspace, product, route, and user scope;
+- stable event IDs, session/request relationships, and parent-child semantics;
+- delivery retry, ordering, replay, backfill, and retention behavior;
+- event time, ingestion time, source time zone, and bucket boundaries;
+- correction, revision, snapshot, watermark, and settlement behavior;
+- cost authority, currency, included/free/failed/BYOK policy, and whether the
+  value is gross, charged, estimated, or billed;
+- schema versioning, payload validation, privacy classification, and
+  customer-controlled content collection; and
+- a dual-source canary that proves source selection, unmatched coverage, and
+  zero-vs-unavailable behavior before default totals change.
+
+Unknown answers are allowed during discovery, but they must produce an
+explicit provisional or review-required state rather than an inferred dedupe
+rule.
+
 ## Customer Configuration Variants
 
 Support all of these without changing the resolver invariants:
@@ -372,6 +499,7 @@ Then apply this decision table within each `trajectory.cost_dedupe_group`:
 | Trajectory attribution plus direct Anthropic analytics | `possible` | Use provider analytics for billed totals; keep Trajectory attribution for user/project/session breakdowns. |
 | Trajectory attribution plus gateway or cloud billing analytics | `aggregate_only` | Use gateway/cloud billing for billed totals; keep Trajectory attribution for allocation and drilldown. |
 | Multiple routes in one aggregate | `mixed` | Do not auto-hide. Split by `trajectory.cost_dedupe_group` and show a review state. |
+| Provider audit/activity stream with no cost fields | N/A | Use for activity coverage only; do not create a cost series or use it as a zero-cost fallback. |
 | Historical or incomplete evidence | `unknown` | Do not auto-hide. Keep visible with an unknown-overlap badge. |
 | Missing overlap tags | Missing | Treat as uncategorized. Keep visible and exclude from automatic dedupe rules. |
 
@@ -560,11 +688,17 @@ Before enabling dashboard UI overlap rendering, verify:
   totals from spans.
 - Tests cover direct, gateway, cloud-provider, unknown, mixed, missing-tag, and
   client-telemetry cases.
+- Tests cover source-event replay, corrected snapshots, activity-only
+  providers, unavailable cost, and a provider session containing multiple
+  distinct actions.
 
 ## Anti-Patterns
 
 - Do not dedupe by model name.
 - Do not dedupe by span name such as `inference-0`.
+- Do not dedupe cost by provider session or conversation ID alone.
+- Do not convert a missing cost field into `$0`.
+- Do not sum two revisions of the same provider snapshot.
 - Do not treat `trajectory.provider:anthropic` alone as overlap evidence.
 - Do not hide `unknown`, `mixed`, or missing-tag data automatically.
 - Do not use cost-overlap tags as a proxy for sensitive route configuration.

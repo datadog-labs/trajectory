@@ -144,6 +144,8 @@ trajectory config show               # View merged runtime config
 trajectory config set <key> <value>  # Set a config value
 trajectory config reload             # Dry-run live serve reload/restart plan
 trajectory config reload --yes       # Ask the exact adopted owner to hot-reload config
+trajectory update converge --dry-run # Preview managed desired-version convergence
+trajectory update converge --yes     # Apply a managed generation and activate its binary
 trajectory update reconcile          # Dry-run old-version serve process refresh
 trajectory update reconcile --yes    # Retire the adopted old owner, then start the target version
 trajectory config set-secret <name>  # Store a secret in the OS keychain
@@ -196,21 +198,29 @@ silently replace a live owner.
 
 After a binary update, Trajectory automatically hands a compatible exact
 `trajectory serve` owner to the updated binary. Active session generations stay
-open: the old owner quiesces, exits without fabricating terminal events, and the
-replacement resumes capture after exact process death is proven. This also
-works on the first upgrade into a handoff-capable release when the updater
-detects installed client integrations: their non-interactive refresh runs
-through the newly installed binary. With no detected integration, a skipped
-refresh, or a failed refresh, the existing owner keeps serving safely until a
-later new-binary setup, runtime-asset reconciliation, or explicit reconcile.
+open: the owner retains its bound listener, quiesces without fabricating
+terminal events, and replaces its process image in place. The PID, socket, and
+kernel accept queue remain continuous while the new image reattaches the same
+fenced ownership generation. Older owners that cannot perform an in-place
+handoff first yield their listeners to a proven target-version owner and remain
+available as failback if that replacement exits.
 
 Run `trajectory update reconcile` to inspect the decision or `trajectory update
 reconcile --yes` to retry a deferred handoff. Set
 `TRAJECTORY_UPDATE_RECONCILE_PROCESSES=false` only to disable automatic handoff,
 or disable the `seamless_update_handoff` feature through user, managed, or
-`TRAJECTORY_DISABLE_FEATURES` policy. External, legacy, discovery-only, and
-ambiguous owners remain fail-closed and continue serving until they stop
-naturally; users do not need to end active agent sessions for an update.
+`TRAJECTORY_DISABLE_FEATURES` policy. Foreign, discovery-only, partially
+inventoried, and ambiguous owners remain fail-closed. Users do not need to end
+active agent sessions for an update.
+
+Managed installers can use `trajectory update converge --yes --target-version
+VERSION --source managed-post-install` after laying down a binary. Managed
+configuration can also select an immutable, checksum-pinned desired version for
+forward convergence or controlled rollback. Run `trajectory update converge
+--dry-run` to preview the decision. Previously accepted exact generations can
+repair binary drift in either direction when controlled downgrade is enabled;
+new older targets require both an explicit rollback generation and the
+`controlled_binary_downgrade` feature.
 
 For metrics-only Datadog export, keep `export.traces` off and set
 `export.metrics` true:
@@ -343,10 +353,17 @@ one Datadog log per canonical Trajectory event with
 `ddsource: trajectory-event-stream`. This is configured under
 `required_destinations[].event_stream`, not in repo `publish.trajectory.yaml`.
 The stream is off unless `event_stream.enabled: true` is set. When enabled, the
-default `privacy_profile: security` mode keeps structural event metadata plus
-pre-tool arguments for detections while omitting prompts, assistant text,
-thinking text, post-tool output/results, raw payloads, error text, summaries,
-and user email fields. See `trajectory user-guide security-event-stream`.
+default `privacy_profile: security` mode preserves the complete captured event,
+including prompts, responses, thinking, tool inputs and outputs, diffs, file
+content, raw payloads, errors, summaries, and identity fields. Common tools
+follow the `trajectory-spec` coding-agent equivalence registry and expose a
+vendor-neutral `tool_operation` for detections, such as `shell.execute` or
+`file.read`. Canonical `tool_name` remains available for compatibility, while
+`native_tool_name` retains source provenance. The built-in security event
+stream guide includes the complete operation-to-canonical-name detection table
+and a cross-client query example. The stream does not enable or depend on the
+optional `agent-security` runtime module. See
+`trajectory user-guide security-event-stream`.
 
 Trace export is off by default. Set `export.traces` explicitly when you want
 sessions published to LLM Observability. Rerunning `trajectory setup` preserves
@@ -453,15 +470,20 @@ registers those as native extension tools; setup-managed MCP clients get the
 same schema-first workflow through `trajectory mcp`. The embedded query guide
 documents schema-first inspection and `TRAJECTORY_CACHE_DB` handling.
 
-Use `trajectory cost` for local cost tracking. It reads the local SQLite cache
-in read-only mode, shows recent cost totals, inspects turn-level cost evidence,
+Use `trajectory cost` for local cost tracking. It reads the local SQLite cache,
+automatically repairs obsolete Codex token/cost projections when needed, shows
+recent cost totals, inspects turn-level cost evidence,
 reports objective cost observations without causal claims, and validates recent
 cost fidelity for Claude Code, Codex, Gemini, Pi, OpenCode, Cursor, Hermes
 Agent, Amp Code, Qwen Code, Kilo Code, and Mistral Vibe. Explicit whole-session
 cost evidence appears as `session-aggregate` and is not counted as a costful
 turn. Finite `--since` windows select observed turn activity rather than whole
 session lifetimes, so a long-running session contributes only its observed
-in-window turn activity; top-session JSON keeps session timestamps separate from
+in-window turn activity. A current, completed Codex session whose start is in
+the requested window uses its authoritative priced session aggregate; a window
+that starts mid-session still uses only the sliced turns. This prevents a wider
+window from dropping a session because of an incidental zero-usage legacy row.
+Top-session JSON keeps session timestamps separate from
 `window_started_at` and `window_ended_at`. Explicit whole-session aggregate
 evidence is included only when its session evidence timestamp falls inside the
 window because it cannot be split more finely. A missing evidence timestamp
@@ -476,49 +498,50 @@ prove possible overlap; those ambiguous rows remain unavailable rather than
 exposing a coarse fallback as precise turn cost.
 
 For Codex, this view separates API-equivalent USD from ChatGPT Codex credits.
+They represent the same usage, so credits are not added to USD a second time.
+Human summary output shows credits once in the header and keeps agent/session
+tables dollar-only; JSON retains detailed credit and fidelity fields. Human
+rankings show sessions with complete cost evidence and put excluded-session and
+Guardian proxy-pricing disclosures in compact footnotes.
 Guardian usage contributes an explicitly labeled provisional
 `codex-auto-review` proxy estimate using $2.50 per million input tokens, $0.25
 per million cached input tokens, and $15 per million output tokens, with
 corresponding inferred credit rates of 62.5, 6.25, and 375 per million. The
-rate is third-party evidence, not a verified OpenAI billing mapping; output
-includes the proxy version, source, and open validation reference. Token
+rate is third-party evidence, not a verified OpenAI billing mapping; JSON and
+cost observations include the proxy version, source, and open validation
+reference. Token
 components without a provisional rate, negative components, incomplete token
 status, and session-only aggregates without a cache breakdown remain unavailable
 rather than being treated as free. Reasoning usage is already included in reported output tokens
-and is not charged twice. Stale pre-fix cache rows remain excluded from cost,
-credit, usage, and top-session totals. If stale Codex rows intersect the window,
-overall cost and credit states fail closed as unavailable until repair; a
-subtotal from only the repaired minority is not displayed. Standalone
-`trajectory cost top` reports
-`ranking_state: unavailable`, the excluded stale-session count, and the repair
-command rather than presenting the repaired minority as a complete ranking.
+and is not charged twice.
+
+Before displaying a summary or ranking, the command automatically repairs quiet
+stale Codex sessions in the requested window. The cost-only repair decodes
+rollout metadata, model and service-tier settings, token counters, turn
+boundaries, and web-search charges. It updates only cost evidence and does not
+replace tools, markers, prompts, responses, or evaluation data. Active or
+changing sources and concurrent repair are deferred without blocking. JSON
+exposes `automatic_cost_repair` counts and elapsed time.
+
+Stale rows that cannot yet be repaired remain excluded, but they no longer
+erase valid evidence: cost and credits stay visible as conservative
+known-subtotal lower bounds. Standalone `trajectory cost top` reports
+`ranking_state: partial`, retains sessions with known partial subtotals, and
+exposes the excluded stale-session count rather than claiming a complete
+ranking.
 Guardian sessions with a complete proxy estimate participate in rankings and
 carry `cost_fidelity_badge: proxy_estimate`; partial or otherwise unpriced
-sessions make `ranking_state` unavailable. Human output labels the remaining
-fully priced rows as candidates, and JSON reports `incomplete_ranking_sessions` or
-`incomplete_cost_sessions`; neither surface presents those candidates as a
-complete highest-cost ordering. When only some Guardian turns have complete
+sessions make `ranking_state` partial. Human output labels the ranking as
+incomplete, and JSON reports `incomplete_ranking_sessions` or
+`incomplete_cost_sessions`; neither surface presents it as a complete
+highest-cost ordering. When only some Guardian turns have complete
 token evidence, the command still shows their provisional amount as an explicit
 known subtotal and separately counts the incomplete turns and sessions.
-Normal `trajectory serve`
-startup uses the default-on `codex_cost_derivation_repair` feature to replay a
-bounded page of quiet, already-captured stale sessions and refresh stale cache
-projections without importing uncaptured history. It runs at most once per 24
-hours and pages the active and archived roots together from the globally most
-recent rollout toward older history. It scans at most 5,000 directory entries,
-examines at most 100 metadata candidates, starts no new work after 15 seconds,
-reconstructs at most 10 sessions, reindexes at most 25, and keeps the ordinary
-lane to 10,000 events or 8 MiB per session and 16 MiB per full replay/cache
-phase. Those are in-memory and ordinary-lane admission thresholds, not data-loss
-ceilings. One quiet oversized source session and one oversized canonical
-projection per page use private spill files and bounded record/turn batches;
-there is no fixed total-byte, record-count, record-size, or turn-size rejection.
-Work and temporary disk I/O scale with input size while peak heap and concurrent
-heavy sessions remain bounded. A partial cache rebuild is not marked with the
-current derivation until every chunk commits. Remaining stale rows that a page
-has not reached can be repaired immediately with `trajectory backfill
---from-codex-sessions --force`; its large-session cache indexing uses the same
-bounded reflow instead of the legacy whole-session materialization path.
+Normal `trajectory serve` startup may also run its existing bounded background
+repair, but `trajectory cost` does not wait for that daily page. The broader
+Codex backfill remains available for importing or rebuilding non-cost session
+data; it is not required for the cost command to repair the evidence needed for
+its display.
 
 For the stricter v2 integrity check, enable the preview and reconcile native
 source evidence against a freshly materialized session and retained outbox:
@@ -632,17 +655,20 @@ unchanged. If no config file exists yet, it creates a capture-only config so
 local session capture can start; run `trajectory setup` later to configure
 Datadog export.
 
-Claude Code is a stricter boundary: Trajectory never writes, merges, or deletes
+Claude Code is a stricter boundary: Trajectory never directly writes, merges, or deletes
 Claude user settings, including `~/.claude.json`,
 `~/.claude/settings.json`, and settings variants. The standard plugin uses one
 root `.mcp.json`; the manifest has no inline MCP block and no nested MCP file.
 If an older explicit user MCP entry exists, Trajectory leaves it byte-for-byte
 unchanged and stages a compatibility plugin generation with no MCP declaration,
-preventing double instrumentation. Setup and background repair never invoke
-Claude. They stage the marketplace and, for an existing user-scope
-installation, update only that exact `trajectory@trajectory` registry entry
-and versioned cache subtree. Project and local plugin scopes remain unchanged.
-Initial plugin registration remains a Claude or managed-policy action.
+preventing double instrumentation. Explicit setup stages the marketplace and
+uses Claude's plugin manager to register, install, or repair
+`trajectory@trajectory` at user scope; Claude may update its own plugin
+registration fields while preserving unrelated settings. Setup then refreshes
+the owned cache after module-hook injection. For an existing owned user-scope
+installation, background repair also invokes Claude's plugin manager and then
+restores preserved `hook-dispatch` entries if Claude replaces the same-version
+cache. Project and local plugin scopes remain unchanged.
 A legacy OTLP block is reported and left unchanged.
 
 Claude Code and Codex already have native setup integrations, so transparent
@@ -681,9 +707,24 @@ second gate is enabled and the plan has actionable detected clients, startup
 runs the same client-only setup path in the background and records the apply
 result with source `serve_startup_apply`.
 
+Managed fleets can additionally enable the default-off
+`periodic_auto_instrument_reconciliation` feature. While `trajectory serve`
+continues running, the periodic path re-inventories installed clients after
+each effective `setup.auto_instrument.interval` and applies only newly missing
+or invalid allow-listed integrations. Enabled managed policy temporarily blocks
+the shared owner's normal idle exit so the configured cadence can elapse. The
+loop runs serially, rechecks the managed feature and policy before every pass
+and again before mutation, polls policy at most once per minute while waiting,
+honors the existing setup mutation lease, and clamps cadences shorter than one
+minute. Disabling the feature releases the shared owner's idle-exit block after
+the next policy poll. Periodic results use source `serve_periodic` or
+`serve_periodic_apply`.
+
 Example managed defaults:
 
 ```yaml
+features:
+  enabled: [periodic_auto_instrument_reconciliation]
 setup:
   auto_instrument:
     enabled: true
@@ -956,6 +997,22 @@ Use Lapdog against local Trajectory data:
 trajectory local-ui --lapdog
 ```
 
+The viewer groups Browse, Transcript, and Insights under **Session**, while
+Usage, Metrics, Skills, and Automated Oversight live under **All sessions**.
+On wider screens, the session list docks beside the selected session so
+session stats remain visible while switching between sessions.
+The **Metrics** tab includes focused Cost, Time, and Reliability views plus
+**Explore** for time ranges, comparisons, trends, series, and catalog analysis.
+Ranked expensive or long turns link back to their sessions, and reliability
+views summarize repeated tool failures and permission denials without exposing
+prompt or tool content in aggregate responses.
+
+The session drawer shows whether session JSONL exists and the last durable
+local-cache indexing result. Pending pages, active files waiting for retry, and
+indexing errors include the matching `trajectory backfill --index-local`
+continuation command. A completed timestamp describes the latest indexing run,
+not files created afterward.
+
 Reconstruct a captured session into another supported client:
 
 ```bash
@@ -1090,6 +1147,11 @@ trajectory features enable qwen_durable_history        # one-time Qwen history o
 trajectory backfill --from-qwen-sessions --session <id> # active/archive Qwen chat JSONL
 trajectory backfill-my-metrics                         # Dry-run historical dashboard repair
 ```
+
+Codex and local-cache backfills use `--limit` as a per-chunk size. The command
+reports the total file and chunk counts before starting, then runs every chunk
+without requiring a separate `--continue` invocation. `--continue` remains
+available to resume from the saved cursor after an interrupted run.
 
 Read the full embedded guide for modes, local UI repair, local historical metric
 audit, and structured record backfill:
@@ -1268,7 +1330,12 @@ repo rankings.
 
 Trajectory publishes distribution metrics for completed samples that are useful as populations in Metrics Explorer. Use percentile aggregators such as `p95:` on these names after Datadog percentile aggregations are enabled for the metric:
 
-- `trajectory.turn.tool_uses.total` - total tool calls in a completed turn. This is intentionally separate from the `trajectory.turn.tool_uses` gauge, which preserves `tool_name`, adds normalized `tool_type`, and adds `mcp_server`, `mcp_tool`, and `mcp_source_scope` for MCP calls with derivable sanitized provenance.
+- `trajectory.turn.tool_uses.total` - total tool calls in a completed turn. This
+  is intentionally separate from the `trajectory.turn.tool_uses` gauge, which
+  uses canonical names for registered common tools, preserves specialized
+  extension names, adds normalized `tool_type`, and adds `mcp_server`,
+  `mcp_tool`, and `mcp_source_scope` for MCP calls with derivable sanitized
+  provenance.
 - `trajectory.turn.cost.usd.total` - estimated USD cost of a completed turn.
 - `trajectory.turn.web_search.requests.total` and `trajectory.turn.web_search.cost.usd.total` - completed-turn WebSearch request and cost samples.
 - `trajectory.turn.duration_ms.total` - duration of a completed turn when the client provides or Trajectory can derive it.
