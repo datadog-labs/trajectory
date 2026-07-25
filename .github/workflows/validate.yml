@@ -25,6 +25,7 @@ jobs:
               ".agents/plugins/marketplace.json",
               ".claude-plugin/marketplace.json",
               "RELEASES.json",
+              "contracts/public-release-mirror-v1.json",
               "gemini-extension.json",
               "plugin/trajectory/.claude-plugin/plugin.json",
               "plugin/trajectory/.mcp.json",
@@ -56,5 +57,15 @@ jobs:
           if "Download attempt $attempt of 3 failed" not in installer:
               raise SystemExit("public installer must retain bounded download retries")
           PY
+      - name: Validate protected release publication
+        run: |
+          python3 .github/scripts/public_release_mirror.py validate-contract \
+            --contract contracts/public-release-mirror-v1.json
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Parse workflow and policy YAML
+        run: |
+          ruby -e 'require "yaml"; ARGV.each { |path| YAML.parse_file(path) }' \
+            .github/workflows/*.yml \
+            .github/chainguard/*.yaml
       - name: Validate shell syntax
         run: bash -n install.sh uninstall.sh
