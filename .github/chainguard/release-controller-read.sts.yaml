@@ -11,7 +11,7 @@ claim_pattern:
   event_name: workflow_dispatch
   ref: refs/heads/main
   runner_environment: github-hosted
-  job_workflow_ref: DataDog/[^/]+/\.github/workflows/private-release-execute\.yml@refs/heads/main
+  workflow_ref: DataDog/[^/]+/\.github/workflows/private-release-execute\.yml@refs/heads/main
 
 permissions:
   actions: read
