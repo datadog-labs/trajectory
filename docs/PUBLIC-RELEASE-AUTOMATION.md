@@ -125,7 +125,10 @@ The checked-in `release-controller-read` Octo STS policy grants a protected
 GitHub Actions workflow identity only `actions:read` and `contents:read`. Its
 trust boundary uses stable repository and owner IDs, `workflow_dispatch`,
 `main`, a GitHub-hosted runner, and the exact workflow path without encoding
-the controller repository name or any publication endpoint.
+the controller repository name or any publication endpoint. Because the
+controller is a directly dispatched workflow rather than a reusable workflow,
+the policy binds the `workflow_ref` OIDC claim and rejects
+`job_workflow_ref`.
 
 After selecting the unique successful target run with the canonical display
 name, the controller must download the exact receipt artifact from that run

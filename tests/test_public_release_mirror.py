@@ -1115,13 +1115,14 @@ claim_pattern:
   event_name: workflow_dispatch
   ref: refs/heads/main
   runner_environment: github-hosted
-  job_workflow_ref: DataDog/[^/]+/\\.github/workflows/private-release-execute\\.yml@refs/heads/main
+  workflow_ref: DataDog/[^/]+/\\.github/workflows/private-release-execute\\.yml@refs/heads/main
 
 permissions:
   actions: read
   contents: read
 """
         self.assertEqual(read_policy, expected_read_policy)
+        self.assertNotIn("job_workflow_ref:", read_policy)
         self.assertNotIn("actions: write", read_policy)
         self.assertNotIn("contents: write", read_policy)
 
