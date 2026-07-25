@@ -27,11 +27,12 @@ SOURCE_PUBLICATION_RECEIPT_KIND = "trajectory.public_release_publication.receipt
 TARGET_RECEIPT_KIND = "trajectory-public-release-receipt"
 SOURCE_REQUEST_FILENAME = "public-release-request.json"
 SOURCE_RECEIPT_FILENAME = "public-release-publication-receipt.json"
+OCTO_STS_DOMAIN = "webhooks.build.datadoghq.com"
+OCTO_STS_AUDIENCE = "dd-octo-sts"
 VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SOURCE_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 TIMESTAMP_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
-HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
 PUBLIC_DOWNLOAD_SUFFIXES = (
     ".actions.githubusercontent.com",
     ".blob.core.windows.net",
@@ -906,8 +907,6 @@ def request_json_url(url: str, headers: dict[str, str]) -> dict[str, Any]:
 
 
 def exchange_source_token(contract: dict[str, Any]) -> str:
-    domain = require_string(os.environ.get("OCTO_STS_DOMAIN"), "OCTO_STS_DOMAIN")
-    audience = require_string(os.environ.get("OCTO_STS_AUDIENCE"), "OCTO_STS_AUDIENCE")
     oidc_url = require_string(
         os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL"),
         "ACTIONS_ID_TOKEN_REQUEST_URL",
@@ -916,15 +915,13 @@ def exchange_source_token(contract: dict[str, Any]) -> str:
         os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN"),
         "ACTIONS_ID_TOKEN_REQUEST_TOKEN",
     )
-    if not HOST_RE.fullmatch(domain) or "/" in domain:
-        raise MirrorError("OCTO_STS_DOMAIN must be a hostname without a URL scheme")
     parsed_oidc = urllib.parse.urlparse(oidc_url)
     if parsed_oidc.scheme != "https" or not (parsed_oidc.hostname or "").endswith(
         ".actions.githubusercontent.com"
     ):
         raise MirrorError("GitHub OIDC request URL is not trusted")
     query = urllib.parse.parse_qsl(parsed_oidc.query, keep_blank_values=True)
-    query.append(("audience", audience))
+    query.append(("audience", OCTO_STS_AUDIENCE))
     oidc_request_url = urllib.parse.urlunparse(
         parsed_oidc._replace(query=urllib.parse.urlencode(query))
     )
@@ -934,7 +931,7 @@ def exchange_source_token(contract: dict[str, Any]) -> str:
     )
     oidc_token = require_string(oidc.get("value"), "GitHub OIDC token")
     exchange_url = (
-        f"https://{domain}/sts/exchange?"
+        f"https://{OCTO_STS_DOMAIN}/sts/exchange?"
         + urllib.parse.urlencode(
             {
                 "scope": contract["source_identity"]["repository"],

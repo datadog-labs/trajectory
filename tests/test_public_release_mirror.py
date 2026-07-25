@@ -928,8 +928,6 @@ class PublicReleaseMirrorTests(unittest.TestCase):
             return {"value": "oidc-token"} if len(calls) == 1 else {"token": "source-token"}
 
         environment = {
-            "OCTO_STS_DOMAIN": "sts.example.test",
-            "OCTO_STS_AUDIENCE": "trajectory-public-release",
             "ACTIONS_ID_TOKEN_REQUEST_URL": (
                 "https://pipelines.actions.githubusercontent.com/token?api-version=2.0"
             ),
@@ -943,9 +941,13 @@ class PublicReleaseMirrorTests(unittest.TestCase):
             self.assertEqual(MIRROR.exchange_source_token(self.contract), "source-token")
 
         self.assertEqual(len(calls), 2)
-        self.assertIn("audience=trajectory-public-release", calls[0][0])
+        self.assertIn("audience=dd-octo-sts", calls[0][0])
         self.assertEqual(calls[0][1]["Authorization"], "Bearer runner-token")
-        self.assertTrue(calls[1][0].startswith("https://sts.example.test/sts/exchange?"))
+        self.assertTrue(
+            calls[1][0].startswith(
+                "https://webhooks.build.datadoghq.com/sts/exchange?"
+            )
+        )
         self.assertIn("scope=DataDog%2Ftrajectory", calls[1][0])
         self.assertIn("identity=trajectory-labs.public-release-read", calls[1][0])
         self.assertEqual(calls[1][1]["Authorization"], "Bearer oidc-token")
@@ -1053,8 +1055,8 @@ class PublicReleaseMirrorTests(unittest.TestCase):
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("environment: public-release-mirror", workflow)
         self.assertIn("id-token: write", workflow)
-        self.assertIn("OCTO_STS_DOMAIN: ${{ vars.OCTO_STS_DOMAIN }}", workflow)
-        self.assertIn("OCTO_STS_AUDIENCE: ${{ vars.OCTO_STS_AUDIENCE }}", workflow)
+        self.assertNotIn("OCTO_STS_DOMAIN", workflow)
+        self.assertNotIn("OCTO_STS_AUDIENCE", workflow)
         self.assertNotIn("pull_request:", workflow)
         self.assertNotIn("\n  push:", workflow)
         uses = re.findall(r"uses:\s+(\S+)", workflow)

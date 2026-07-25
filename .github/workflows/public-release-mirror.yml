@@ -34,8 +34,6 @@ jobs:
       - name: Validate and publish public release
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          OCTO_STS_DOMAIN: ${{ vars.OCTO_STS_DOMAIN }}
-          OCTO_STS_AUDIENCE: ${{ vars.OCTO_STS_AUDIENCE }}
         run: |
           python3 .github/scripts/public_release_mirror.py apply \
             --contract contracts/public-release-mirror-v1.json \
