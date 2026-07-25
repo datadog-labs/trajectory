@@ -1102,21 +1102,20 @@ class PublicReleaseMirrorTests(unittest.TestCase):
         self.assertNotIn("contents:", dispatch_permissions)
 
         expected_read_policy = """\
-# Grants one protected release pipeline a short-lived token to correlate the
-# exact target workflow run and read its retained receipt. It cannot mutate
+# Grants one protected GitHub Actions workflow a short-lived token to correlate
+# the exact target workflow run and read its retained receipt. It cannot mutate
 # repository contents, releases, actions, or workflow state.
-issuer: https://gitlab.ddbuild.io
+issuer: https://token.actions.githubusercontent.com
 
-subject_pattern: "project_path:DataDog/.*:.*"
+subject_pattern: "repo:DataDog/.*:.*"
 
 claim_pattern:
-  project_id: "10409"
-  ref_type: "branch"
-  ref: "private-release-execution/[A-Za-z0-9._:+-]+"
-  ref_path: "refs/heads/private-release-execution/[A-Za-z0-9._:+-]+"
-  ref_protected: "true"
-  pipeline_source: "push"
-  ci_config_ref_uri: "gitlab.ddbuild.io/DataDog/[^/]+//.gitlab-ci.yml@refs/heads/private-release-execution/[A-Za-z0-9._:+-]+"
+  repository_id: "1175392283"
+  repository_owner_id: "365230"
+  event_name: workflow_dispatch
+  ref: refs/heads/main
+  runner_environment: github-hosted
+  job_workflow_ref: DataDog/[^/]+/\\.github/workflows/private-release-execute\\.yml@refs/heads/main
 
 permissions:
   actions: read
@@ -1147,7 +1146,7 @@ permissions:
         for url in re.findall(r"https?://[a-z0-9.-]+", text):
             self.assertRegex(
                 url,
-                r"^https://(?:api\.github\.com|github\.com|gitlab\.ddbuild\.io|"
+                r"^https://(?:api\.github\.com|github\.com|"
                 r"token\.actions\.githubusercontent\.com)$",
             )
 

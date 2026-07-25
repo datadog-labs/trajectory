@@ -121,12 +121,11 @@ polling by time window or branch alone. The workflow display name is exactly
 `public-release-<source_run_id>-<request_sha256>`, and the retained artifact is
 exactly `public-release-receipt-<request_sha256>`.
 
-The checked-in `release-controller-read` Octo STS policy grants a single
-protected GitLab release-pipeline identity only `actions:read` and
-`contents:read`. Its trust boundary uses the stable project ID plus protected
-push-pipeline, immutable request branch, and branch-bound root CI configuration
-claims; it does not encode the controller project path or any publication
-endpoint.
+The checked-in `release-controller-read` Octo STS policy grants a protected
+GitHub Actions workflow identity only `actions:read` and `contents:read`. Its
+trust boundary uses stable repository and owner IDs, `workflow_dispatch`,
+`main`, a GitHub-hosted runner, and the exact workflow path without encoding
+the controller repository name or any publication endpoint.
 
 After selecting the unique successful target run with the canonical display
 name, the controller must download the exact receipt artifact from that run
