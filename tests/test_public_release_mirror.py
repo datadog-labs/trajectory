@@ -23,9 +23,11 @@ assert SPEC and SPEC.loader
 MIRROR = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MIRROR)
 
-SOURCE_SHA = "a" * 40
+SOURCE_WORKFLOW_SHA = "a" * 40
+CANDIDATE_SOURCE_SHA = "c" * 40
 TARGET_SHA = "b" * 40
 SOURCE_RUN_ID = 9001
+SOURCE_RUN_ATTEMPT = 3
 
 
 def digest(value: bytes) -> str:
@@ -61,7 +63,7 @@ def build_fixture(
         "kind": "trajectory-release-asset-manifest",
         "version": "0.5.28",
         "tag": "v0.5.28",
-        "source_sha": SOURCE_SHA,
+        "source_sha": CANDIDATE_SOURCE_SHA,
         "assets": assets,
     }
     manifest_sha = canonical_digest(manifest)
@@ -80,7 +82,7 @@ def build_fixture(
         "release_mode": release_mode,
         "version": "0.5.28",
         "tag": "v0.5.28",
-        "source_sha": SOURCE_SHA,
+        "source_sha": CANDIDATE_SOURCE_SHA,
         "source_run_id": SOURCE_RUN_ID,
         "published_at": "2026-07-25T12:34:56Z",
         "asset_manifest_sha256": manifest_sha,
@@ -105,7 +107,8 @@ def build_fixture(
             "environment": "public-release-publication",
             "event_name": "workflow_dispatch",
             "ref": "refs/heads/main",
-            "sha": SOURCE_SHA,
+            "sha": SOURCE_WORKFLOW_SHA,
+            "candidate_sha": CANDIDATE_SOURCE_SHA,
             "run_id": SOURCE_RUN_ID,
         },
         "target": {
@@ -152,12 +155,112 @@ def release_assets(request: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def source_publication_receipt(request: dict[str, Any]) -> dict[str, Any]:
+    publication_receipt = request["publication_receipt"]
+    return {
+        "schema_version": 1,
+        "kind": "trajectory.public_release_publication.receipt",
+        "terminal_status": "success",
+        "mode": "full",
+        "binding": {
+            "repository": request["source"]["repository"],
+            "source_sha": request["source"]["candidate_sha"],
+            "version": request["version"],
+            "workflow": {
+                "name": "Public Release Publication",
+                "ref": request["source"]["workflow_ref"],
+                "sha": request["source"]["sha"],
+                "default_branch": "main",
+                "dispatch_ref": request["source"]["ref"],
+                "dispatch_sha": request["source"]["sha"],
+                "run_id": SOURCE_RUN_ID,
+                "run_attempt": SOURCE_RUN_ATTEMPT,
+            },
+            "readiness": {
+                "run_id": "7001",
+                "run_attempt": "1",
+                "receipt_sha256": "sha256:" + "1" * 64,
+                "validation_tag": "release-ci-v0.5.28-ccccccccc",
+            },
+            "candidate_build": {
+                "run_id": 7000,
+                "run_attempt": 1,
+                "receipt_sha256": "sha256:" + "2" * 64,
+                "validation_tag": "release-ci-v0.5.28-ccccccccc",
+            },
+            "pilot": {
+                "aggregate_sha256": "sha256:" + "3" * 64,
+                "artifact_sha256": "sha256:" + "4" * 64,
+                "issued_at": "2026-07-25T12:00:00Z",
+                "expires_at": "2026-07-25T13:00:00Z",
+            },
+            "signed_tag": {
+                "object_sha": "d" * 40,
+                "object_sha256": "sha256:" + "5" * 64,
+                "target": request["source"]["candidate_sha"],
+                "signer_identity": "release-signer",
+                "trust_sha256": "sha256:" + "6" * 64,
+            },
+            "candidate_publication": {
+                "run_id": 8001,
+                "run_attempt": 1,
+                "receipt_sha256": "sha256:" + "7" * 64,
+            },
+        },
+        "publication": {
+            "tag": request["tag"],
+            "tag_target": request["source"]["candidate_sha"],
+            "tag_object_sha": "d" * 40,
+            "tag_object_sha256": "sha256:" + "5" * 64,
+            "tag_signature_verified": True,
+            "tag_signer_identity": "release-signer",
+            "tag_signer_fingerprint": "SHA256:fixture",
+            "tag_trust_sha256": "sha256:" + "6" * 64,
+            "release_id": request["release"]["source_release_id"],
+            "title": request["release"]["name"],
+            "body": request["release"]["body"],
+            "body_sha256": "sha256:" + digest(request["release"]["body"].encode()),
+            "changelog_path": "docs/changelog/v0.5.28.md",
+            "prerelease": False,
+            "latest": True,
+            "assets": sorted(
+                [
+                    {
+                        "name": asset["name"],
+                        "sha256": f"sha256:{asset['sha256']}",
+                        "size_bytes": asset["size"],
+                    }
+                    for asset in request["asset_manifest"]["assets"]
+                ],
+                key=lambda asset: asset["name"],
+            ),
+            "url": "https://github.com/DataDog/trajectory/releases/tag/v0.5.28",
+        },
+        "guarantees": {
+            "rebuild_performed": False,
+            "asset_uploads": [],
+            "asset_reuploads": [],
+            "metadata_only_promotion": True,
+        },
+        "lifecycle": {
+            "issued_at": publication_receipt["published_at"],
+            "expires_at": "2026-07-26T12:34:56Z",
+        },
+        "blockers": [],
+        "outcome": "promoted",
+        "candidate_publication_receipt_sha256": "sha256:" + "7" * 64,
+        "mutation_summary": {"count": 1, "metadata_updates": 1},
+    }
+
+
 class FakeSource:
     def __init__(
         self,
         request: dict[str, Any],
         payloads: dict[int, bytes],
         raw_request: bytes,
+        *,
+        source_receipt: dict[str, Any] | None = None,
     ) -> None:
         self.request = request
         self.payloads = payloads
@@ -167,9 +270,11 @@ class FakeSource:
             "id": SOURCE_RUN_ID,
             "repository": {"full_name": "DataDog/trajectory"},
             "event": "workflow_dispatch",
+            "name": "Public Release Publication",
             "path": ".github/workflows/public-release-publication.yml",
             "head_branch": "main",
-            "head_sha": SOURCE_SHA,
+            "head_sha": SOURCE_WORKFLOW_SHA,
+            "run_attempt": SOURCE_RUN_ATTEMPT,
             "status": "completed",
             "conclusion": "success",
         }
@@ -178,13 +283,21 @@ class FakeSource:
             "tag_name": request["tag"],
             "name": request["release"]["name"],
             "body": request["release"]["body"],
-            "target_commitish": SOURCE_SHA,
+            "target_commitish": CANDIDATE_SOURCE_SHA,
             "draft": False,
             "prerelease": False,
             "assets": release_assets(request),
         }
-        self.artifact_name = f"public-release-request-{self.request_sha256}"
-        self.archive_entries = {"public-release-request.json": raw_request}
+        self.artifact_name = (
+            f"public-release-publication-{SOURCE_RUN_ID}-{SOURCE_RUN_ATTEMPT}"
+        )
+        self.archive_entries = {
+            "public-release-request.json": raw_request,
+            "public-release-publication-receipt.json": json.dumps(
+                source_receipt or source_publication_receipt(request),
+                sort_keys=True,
+            ).encode(),
+        }
 
     def get_workflow_run(self, run_id: int) -> dict[str, Any]:
         assert run_id == SOURCE_RUN_ID
@@ -360,6 +473,14 @@ class PublicReleaseMirrorTests(unittest.TestCase):
         self.assertEqual(self.contract["accepted_release_modes"], ["full"])
         self.assertEqual(len(self.contract["required_assets"]), 7)
         self.assertLessEqual(self.contract["limits"]["max_request_bytes"], 65536)
+        self.assertLessEqual(
+            self.contract["limits"]["max_source_receipt_bytes"],
+            65536,
+        )
+        self.assertEqual(
+            self.contract["source_identity"]["publication_artifact_prefix"],
+            "public-release-publication-",
+        )
 
     def test_candidate_and_prerelease_requests_fail_before_target_mutation(self) -> None:
         cases = (
@@ -387,7 +508,7 @@ class PublicReleaseMirrorTests(unittest.TestCase):
         forged["source"]["sha"] = "f" * 40
         forged_raw = json.dumps(forged, sort_keys=True, separators=(",", ":")).encode()
         source = FakeSource(request, payloads, raw)
-        with self.assertRaisesRegex(MIRROR.MirrorError, "exactly one matching"):
+        with self.assertRaisesRegex(MIRROR.MirrorError, "SHA256"):
             self.apply(
                 forged,
                 payloads,
@@ -398,25 +519,272 @@ class PublicReleaseMirrorTests(unittest.TestCase):
             )
         self.assertEqual(target.create_calls, 0)
 
-    def test_source_sha_and_publication_receipt_are_bound_to_source_run(self) -> None:
+    def test_source_artifact_name_is_derived_from_authenticated_run_attempt(self) -> None:
+        request, payloads, raw = build_fixture()
+        target = FakeTarget(request, payloads, state="absent")
+        for case in ("legacy_name", "different_attempt"):
+            source = FakeSource(request, payloads, raw)
+            if case == "legacy_name":
+                source.artifact_name = f"public-release-request-{source.request_sha256}"
+            else:
+                source.run["run_attempt"] = SOURCE_RUN_ATTEMPT + 1
+            with self.subTest(case=case), self.assertRaisesRegex(
+                MIRROR.MirrorError,
+                "exactly one matching publication artifact",
+            ):
+                self.apply(request, payloads, raw, target, source=source)
+            self.assertEqual(target.create_calls, 0)
+
+    def test_source_artifact_requires_exact_request_and_receipt_files(self) -> None:
+        request, payloads, raw = build_fixture()
+        cases = ("missing_receipt", "renamed_receipt", "extra_file")
+        for case in cases:
+            source = FakeSource(request, payloads, raw)
+            receipt_bytes = source.archive_entries.pop(
+                "public-release-publication-receipt.json"
+            )
+            if case == "renamed_receipt":
+                source.archive_entries["receipt.json"] = receipt_bytes
+            elif case == "extra_file":
+                source.archive_entries[
+                    "public-release-publication-receipt.json"
+                ] = receipt_bytes
+                source.archive_entries["unexpected.json"] = b"{}"
+            target = FakeTarget(request, payloads, state="absent")
+            with self.subTest(case=case), self.assertRaisesRegex(
+                MIRROR.MirrorError,
+                "exactly the request and receipt JSON files",
+            ):
+                self.apply(request, payloads, raw, target, source=source)
+            self.assertEqual(target.create_calls, 0)
+
+    def test_source_publication_receipt_is_size_bounded(self) -> None:
+        request, payloads, raw = build_fixture()
+        source = FakeSource(request, payloads, raw)
+        source.archive_entries["public-release-publication-receipt.json"] = b" " * (
+            self.contract["limits"]["max_source_receipt_bytes"] + 1
+        )
+        target = FakeTarget(request, payloads, state="absent")
+        with self.assertRaisesRegex(MIRROR.MirrorError, "receipt size limit"):
+            self.apply(request, payloads, raw, target, source=source)
+        self.assertEqual(target.create_calls, 0)
+
+    def test_terminal_source_receipt_binds_full_publication_request(self) -> None:
+        cases = (
+            "terminal_status",
+            "mode",
+            "workflow_sha",
+            "workflow_run_id",
+            "workflow_run_attempt",
+            "candidate_sha",
+            "version",
+            "tag",
+            "tag_target",
+            "release_id",
+            "title",
+            "body",
+            "prerelease",
+            "latest",
+            "published_at",
+            "asset",
+            "asset_count",
+            "asset_schema",
+            "guarantees",
+        )
+        for case in cases:
+            request, payloads, raw = build_fixture()
+            receipt = source_publication_receipt(request)
+            if case == "terminal_status":
+                receipt["terminal_status"] = "blocked"
+            elif case == "mode":
+                receipt["mode"] = "candidate"
+            elif case == "workflow_sha":
+                receipt["binding"]["workflow"]["sha"] = "f" * 40
+            elif case == "workflow_run_id":
+                receipt["binding"]["workflow"]["run_id"] = SOURCE_RUN_ID + 1
+            elif case == "workflow_run_attempt":
+                receipt["binding"]["workflow"]["run_attempt"] = SOURCE_RUN_ATTEMPT + 1
+            elif case == "candidate_sha":
+                receipt["binding"]["source_sha"] = "f" * 40
+            elif case == "version":
+                receipt["binding"]["version"] = "0.5.29"
+            elif case == "tag":
+                receipt["publication"]["tag"] = "v0.5.29"
+            elif case == "tag_target":
+                receipt["publication"]["tag_target"] = "f" * 40
+            elif case == "release_id":
+                receipt["publication"]["release_id"] += 1
+            elif case == "title":
+                receipt["publication"]["title"] = "Different release"
+            elif case == "body":
+                receipt["publication"]["body"] = "Different body"
+            elif case == "prerelease":
+                receipt["publication"]["prerelease"] = True
+            elif case == "latest":
+                receipt["publication"]["latest"] = False
+            elif case == "published_at":
+                receipt["lifecycle"]["issued_at"] = "2026-07-25T12:34:57Z"
+            elif case == "asset":
+                receipt["publication"]["assets"][0]["sha256"] = "sha256:" + "f" * 64
+            elif case == "asset_count":
+                receipt["publication"]["assets"].pop()
+            elif case == "asset_schema":
+                receipt["publication"]["assets"][0]["size"] = receipt["publication"][
+                    "assets"
+                ][0]["size_bytes"]
+            else:
+                receipt["guarantees"]["asset_uploads"] = ["trajectory-linux-amd64"]
+            source = FakeSource(
+                request,
+                payloads,
+                raw,
+                source_receipt=receipt,
+            )
+            target = FakeTarget(request, payloads, state="absent")
+            with self.subTest(case=case), self.assertRaises(MIRROR.MirrorError):
+                self.apply(request, payloads, raw, target, source=source)
+            self.assertEqual(target.create_calls, 0)
+
+    def test_terminal_source_receipt_uses_exact_schema(self) -> None:
+        for case in ("missing", "extra"):
+            request, payloads, raw = build_fixture()
+            receipt = source_publication_receipt(request)
+            if case == "missing":
+                del receipt["mutation_summary"]
+            else:
+                receipt["unexpected"] = True
+            source = FakeSource(
+                request,
+                payloads,
+                raw,
+                source_receipt=receipt,
+            )
+            target = FakeTarget(request, payloads, state="absent")
+            with self.subTest(case=case), self.assertRaisesRegex(
+                MIRROR.MirrorError,
+                "source publication receipt keys do not match contract",
+            ):
+                self.apply(request, payloads, raw, target, source=source)
+            self.assertEqual(target.create_calls, 0)
+
+    def test_source_workflow_sha_is_bound_to_authenticated_source_run(self) -> None:
         request, payloads, _ = build_fixture()
         request["source"]["sha"] = "f" * 40
-        request["asset_manifest"]["source_sha"] = "f" * 40
-        request["publication_receipt"]["source_sha"] = "f" * 40
-        request["asset_manifest_sha256"] = canonical_digest(request["asset_manifest"])
-        request["publication_receipt"]["asset_manifest_sha256"] = request["asset_manifest_sha256"]
-        request["publication_receipt_sha256"] = canonical_digest(request["publication_receipt"])
         raw = json.dumps(request, sort_keys=True, separators=(",", ":")).encode()
         target = FakeTarget(request, payloads, state="absent")
-        with self.assertRaisesRegex(MIRROR.MirrorError, "authenticated source run"):
+        with self.assertRaisesRegex(MIRROR.MirrorError, "authenticated source run head SHA"):
             self.apply(request, payloads, raw, target)
         self.assertEqual(target.create_calls, 0)
+
+    def test_candidate_source_sha_requires_exact_full_sha_schema(self) -> None:
+        cases = {
+            "missing": None,
+            "renamed": CANDIDATE_SOURCE_SHA,
+            "short": "c" * 39,
+            "uppercase": "C" * 40,
+        }
+        for case, value in cases.items():
+            request, payloads, _ = build_fixture()
+            source_receipt = source_publication_receipt(request)
+            if case == "missing":
+                del request["source"]["candidate_sha"]
+            elif case == "renamed":
+                request["source"]["candidate_source_sha"] = value
+            else:
+                request["source"]["candidate_sha"] = value
+            raw = json.dumps(request, sort_keys=True, separators=(",", ":")).encode()
+            source = FakeSource(
+                request,
+                payloads,
+                raw,
+                source_receipt=source_receipt,
+            )
+            target = FakeTarget(request, payloads, state="absent")
+            with self.subTest(case=case), self.assertRaises(MIRROR.MirrorError):
+                self.apply(request, payloads, raw, target, source=source)
+            self.assertEqual(target.create_calls, 0)
+
+    def test_manifest_and_publication_receipt_bind_candidate_source_sha(self) -> None:
+        for record in ("manifest", "publication_receipt"):
+            request, payloads, _ = build_fixture()
+            if record == "manifest":
+                request["asset_manifest"]["source_sha"] = "f" * 40
+                request["asset_manifest_sha256"] = canonical_digest(
+                    request["asset_manifest"]
+                )
+                request["publication_receipt"]["asset_manifest_sha256"] = request[
+                    "asset_manifest_sha256"
+                ]
+            else:
+                request["publication_receipt"]["source_sha"] = "f" * 40
+            request["publication_receipt_sha256"] = canonical_digest(
+                request["publication_receipt"]
+            )
+            raw = json.dumps(request, sort_keys=True, separators=(",", ":")).encode()
+            target = FakeTarget(request, payloads, state="absent")
+            with self.subTest(record=record), self.assertRaisesRegex(
+                MIRROR.MirrorError,
+                f"{record} identity",
+            ):
+                self.apply(request, payloads, raw, target)
+            self.assertEqual(target.create_calls, 0)
+
+    def test_candidate_source_identity_changes_require_fresh_canonical_digests(self) -> None:
+        cases = {
+            "manifest": "canonical manifest",
+            "publication_receipt": "canonical receipt",
+        }
+        for record, error in cases.items():
+            request, payloads, _ = build_fixture()
+            request["source"]["candidate_sha"] = "f" * 40
+            request["asset_manifest"]["source_sha"] = "f" * 40
+            request["publication_receipt"]["source_sha"] = "f" * 40
+            if record == "publication_receipt":
+                request["asset_manifest_sha256"] = canonical_digest(
+                    request["asset_manifest"]
+                )
+                request["publication_receipt"]["asset_manifest_sha256"] = request[
+                    "asset_manifest_sha256"
+                ]
+            raw = json.dumps(request, sort_keys=True, separators=(",", ":")).encode()
+            target = FakeTarget(request, payloads, state="absent")
+            with self.subTest(record=record), self.assertRaisesRegex(
+                MIRROR.MirrorError,
+                error,
+            ):
+                self.apply(request, payloads, raw, target)
+            self.assertEqual(target.create_calls, 0)
 
     def test_absent_target_release_is_created_uploaded_and_published(self) -> None:
         request, payloads, raw = build_fixture()
         target = FakeTarget(request, payloads, state="absent")
         receipt = self.apply(request, payloads, raw, target)
         self.assertEqual(receipt["status"], "published")
+        self.assertEqual(
+            set(receipt),
+            {
+                "schema_version",
+                "kind",
+                "status",
+                "version",
+                "tag",
+                "candidate_source_sha",
+                "source_workflow_sha",
+                "source_run_id",
+                "source_run_attempt",
+                "target_sha",
+                "target_release_id",
+                "workflow_run_id",
+                "request_sha256",
+                "asset_manifest_sha256",
+                "publication_receipt_sha256",
+                "assets",
+                "latest",
+            },
+        )
+        self.assertEqual(receipt["candidate_source_sha"], CANDIDATE_SOURCE_SHA)
+        self.assertEqual(receipt["source_workflow_sha"], SOURCE_WORKFLOW_SHA)
+        self.assertEqual(receipt["source_run_attempt"], SOURCE_RUN_ATTEMPT)
         self.assertEqual(target.create_calls, 1)
         self.assertEqual(target.upload_calls, self.contract["required_assets"])
         self.assertEqual(target.publish_calls, 1)

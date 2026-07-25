@@ -8,7 +8,7 @@
     "event_name": "workflow_dispatch",
     "ref": "refs/heads/main",
     "read_policy": "trajectory-labs.public-release-read",
-    "request_artifact_prefix": "public-release-request-"
+    "publication_artifact_prefix": "public-release-publication-"
   },
   "target": {
     "repository": "datadog-labs/trajectory",
@@ -33,6 +33,7 @@
   },
   "limits": {
     "max_request_bytes": 49152,
+    "max_source_receipt_bytes": 65536,
     "max_asset_bytes": 300000000,
     "max_total_asset_bytes": 1000000000
   }

@@ -23,7 +23,10 @@ from typing import Any
 REQUEST_KIND = "trajectory-public-release-mirror-request"
 MANIFEST_KIND = "trajectory-release-asset-manifest"
 PUBLICATION_RECEIPT_KIND = "trajectory-publication-receipt"
+SOURCE_PUBLICATION_RECEIPT_KIND = "trajectory.public_release_publication.receipt"
 TARGET_RECEIPT_KIND = "trajectory-public-release-receipt"
+SOURCE_REQUEST_FILENAME = "public-release-request.json"
+SOURCE_RECEIPT_FILENAME = "public-release-publication-receipt.json"
 VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SOURCE_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -128,6 +131,12 @@ def require_positive_int(value: Any, label: str) -> int:
     return value
 
 
+def require_nonnegative_int(value: Any, label: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise MirrorError(f"{label} must be a non-negative integer")
+    return value
+
+
 def validate_contract(contract: dict[str, Any]) -> None:
     exact_keys(
         contract,
@@ -157,7 +166,7 @@ def validate_contract(contract: dict[str, Any]) -> None:
             "event_name",
             "ref",
             "read_policy",
-            "request_artifact_prefix",
+            "publication_artifact_prefix",
         },
         "contract.source_identity",
     )
@@ -186,13 +195,20 @@ def validate_contract(contract: dict[str, Any]) -> None:
 
     limits = exact_keys(
         contract["limits"],
-        {"max_request_bytes", "max_asset_bytes", "max_total_asset_bytes"},
+        {
+            "max_request_bytes",
+            "max_source_receipt_bytes",
+            "max_asset_bytes",
+            "max_total_asset_bytes",
+        },
         "contract.limits",
     )
     for field, value in limits.items():
         require_positive_int(value, f"contract.limits.{field}")
     if limits["max_request_bytes"] > 65536:
         raise MirrorError("contract.limits.max_request_bytes exceeds workflow input safety bound")
+    if limits["max_source_receipt_bytes"] > 65536:
+        raise MirrorError("contract.limits.max_source_receipt_bytes exceeds safety bound")
     if limits["max_asset_bytes"] > limits["max_total_asset_bytes"]:
         raise MirrorError("contract asset size limit exceeds total size limit")
 
@@ -230,6 +246,7 @@ def validate_request(
     contract: dict[str, Any],
     *,
     source_run_id: int,
+    expected_source_workflow_sha: str,
     expected_repository: str,
     expected_target_sha: str,
 ) -> dict[str, Any]:
@@ -266,15 +283,34 @@ def validate_request(
 
     source = exact_keys(
         request["source"],
-        {"repository", "workflow_ref", "environment", "event_name", "ref", "sha", "run_id"},
+        {
+            "repository",
+            "workflow_ref",
+            "environment",
+            "event_name",
+            "ref",
+            "sha",
+            "candidate_sha",
+            "run_id",
+        },
         "request.source",
     )
     for field in ("repository", "workflow_ref", "environment", "event_name", "ref"):
         if source[field] != contract["source_identity"][field]:
             raise MirrorError(f"request.source.{field} does not match the trusted source")
-    source_sha = require_string(source["sha"], "request.source.sha")
-    if not SOURCE_SHA_RE.fullmatch(source_sha):
+    source_workflow_sha = require_string(source["sha"], "request.source.sha")
+    if not SOURCE_SHA_RE.fullmatch(source_workflow_sha):
         raise MirrorError("request.source.sha must be a lowercase 40-character Git SHA")
+    if source_workflow_sha != expected_source_workflow_sha:
+        raise MirrorError("request.source.sha does not match the authenticated source run head SHA")
+    candidate_source_sha = require_string(
+        source["candidate_sha"],
+        "request.source.candidate_sha",
+    )
+    if not SOURCE_SHA_RE.fullmatch(candidate_source_sha):
+        raise MirrorError(
+            "request.source.candidate_sha must be a lowercase 40-character Git SHA"
+        )
     if require_positive_int(source["run_id"], "request.source.run_id") != source_run_id:
         raise MirrorError("request.source.run_id does not match the authenticated source run")
 
@@ -315,7 +351,11 @@ def validate_request(
     )
     if manifest["schema_version"] != 1 or manifest["kind"] != MANIFEST_KIND:
         raise MirrorError("request.asset_manifest schema or kind is not supported")
-    if manifest["version"] != version or manifest["tag"] != tag or manifest["source_sha"] != source_sha:
+    if (
+        manifest["version"] != version
+        or manifest["tag"] != tag
+        or manifest["source_sha"] != candidate_source_sha
+    ):
         raise MirrorError("request.asset_manifest identity does not match the request")
     assets = validate_asset_records(
         manifest["assets"],
@@ -349,7 +389,13 @@ def validate_request(
         raise MirrorError("request.publication_receipt schema or kind is not supported")
     if receipt["status"] != "published" or receipt["release_mode"] != "full":
         raise MirrorError("request.publication_receipt must prove a completed full publication")
-    expected_identity = (version, tag, source_sha, source_run_id, manifest_sha)
+    expected_identity = (
+        version,
+        tag,
+        candidate_source_sha,
+        source_run_id,
+        manifest_sha,
+    )
     actual_identity = (
         receipt["version"],
         receipt["tag"],
@@ -386,6 +432,234 @@ def validate_request(
     if not SHA256_RE.fullmatch(receipt_sha) or sha256_bytes(canonical_json(receipt)) != receipt_sha:
         raise MirrorError("request.publication_receipt_sha256 does not match the canonical receipt")
     return request
+
+
+def validate_source_publication_receipt(
+    receipt: dict[str, Any],
+    request: dict[str, Any],
+    contract: dict[str, Any],
+    source_run: dict[str, Any],
+) -> None:
+    exact_keys(
+        receipt,
+        {
+            "schema_version",
+            "kind",
+            "terminal_status",
+            "mode",
+            "binding",
+            "publication",
+            "guarantees",
+            "lifecycle",
+            "blockers",
+            "outcome",
+            "candidate_publication_receipt_sha256",
+            "mutation_summary",
+        },
+        "source publication receipt",
+    )
+    if (
+        receipt["schema_version"] != 1
+        or receipt["kind"] != SOURCE_PUBLICATION_RECEIPT_KIND
+        or receipt["terminal_status"] != "success"
+        or receipt["mode"] != "full"
+        or receipt["blockers"] != []
+    ):
+        raise MirrorError("source publication receipt must prove a successful full publication")
+
+    binding = exact_keys(
+        receipt["binding"],
+        {
+            "repository",
+            "source_sha",
+            "version",
+            "workflow",
+            "readiness",
+            "candidate_build",
+            "pilot",
+            "signed_tag",
+            "candidate_publication",
+        },
+        "source publication receipt.binding",
+    )
+    for field in (
+        "readiness",
+        "candidate_build",
+        "pilot",
+        "signed_tag",
+        "candidate_publication",
+    ):
+        if not isinstance(binding[field], dict):
+            raise MirrorError(f"source publication receipt.binding.{field} must be an object")
+    if (
+        binding["repository"] != contract["source_identity"]["repository"]
+        or binding["repository"] != request["source"]["repository"]
+        or binding["source_sha"] != request["source"]["candidate_sha"]
+        or binding["version"] != request["version"]
+    ):
+        raise MirrorError("source publication receipt release identity does not match the request")
+
+    workflow = exact_keys(
+        binding["workflow"],
+        {
+            "name",
+            "ref",
+            "sha",
+            "default_branch",
+            "dispatch_ref",
+            "dispatch_sha",
+            "run_id",
+            "run_attempt",
+        },
+        "source publication receipt.binding.workflow",
+    )
+    expected_branch = contract["source_identity"]["ref"].removeprefix("refs/heads/")
+    expected_workflow = {
+        "name": source_run["name"],
+        "ref": request["source"]["workflow_ref"],
+        "sha": request["source"]["sha"],
+        "default_branch": expected_branch,
+        "dispatch_ref": request["source"]["ref"],
+        "dispatch_sha": request["source"]["sha"],
+        "run_id": source_run["id"],
+        "run_attempt": source_run["run_attempt"],
+    }
+    if workflow != expected_workflow:
+        raise MirrorError("source publication receipt workflow identity does not match the run")
+
+    publication = exact_keys(
+        receipt["publication"],
+        {
+            "tag",
+            "tag_target",
+            "tag_object_sha",
+            "tag_object_sha256",
+            "tag_signature_verified",
+            "tag_signer_identity",
+            "tag_signer_fingerprint",
+            "tag_trust_sha256",
+            "release_id",
+            "title",
+            "body",
+            "body_sha256",
+            "changelog_path",
+            "prerelease",
+            "latest",
+            "assets",
+            "url",
+        },
+        "source publication receipt.publication",
+    )
+    release = request["release"]
+    if (
+        publication["tag"] != request["tag"]
+        or publication["tag_target"] != request["source"]["candidate_sha"]
+        or publication["release_id"] != release["source_release_id"]
+        or publication["title"] != release["name"]
+        or publication["body"] != release["body"]
+        or publication["body_sha256"]
+        != f"sha256:{sha256_bytes(release['body'].encode())}"
+        or publication["prerelease"] is not False
+        or publication["latest"] is not True
+        or publication["tag_signature_verified"] is not True
+    ):
+        raise MirrorError("source publication receipt stable release metadata does not match")
+    for field in (
+        "tag_object_sha",
+        "tag_object_sha256",
+        "tag_signer_identity",
+        "tag_signer_fingerprint",
+        "tag_trust_sha256",
+        "changelog_path",
+        "url",
+    ):
+        require_string(publication[field], f"source publication receipt.publication.{field}")
+    require_positive_int(publication["release_id"], "source publication receipt.publication.release_id")
+
+    raw_assets = publication["assets"]
+    required_names = contract["required_assets"]
+    if not isinstance(raw_assets, list) or len(raw_assets) != len(required_names):
+        raise MirrorError("source publication receipt must contain exactly seven assets")
+    assets_by_name: dict[str, dict[str, Any]] = {}
+    for index, value in enumerate(raw_assets):
+        asset = exact_keys(
+            value,
+            {"name", "sha256", "size_bytes"},
+            f"source publication receipt.publication.assets[{index}]",
+        )
+        name = require_string(
+            asset["name"],
+            f"source publication receipt.publication.assets[{index}].name",
+        )
+        if name in assets_by_name:
+            raise MirrorError(f"source publication receipt contains duplicate asset: {name}")
+        source_digest = require_string(
+            asset["sha256"],
+            f"source publication receipt.publication.assets[{index}].sha256",
+        )
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", source_digest):
+            raise MirrorError("source publication receipt asset digest is not canonical")
+        assets_by_name[name] = {
+            "name": name,
+            "size": require_positive_int(
+                asset["size_bytes"],
+                f"source publication receipt.publication.assets[{index}].size_bytes",
+            ),
+            "sha256": source_digest.removeprefix("sha256:"),
+        }
+    if set(assets_by_name) != set(required_names):
+        raise MirrorError("source publication receipt does not contain the seven canonical assets")
+    normalized_assets = [assets_by_name[name] for name in required_names]
+    if normalized_assets != request["asset_manifest"]["assets"]:
+        raise MirrorError("source publication receipt assets do not match the request manifest")
+
+    guarantees = exact_keys(
+        receipt["guarantees"],
+        {
+            "rebuild_performed",
+            "asset_uploads",
+            "asset_reuploads",
+            "metadata_only_promotion",
+        },
+        "source publication receipt.guarantees",
+    )
+    if guarantees != {
+        "rebuild_performed": False,
+        "asset_uploads": [],
+        "asset_reuploads": [],
+        "metadata_only_promotion": True,
+    }:
+        raise MirrorError("source publication receipt does not prove metadata-only full promotion")
+
+    lifecycle = exact_keys(
+        receipt["lifecycle"],
+        {"issued_at", "expires_at"},
+        "source publication receipt.lifecycle",
+    )
+    for field in lifecycle:
+        if not TIMESTAMP_RE.fullmatch(str(lifecycle[field])):
+            raise MirrorError(f"source publication receipt.lifecycle.{field} must be a UTC timestamp")
+    if lifecycle["issued_at"] != request["publication_receipt"]["published_at"]:
+        raise MirrorError("source publication receipt timestamp does not match the request")
+
+    candidate_receipt_sha = require_string(
+        receipt["candidate_publication_receipt_sha256"],
+        "source publication receipt.candidate_publication_receipt_sha256",
+    )
+    if not re.fullmatch(r"sha256:[0-9a-f]{64}", candidate_receipt_sha):
+        raise MirrorError("source publication receipt candidate digest is not canonical")
+    if receipt["outcome"] not in ("promoted", "idempotent"):
+        raise MirrorError("source publication receipt outcome is not a successful full outcome")
+    mutation = exact_keys(
+        receipt["mutation_summary"],
+        {"count", "metadata_updates"},
+        "source publication receipt.mutation_summary",
+    )
+    require_nonnegative_int(mutation["count"], "source publication receipt.mutation_summary.count")
+    require_nonnegative_int(
+        mutation["metadata_updates"],
+        "source publication receipt.mutation_summary.metadata_updates",
+    )
 
 
 def validate_repository_metadata(metadata: dict[str, Any], request: dict[str, Any]) -> None:
@@ -696,6 +970,7 @@ def validate_source_run(
     expected_path = source["workflow_ref"].split("@", 1)[0].split(source["repository"] + "/", 1)[1]
     expected_branch = source["ref"].removeprefix("refs/heads/")
     expected = {
+        "id": source_run_id,
         "event": source["event_name"],
         "path": expected_path,
         "head_branch": expected_branch,
@@ -708,61 +983,89 @@ def validate_source_run(
     head_sha = run.get("head_sha")
     if not isinstance(head_sha, str) or not SOURCE_SHA_RE.fullmatch(head_sha):
         raise MirrorError("source workflow run head SHA is invalid")
+    require_string(run.get("name"), "source workflow run name")
+    require_positive_int(run.get("run_attempt"), "source workflow run attempt")
     return run
 
 
-def load_authenticated_request(
+def load_authenticated_source_evidence(
     source_client: Any,
     contract: dict[str, Any],
     *,
     source_run_id: int,
     request_sha256: str,
     scratch: Path,
-) -> tuple[dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     if not SHA256_RE.fullmatch(request_sha256):
         raise MirrorError("request SHA256 must be 64 lowercase hex characters")
     run = validate_source_run(source_client, contract, source_run_id)
-    expected_name = contract["source_identity"]["request_artifact_prefix"] + request_sha256
+    expected_name = (
+        contract["source_identity"]["publication_artifact_prefix"]
+        + f"{source_run_id}-{run['run_attempt']}"
+    )
     matches = [
         artifact
         for artifact in source_client.list_run_artifacts(source_run_id)
         if isinstance(artifact, dict) and artifact.get("name") == expected_name
     ]
     if len(matches) != 1:
-        raise MirrorError("source run must contain exactly one matching request artifact")
+        raise MirrorError("source run must contain exactly one matching publication artifact")
     artifact = matches[0]
     if artifact.get("expired") is not False:
-        raise MirrorError("source request artifact is expired")
-    artifact_id = require_positive_int(artifact.get("id"), "source request artifact ID")
-    archive = scratch / "source-request.zip"
+        raise MirrorError("source publication artifact is expired")
+    artifact_id = require_positive_int(artifact.get("id"), "source publication artifact ID")
+    archive = scratch / "source-publication.zip"
+    maximum_bundle_bytes = (
+        contract["limits"]["max_request_bytes"]
+        + contract["limits"]["max_source_receipt_bytes"]
+    )
     source_client.download_artifact(
         artifact_id,
         archive,
-        max(contract["limits"]["max_request_bytes"] * 4, CHUNK_SIZE),
+        max(maximum_bundle_bytes * 4, CHUNK_SIZE),
     )
     try:
         with zipfile.ZipFile(archive) as bundle:
             entries = [entry for entry in bundle.infolist() if not entry.is_dir()]
-            if len(entries) != 1 or entries[0].filename != "public-release-request.json":
-                raise MirrorError("source request artifact must contain only public-release-request.json")
-            entry = entries[0]
-            if entry.file_size > contract["limits"]["max_request_bytes"]:
+            expected_entries = {SOURCE_REQUEST_FILENAME, SOURCE_RECEIPT_FILENAME}
+            if len(entries) != 2 or {entry.filename for entry in entries} != expected_entries:
+                raise MirrorError(
+                    "source publication artifact must contain exactly the request and receipt JSON files"
+                )
+            entries_by_name = {entry.filename: entry for entry in entries}
+            request_entry = entries_by_name[SOURCE_REQUEST_FILENAME]
+            receipt_entry = entries_by_name[SOURCE_RECEIPT_FILENAME]
+            if request_entry.file_size > contract["limits"]["max_request_bytes"]:
                 raise MirrorError("source request exceeds the request size limit")
-            with bundle.open(entry) as handle:
-                raw = handle.read(contract["limits"]["max_request_bytes"] + 1)
+            if receipt_entry.file_size > contract["limits"]["max_source_receipt_bytes"]:
+                raise MirrorError("source publication receipt exceeds the receipt size limit")
+            with bundle.open(request_entry) as handle:
+                raw_request = handle.read(contract["limits"]["max_request_bytes"] + 1)
+            with bundle.open(receipt_entry) as handle:
+                raw_receipt = handle.read(
+                    contract["limits"]["max_source_receipt_bytes"] + 1
+                )
     except (OSError, zipfile.BadZipFile) as error:
-        raise MirrorError(f"source request artifact is not a valid zip: {error}") from error
-    if len(raw) > contract["limits"]["max_request_bytes"]:
+        raise MirrorError(f"source publication artifact is not a valid zip: {error}") from error
+    if len(raw_request) > contract["limits"]["max_request_bytes"]:
         raise MirrorError("source request exceeds the request size limit")
-    if sha256_bytes(raw) != request_sha256:
+    if len(raw_receipt) > contract["limits"]["max_source_receipt_bytes"]:
+        raise MirrorError("source publication receipt exceeds the receipt size limit")
+    if sha256_bytes(raw_request) != request_sha256:
         raise MirrorError("source request artifact SHA256 does not match workflow input")
     try:
-        request = json.loads(raw)
+        request = json.loads(raw_request)
     except json.JSONDecodeError as error:
         raise MirrorError(f"source request is not valid JSON: {error}") from error
+    try:
+        source_receipt = json.loads(raw_receipt)
+    except json.JSONDecodeError as error:
+        raise MirrorError(f"source publication receipt is not valid JSON: {error}") from error
     if not isinstance(request, dict):
         raise MirrorError("source request must be a JSON object")
-    return request, run
+    if not isinstance(source_receipt, dict):
+        raise MirrorError("source publication receipt must be a JSON object")
+    return request, source_receipt, run
 
 
 def validate_release_metadata(
@@ -962,7 +1265,7 @@ def apply_release(
     validate_contract(contract)
     with tempfile.TemporaryDirectory(prefix="trajectory-public-release-") as directory:
         scratch = Path(directory)
-        request, source_run = load_authenticated_request(
+        request, source_receipt, source_run = load_authenticated_source_evidence(
             source_client,
             contract,
             source_run_id=source_run_id,
@@ -973,11 +1276,16 @@ def apply_release(
             request,
             contract,
             source_run_id=source_run_id,
+            expected_source_workflow_sha=source_run["head_sha"],
             expected_repository=expected_repository,
             expected_target_sha=expected_target_sha,
         )
-        if request["source"]["sha"] != source_run["head_sha"]:
-            raise MirrorError("request source SHA does not match the authenticated source run")
+        validate_source_publication_receipt(
+            source_receipt,
+            request,
+            contract,
+            source_run,
+        )
         validate_repository_metadata(metadata, request)
         source_paths = materialize_source_assets(source_client, request, contract, scratch)
         target_release, action = publish_target_release(
@@ -994,8 +1302,10 @@ def apply_release(
         "status": action,
         "version": request["version"],
         "tag": request["tag"],
-        "source_sha": request["source"]["sha"],
+        "candidate_source_sha": request["source"]["candidate_sha"],
+        "source_workflow_sha": request["source"]["sha"],
         "source_run_id": source_run_id,
+        "source_run_attempt": source_run["run_attempt"],
         "target_sha": expected_target_sha,
         "target_release_id": target_release["id"],
         "workflow_run_id": workflow_run_id,
