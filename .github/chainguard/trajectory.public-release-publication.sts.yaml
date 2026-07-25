@@ -1,0 +1,14 @@
+# Grants the protected source publication workflow a short-lived token to
+# dispatch the target publication gate. It cannot mutate repository contents.
+issuer: https://token.actions.githubusercontent.com
+
+subject: repo:DataDog/trajectory:environment:public-release-publication
+
+claim_pattern:
+  event_name: workflow_dispatch
+  ref: refs/heads/main
+  repository: DataDog/trajectory
+  job_workflow_ref: DataDog/trajectory/\.github/workflows/public-release-publication\.yml@refs/heads/main
+
+permissions:
+  actions: write

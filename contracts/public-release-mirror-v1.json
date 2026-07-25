@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "kind": "trajectory-public-release-mirror-contract",
+  "source_identity": {
+    "repository": "DataDog/trajectory",
+    "workflow_ref": "DataDog/trajectory/.github/workflows/public-release-publication.yml@refs/heads/main",
+    "environment": "public-release-publication",
+    "event_name": "workflow_dispatch",
+    "ref": "refs/heads/main",
+    "read_policy": "trajectory-labs.public-release-read",
+    "publication_artifact_prefix": "public-release-publication-"
+  },
+  "target": {
+    "repository": "datadog-labs/trajectory",
+    "environment": "public-release-mirror",
+    "ref": "refs/heads/main"
+  },
+  "accepted_release_modes": [
+    "full"
+  ],
+  "required_assets": [
+    "trajectory-darwin-amd64",
+    "trajectory-darwin-arm64",
+    "trajectory-darwin-universal",
+    "trajectory-linux-amd64",
+    "trajectory-linux-arm64",
+    "trajectory-windows-amd64.exe",
+    "checksums.sha256"
+  ],
+  "release": {
+    "prerelease": false,
+    "make_latest": true
+  },
+  "limits": {
+    "max_request_bytes": 49152,
+    "max_source_receipt_bytes": 65536,
+    "max_asset_bytes": 300000000,
+    "max_total_asset_bytes": 1000000000
+  }
+}

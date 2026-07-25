@@ -1,0 +1,54 @@
+name: Public Release Publication
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Source publication workflow run containing the immutable request
+        required: true
+        type: string
+      request_sha256:
+        description: SHA256 of public-release-request.json in the source run
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-release-${{ inputs.source_run_id }}-${{ inputs.request_sha256 }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Validate and publish exact public release
+    runs-on: ubuntu-latest
+    environment: public-release-mirror
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Validate and publish public release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 .github/scripts/public_release_mirror.py apply \
+            --contract contracts/public-release-mirror-v1.json \
+            --source-run-id "${{ inputs.source_run_id }}" \
+            --request-sha256 "${{ inputs.request_sha256 }}" \
+            --metadata RELEASES.json \
+            --expected-repository "$GITHUB_REPOSITORY" \
+            --expected-target-sha "$GITHUB_SHA" \
+            --workflow-run-id "$GITHUB_RUN_ID" \
+            --receipt-out "$RUNNER_TEMP/public-release-receipt.json"
+
+      - name: Retain publication receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: public-release-receipt-${{ inputs.request_sha256 }}
+          path: ${{ runner.temp }}/public-release-receipt.json
+          if-no-files-found: error
+          retention-days: 90
