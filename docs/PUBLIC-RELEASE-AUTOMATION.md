@@ -113,3 +113,27 @@ promotion with no rebuild or asset upload.
 
 Successful runs retain a content-bound publication receipt as a GitHub Actions
 artifact for 90 days.
+
+## Controller Readback
+
+The dispatching release controller can correlate the target run without
+polling by time window or branch alone. The workflow display name is exactly
+`public-release-<source_run_id>-<request_sha256>`, and the retained artifact is
+exactly `public-release-receipt-<request_sha256>`.
+
+The checked-in `release-controller-read` Octo STS policy grants a protected
+GitHub Actions workflow identity only `actions:read` and `contents:read`. Its
+trust boundary uses stable repository and owner IDs, `workflow_dispatch`,
+`main`, a GitHub-hosted runner, and the exact workflow path without encoding
+the controller repository name or any publication endpoint.
+
+After selecting the unique successful target run with the canonical display
+name, the controller must download the exact receipt artifact from that run
+and require all three bindings to match:
+
+- `source_run_id` equals the dispatched source run.
+- `request_sha256` equals the dispatched request digest.
+- `workflow_run_id` equals the selected target run.
+
+These bindings make a stale, unrelated, or replayed receipt unusable as
+evidence for a different release transaction.

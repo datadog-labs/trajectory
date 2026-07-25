@@ -1,0 +1,18 @@
+# Grants one protected GitHub Actions workflow a short-lived token to correlate
+# the exact target workflow run and read its retained receipt. It cannot mutate
+# repository contents, releases, actions, or workflow state.
+issuer: https://token.actions.githubusercontent.com
+
+subject_pattern: "repo:DataDog/.*:.*"
+
+claim_pattern:
+  repository_id: "1175392283"
+  repository_owner_id: "365230"
+  event_name: workflow_dispatch
+  ref: refs/heads/main
+  runner_environment: github-hosted
+  job_workflow_ref: DataDog/[^/]+/\.github/workflows/private-release-execute\.yml@refs/heads/main
+
+permissions:
+  actions: read
+  contents: read
