@@ -1,4 +1,5 @@
 name: Public Release Publication
+run-name: public-release-${{ inputs.source_run_id }}-${{ inputs.request_sha256 }}
 
 on:
   workflow_dispatch:

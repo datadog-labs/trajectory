@@ -789,6 +789,15 @@ class PublicReleaseMirrorTests(unittest.TestCase):
         self.assertEqual(target.upload_calls, self.contract["required_assets"])
         self.assertEqual(target.publish_calls, 1)
 
+    def test_target_receipt_binds_exact_correlated_workflow_run(self) -> None:
+        request, payloads, raw = build_fixture()
+        target = FakeTarget(request, payloads, state="absent")
+        receipt = self.apply(request, payloads, raw, target)
+
+        self.assertEqual(receipt["source_run_id"], SOURCE_RUN_ID)
+        self.assertEqual(receipt["request_sha256"], digest(raw))
+        self.assertEqual(receipt["workflow_run_id"], 8001)
+
     def test_existing_published_latest_release_is_idempotently_verified(self) -> None:
         request, payloads, raw = build_fixture()
         target = FakeTarget(request, payloads, state="published", latest=True)
@@ -1049,12 +1058,24 @@ class PublicReleaseMirrorTests(unittest.TestCase):
 
     def test_workflow_and_sts_policy_are_narrow_and_pinned(self) -> None:
         workflow = (ROOT / ".github/workflows/public-release-mirror.yml").read_text()
-        policy = (
+        dispatch_policy = (
             ROOT / ".github/chainguard/trajectory.public-release-publication.sts.yaml"
+        ).read_text()
+        read_policy = (
+            ROOT / ".github/chainguard/release-controller-read.sts.yaml"
         ).read_text()
         self.assertIn("workflow_dispatch:", workflow)
         self.assertIn("environment: public-release-mirror", workflow)
         self.assertIn("id-token: write", workflow)
+        self.assertIn(
+            "run-name: public-release-${{ inputs.source_run_id }}-"
+            "${{ inputs.request_sha256 }}",
+            workflow,
+        )
+        self.assertIn(
+            "name: public-release-receipt-${{ inputs.request_sha256 }}",
+            workflow,
+        )
         self.assertNotIn("OCTO_STS_DOMAIN", workflow)
         self.assertNotIn("OCTO_STS_AUDIENCE", workflow)
         self.assertNotIn("pull_request:", workflow)
@@ -1066,23 +1087,49 @@ class PublicReleaseMirrorTests(unittest.TestCase):
 
         self.assertIn(
             "subject: repo:DataDog/trajectory:environment:public-release-publication",
-            policy,
+            dispatch_policy,
         )
-        self.assertIn("event_name: workflow_dispatch", policy)
-        self.assertIn("ref: refs/heads/main", policy)
-        self.assertIn("repository: DataDog/trajectory", policy)
+        self.assertIn("event_name: workflow_dispatch", dispatch_policy)
+        self.assertIn("ref: refs/heads/main", dispatch_policy)
+        self.assertIn("repository: DataDog/trajectory", dispatch_policy)
         self.assertIn(
             r"job_workflow_ref: DataDog/trajectory/\.github/workflows/"
             r"public-release-publication\.yml@refs/heads/main",
-            policy,
+            dispatch_policy,
         )
-        permissions = policy.split("permissions:", 1)[1]
-        self.assertIn("actions: write", permissions)
-        self.assertNotIn("contents:", permissions)
+        dispatch_permissions = dispatch_policy.split("permissions:", 1)[1]
+        self.assertIn("actions: write", dispatch_permissions)
+        self.assertNotIn("contents:", dispatch_permissions)
 
-    def test_publication_surface_contains_no_credentials_or_non_github_urls(self) -> None:
+        expected_read_policy = """\
+# Grants one protected release pipeline a short-lived token to correlate the
+# exact target workflow run and read its retained receipt. It cannot mutate
+# repository contents, releases, actions, or workflow state.
+issuer: https://gitlab.ddbuild.io
+
+subject_pattern: "project_path:DataDog/.*:.*"
+
+claim_pattern:
+  project_id: "10409"
+  ref_type: "branch"
+  ref: "private-release-execution/[A-Za-z0-9._:+-]+"
+  ref_path: "refs/heads/private-release-execution/[A-Za-z0-9._:+-]+"
+  ref_protected: "true"
+  pipeline_source: "push"
+  ci_config_ref_uri: "gitlab.ddbuild.io/DataDog/[^/]+//.gitlab-ci.yml@refs/heads/private-release-execution/[A-Za-z0-9._:+-]+"
+
+permissions:
+  actions: read
+  contents: read
+"""
+        self.assertEqual(read_policy, expected_read_policy)
+        self.assertNotIn("actions: write", read_policy)
+        self.assertNotIn("contents: write", read_policy)
+
+    def test_publication_surface_contains_no_credentials_or_unexpected_urls(self) -> None:
         paths = (
             ROOT / ".github/workflows/public-release-mirror.yml",
+            ROOT / ".github/chainguard/release-controller-read.sts.yaml",
             ROOT / ".github/chainguard/trajectory.public-release-publication.sts.yaml",
             ROOT / ".github/scripts/public_release_mirror.py",
             ROOT / "contracts/public-release-mirror-v1.json",
@@ -1100,7 +1147,7 @@ class PublicReleaseMirrorTests(unittest.TestCase):
         for url in re.findall(r"https?://[a-z0-9.-]+", text):
             self.assertRegex(
                 url,
-                r"^https://(?:api\.github\.com|github\.com|"
+                r"^https://(?:api\.github\.com|github\.com|gitlab\.ddbuild\.io|"
                 r"token\.actions\.githubusercontent\.com)$",
             )
 

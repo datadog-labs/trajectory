@@ -1,0 +1,19 @@
+# Grants one protected release pipeline a short-lived token to correlate the
+# exact target workflow run and read its retained receipt. It cannot mutate
+# repository contents, releases, actions, or workflow state.
+issuer: https://gitlab.ddbuild.io
+
+subject_pattern: "project_path:DataDog/.*:.*"
+
+claim_pattern:
+  project_id: "10409"
+  ref_type: "branch"
+  ref: "private-release-execution/[A-Za-z0-9._:+-]+"
+  ref_path: "refs/heads/private-release-execution/[A-Za-z0-9._:+-]+"
+  ref_protected: "true"
+  pipeline_source: "push"
+  ci_config_ref_uri: "gitlab.ddbuild.io/DataDog/[^/]+//.gitlab-ci.yml@refs/heads/private-release-execution/[A-Za-z0-9._:+-]+"
+
+permissions:
+  actions: read
+  contents: read
