@@ -8,7 +8,7 @@ artifacts.
 The machine-readable interface is
 [`contracts/public-release-mirror-v1.json`](../contracts/public-release-mirror-v1.json).
 That contract is authoritative for the trusted caller, protected target,
-release mode, and seven canonical assets.
+release mode, and canonical asset set.
 
 ## Publication Sequence
 
@@ -83,22 +83,22 @@ does not emit an ambiguous `source_sha` field.
 The separate terminal source receipt must use the successful `full` schema and
 bind the same authenticated run ID, run attempt, workflow SHA, candidate source
 SHA, version, tag, publication timestamp, stable release ID/title/body, and
-seven manifest assets as the request. It must also prove a metadata-only full
+the same manifest assets as the request. It must also prove a metadata-only full
 promotion with no rebuild or asset upload.
 
 ## Fail-Closed Rules
 
 - Only `full` release requests are accepted. Candidate, prerelease, or
   suffixed-version requests stop before any target repository mutation.
-- The release must contain exactly the seven contract assets. Missing, extra,
+- The release must contain exactly the contract-defined assets. Missing, extra,
   duplicate, incomplete, renamed, or reordered assets are rejected.
 - Source evidence must come from exactly one non-expired artifact named from
   the authenticated run ID and run attempt. Legacy digest-named artifacts,
   missing or extra archive files, self-asserted source fields, and request bytes
   that do not match the dispatched SHA256 are rejected.
 - Every downloaded byte must stay within the contract size bounds and match
-  the manifest SHA256 and size. The checksum file must contain exactly the six
-  binary basenames in canonical order.
+  the manifest SHA256 and size. The checksum file must contain exactly the
+  contract-defined binary basenames in canonical order.
 - The compact request receipt and terminal source receipt must bind the same
   candidate source SHA, source run, version, tag, manifest, assets, title, body,
   and source publication timestamp.

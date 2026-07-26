@@ -181,8 +181,10 @@ def validate_contract(contract: dict[str, Any]) -> None:
     if contract["accepted_release_modes"] != ["full"]:
         raise MirrorError("contract must accept only full releases")
     assets = contract["required_assets"]
-    if not isinstance(assets, list) or len(assets) != 7 or len(set(assets)) != 7:
-        raise MirrorError("contract.required_assets must contain seven unique names")
+    if not isinstance(assets, list) or len(assets) < 2 or len(set(assets)) != len(assets):
+        raise MirrorError(
+            "contract.required_assets must contain unique binary names followed by checksums.sha256"
+        )
     for name in assets:
         require_string(name, "contract.required_assets entry")
         if Path(name).name != name:
@@ -580,7 +582,7 @@ def validate_source_publication_receipt(
     raw_assets = publication["assets"]
     required_names = contract["required_assets"]
     if not isinstance(raw_assets, list) or len(raw_assets) != len(required_names):
-        raise MirrorError("source publication receipt must contain exactly seven assets")
+        raise MirrorError("source publication receipt must contain exactly the contract assets")
     assets_by_name: dict[str, dict[str, Any]] = {}
     for index, value in enumerate(raw_assets):
         asset = exact_keys(
@@ -609,7 +611,7 @@ def validate_source_publication_receipt(
             "sha256": source_digest.removeprefix("sha256:"),
         }
     if set(assets_by_name) != set(required_names):
-        raise MirrorError("source publication receipt does not contain the seven canonical assets")
+        raise MirrorError("source publication receipt does not contain the canonical contract assets")
     normalized_assets = [assets_by_name[name] for name in required_names]
     if normalized_assets != request["asset_manifest"]["assets"]:
         raise MirrorError("source publication receipt assets do not match the request manifest")
@@ -1135,7 +1137,7 @@ def materialize_source_assets(
     by_name = release_assets_by_name(release)
     required_names = contract["required_assets"]
     if set(by_name) != set(required_names):
-        raise MirrorError("source release does not contain exactly the seven canonical assets")
+        raise MirrorError("source release does not contain exactly the canonical contract assets")
     paths: dict[str, Path] = {}
     for expected in request["asset_manifest"]["assets"]:
         validate_remote_asset(source_client, by_name[expected["name"]], expected, scratch)
@@ -1148,7 +1150,7 @@ def materialize_source_assets(
     binary_assets = request["asset_manifest"]["assets"][:-1]
     expected_lines = [f"{asset['sha256']}  {asset['name']}" for asset in binary_assets]
     if checksum_lines != expected_lines:
-        raise MirrorError("checksums.sha256 does not exactly describe the six canonical binaries")
+        raise MirrorError("checksums.sha256 does not exactly describe the canonical binaries")
     return paths
 
 
@@ -1181,7 +1183,7 @@ def ensure_target_assets(
     validate_release_metadata(refreshed, request)
     refreshed_assets = release_assets_by_name(refreshed)
     if set(refreshed_assets) != set(required_names):
-        raise MirrorError("target draft does not contain exactly the seven canonical assets")
+        raise MirrorError("target draft does not contain exactly the canonical contract assets")
     fingerprint = tuple(
         validate_remote_asset(
             target_client,

@@ -468,10 +468,22 @@ class PublicReleaseMirrorTests(unittest.TestCase):
                 receipt_out=Path(directory) / "receipt.json",
             )
 
-    def test_contract_accepts_only_full_and_exactly_seven_bounded_assets(self) -> None:
+    def test_contract_accepts_only_full_and_exact_canonical_assets(self) -> None:
         MIRROR.validate_contract(self.contract)
         self.assertEqual(self.contract["accepted_release_modes"], ["full"])
-        self.assertEqual(len(self.contract["required_assets"]), 7)
+        self.assertEqual(len(self.contract["required_assets"]), 13)
+        self.assertEqual(
+            self.contract["required_assets"][-7:],
+            [
+                "trajectory-mdm-darwin-amd64",
+                "trajectory-mdm-darwin-arm64",
+                "trajectory-mdm-darwin-universal",
+                "trajectory-mdm-linux-amd64",
+                "trajectory-mdm-linux-arm64",
+                "trajectory-mdm-windows-amd64.exe",
+                "checksums.sha256",
+            ],
+        )
         self.assertLessEqual(self.contract["limits"]["max_request_bytes"], 65536)
         self.assertLessEqual(
             self.contract["limits"]["max_source_receipt_bytes"],

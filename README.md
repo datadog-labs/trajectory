@@ -120,7 +120,17 @@ trajectory-darwin-universal
 trajectory-linux-amd64
 trajectory-linux-arm64
 trajectory-windows-amd64.exe
+trajectory-mdm-darwin-amd64
+trajectory-mdm-darwin-arm64
+trajectory-mdm-darwin-universal
+trajectory-mdm-linux-amd64
+trajectory-mdm-linux-arm64
+trajectory-mdm-windows-amd64.exe
 ```
+
+The `trajectory-mdm-*` assets are administrator tools for preparing and
+verifying managed endpoint deployment kits. They are not installed on employee
+endpoints.
 
 ## Supported Clients
 
