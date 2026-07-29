@@ -5,39 +5,42 @@ Trajectory captures sessions from AI coding agents and exports them to Datadog L
 ## Check status
 
 ```bash
-trajectory onboard                   # Local-first first-run readiness and next actions
+trajectory setup check               # Local-first first-run readiness and next actions
 trajectory status                    # Terminal dashboard with session metrics
-trajectory metrics session --latest  # Local metrics preview for existing sessions
-trajectory metrics verify            # Current Datadog metrics visibility proof
-trajectory metrics last              # Reprint latest metrics proof
-trajectory metrics open              # Reopen latest submitted Metrics Explorer proof
+trajectory report metrics session --latest # Local metrics preview for existing sessions
+trajectory doctor metrics verify     # Current Datadog metrics visibility proof
 trajectory cost                      # Local cost summary and top sessions
-trajectory cost-guidance status      # Optional local advisory cost checkpoints
-trajectory cost-guidance safeguard status # Optional personal next-prompt safeguard
-trajectory local-ui                  # Start local UI, preferring port 8888
-trajectory ps                        # Show live Trajectory processes
+trajectory summary                   # Current-month usage and cost report
+trajectory outcomes                  # Yield, cost per commit, and cost per PR
+trajectory patterns                  # Work mix, outcomes, cost, and deliverables
+trajectory plugins cost-guidance status # Optional local advisory cost checkpoints
+trajectory view local-ui             # Start local UI, preferring port 8888
+trajectory status processes          # Show live Trajectory processes
 trajectory doctor                    # Plain-language local health, span, and metric diagnosis
+trajectory flare                     # Write the full redacted support ZIP
 trajectory doctor --verbose          # Full low-level doctor report
-trajectory inventory refresh --json  # Refresh local agent and capability inventory
-trajectory inventory show --json     # Read the latest local inventory artifact
+trajectory setup clients inventory refresh --json # Refresh local capability inventory
 trajectory plugins list              # Show opt-in product activation profiles
 trajectory plugins show datadog-security # Show Datadog Security activation
 trajectory plugins show datadog-cost-guidance # Show Agent Cost Guidance activation
 trajectory plugins show datadog-personal-cost-guard # Show Personal Cost Guard activation
-trajectory security status           # Shortcut for the Datadog Security plugin
-trajectory modules list              # Show compiled optional modules and status
-trajectory modules capabilities <id> # Show one module's declared capabilities
-trajectory modules install-plan <id> # Preview setup-managed module hooks
-trajectory modules records --limit 20 # Show recent local module decisions
-trajectory features list             # Show feature flags and effective sources
-trajectory disable                   # Stop all new capture for this user
-trajectory enable                    # Resume capture for this user
-trajectory diagnose publish          # Explain capture, local mapping, and publish expectations
-trajectory logs [-f] [--grep PAT]   # View capture server logs
+trajectory plugins security status   # Datadog Security product status
+trajectory plugins modules list      # Show compiled optional modules and status
+trajectory cost-guard status         # Personal cost limits and paused-work actions
+trajectory config features list      # Show feature flags and effective sources
+trajectory config capture disable    # Stop all new capture for this user
+trajectory config capture enable     # Resume capture for this user
+trajectory doctor publish            # Explain capture, mapping, and publish expectations
+trajectory doctor logs [-f] [--grep PAT] # View capture server logs
 trajectory version                   # Print version
 ```
 
-`trajectory onboard` is the first command to run after install. It refreshes
+Run `trajectory help` for the small task-oriented surface, `trajectory help
+--all` for maintainer/runtime commands, and `trajectory help legacy` for old
+path mappings. Existing command paths remain compatible while bounded usage
+telemetry establishes when each can be retired safely.
+
+`trajectory setup check` is the first command to run after install. It refreshes
 local inventory, summarizes config and detected client readiness, and prints
 the exact next commands for setup, a first real agent session, local proof,
 local UI, Datadog validation, and the install outcomes dashboard. It does not
@@ -45,7 +48,7 @@ mutate client hooks or Datadog configuration.
 
 `trajectory doctor` is the first thing to run if something isn't working. It starts with plain-language Datadog span-publish and metric-visibility answers: whether local config, capture state, credentials, retry queues, and metric destinations look ready, plus the next command to run. The full low-level report is still saved to `~/.trajectory/doctor-report.txt`; use `trajectory doctor --verbose` when you need the detailed subsystem checks in the terminal.
 
-`trajectory inventory refresh --json` refreshes a first-class local inventory artifact under `~/.trajectory/inventory/` and prints a structured snapshot of detected agents and Trajectory-managed capabilities such as hooks, MCP entries, skills, commands, plugins, and settings sources. `trajectory inventory show --json` reads `current.json` without rescanning, and `trajectory inventory list --json` lists the hash-named snapshots under `snapshots/` for support triage or product-pack drift checks. Trajectory does not publish these inventory artifacts to Datadog yet.
+`trajectory setup clients inventory refresh --json` refreshes a first-class local inventory artifact under `~/.trajectory/inventory/` and prints a structured snapshot of detected agents and Trajectory-managed capabilities such as hooks, MCP entries, skills, commands, plugins, and settings sources. `trajectory setup clients inventory show --json` reads `current.json` without rescanning, and `trajectory setup clients inventory list --json` lists the hash-named snapshots under `snapshots/` for support triage or product-pack drift checks. Trajectory does not publish these inventory artifacts to Datadog yet.
 
 `trajectory plugins list` shows opt-in product activation profiles layered over
 compiled modules. Baseline `trajectory setup` remains observability-only; use
@@ -73,8 +76,8 @@ the local user, but cannot override a config, managed, or environment disable.
 It still requires explicit clients, a positive amount, and `--yes`:
 
 ```bash
-trajectory features status personal_cost_guard
-trajectory cost-guidance safeguard setup --clients codex --session-amount 20 --yes
+trajectory config features status personal_cost_guard
+trajectory cost-guard setup --clients codex --hard-cap 20 --yes
 ```
 
 It lets the current response finish, then pauses the next prompt until the
@@ -104,10 +107,12 @@ hook-dispatch commands, and setup installs one dispatcher per client event and
 lifecycle phase. Foreground module evaluator decisions are recorded
 locally in `~/.trajectory/modules/decisions.jsonl` and can be inspected with
 `trajectory modules records --module <id>`.
+Use `trajectory user-guide modules` for the full inspect, activation,
+credential, fail-open/fail-closed, recovery, and security-custody model.
 
 Use `trajectory local-ui --lapdog` as the recommended inspection path. It starts the local inspection API on `http://127.0.0.1:8888`, or the next available port, and opens the hosted Lapdog viewer with a matching `portOverride`. Add `--no-open` for headless environments.
 
-Use `trajectory diagnose publish --session <id>` when Datadog data is missing or surprising. It compares local capture and local JSONL-to-span mapping against the transcript, then adds a metric publish plan from the local SQLite cache: expected metric counts, durable outbox row counts, missing expected rows, and the exact readback follow-up command. It does not query Datadog readback.
+Use `trajectory doctor publish --session <id>` when Datadog data is missing or surprising. It compares local capture and local JSONL-to-span mapping against the transcript, then adds a metric publish plan from the local SQLite cache: expected metric counts, durable outbox row counts, missing expected rows, and the exact readback follow-up command. It does not query Datadog readback.
 
 `trajectory doctor` also checks recent local session-end fidelity. The `Session-end local fidelity` row compares recent Trajectory JSONL against known native transcript, rollout, or hook-log evidence. It fails when a native source has strong terminal evidence such as `SessionEnd`, `shutdown_complete`, `away_summary`, or `stop_hook_summary` but the Trajectory JSONL has no terminal `session_end`. For that case, run `trajectory doctor --reconcile-session-end`; it auto-discovers recoverable sessions, prints the exact files and native evidence, and prompts before appending anything. To inspect one session directly, run `trajectory publish session-end reconcile --session <id> --dry-run`. Applying direct repair requires the interactive confirmation prompt or `--yes`; it refuses active sessions, appends a synthetic terminal `session_end` only when strong native terminal evidence is still present, then retries final publish. It warns on stale terminal anchors such as `Stop` or `task_complete` when no fresh session heartbeat remains; start those with `trajectory diagnose publish --session <id>`.
 
@@ -126,7 +131,7 @@ configurations; and names the strongest reconciliation claim each data shape
 can support.
 
 
-Use `trajectory flare` only as a debug/support action when you need to share a redacted ZIP under `~/.trajectory/` with doctor output, process state, metrics fast-path diagnostics, config files, managed `config.defaults.yaml`, cohort overlay files, log tails, and version/pricing metadata. It is not part of the normal onboarding path. `trajectory doctor --support-bundle` remains available for the older single-JSON support summary.
+Use `trajectory flare` as the critical debug/support action when you need to share a redacted ZIP under `~/.trajectory/` with doctor output, process state, metrics fast-path diagnostics, config files, managed `config.defaults.yaml`, cohort overlay files, log tails, and version/pricing metadata. `trajectory doctor --support-bundle` remains available for the older single-JSON support summary.
 
 For slow Codex launch or exit reports, the default doctor output includes recent Trajectory MCP lifecycle timing and any existing Codex startup traces. If attribution is unclear, run `trajectory doctor --codex-startup` to launch a bounded Codex startup probe. The probe records whether Codex is delayed before `thread_spawn`, before Trajectory MCP is launched, or inside Trajectory itself.
 
@@ -150,15 +155,15 @@ trajectory update reconcile          # Dry-run old-version serve process refresh
 trajectory update reconcile --yes    # Retire the adopted old owner, then start the target version
 trajectory config set-secret <name>  # Store a secret in the OS keychain
 trajectory config get <key>          # Read a single value
-trajectory features enable <name>    # Persist a user feature-flag override
-trajectory features disable <name>   # Persist a user feature-flag kill switch
-trajectory disable                   # Persistently stop all capture for this user
-trajectory enable                    # Clear the user-scoped capture kill switch
+trajectory config features enable <name>  # Persist a user feature-flag override
+trajectory config features disable <name> # Persist a user feature-flag kill switch
+trajectory config capture disable         # Persistently stop all capture for this user
+trajectory config capture enable          # Clear the user-scoped capture kill switch
 ```
 
-`trajectory disable` writes `~/.trajectory/capture.disabled`. New hook,
+`trajectory config capture disable` writes `~/.trajectory/capture.disabled`. New hook,
 watcher, and OTLP events are discarded without JSONL writes, including by
-already-running Trajectory servers. Use `trajectory enable` to resume. For one
+already-running Trajectory servers. Use `trajectory config capture enable` to resume. For one
 process tree only, use `TRAJECTORY_DISABLED=1`; the environment override wins
 over the durable user state and must be unset before that process is relaunched.
 
@@ -259,13 +264,13 @@ Trajectory creates the built-in `_config_datadog` destination from the
 
 These controls are separate: destination `type` chooses the backend,
 `export.traces` or destination `level` controls LLM Obs trace spans, and
-`export.metrics` plus destination metric settings control metrics. A `datadog`
-destination uses agentless OTLP for traces and metrics by default; trusted
-config can select the `direct` trace fallback or `dd_metrics_v2` metric fallback
-independently. Use `type: datadog_agent` for Agent-managed publishing or
+`export.metrics` plus destination metric settings control metrics. A
+`datadog_agentless` destination uses agentless OTLP for traces and metrics by
+default; trusted config can select the `direct` trace fallback or
+`dd_metrics_v2` metric fallback independently. Use `type: datadog_agent` for Agent-managed publishing or
 `type: otlp` for generic OpenTelemetry collectors. OTLP destinations set a base collector `endpoint`; Trajectory
 derives `/v1/traces`, `/v1/metrics`, and `/v1/logs` from it. Legacy
-`type: dd_llmobs` still works.
+`type: datadog` and `type: dd_llmobs` still work.
 
 Managed or trusted destinations can also opt in to module custom spans with
 `module_spans.enabled: true`. This is for module-owned APM-style spans such as
@@ -448,14 +453,23 @@ The server starts automatically when your agent launches a session (via plugin h
 ```bash
 trajectory status                    # Overview of recent sessions
 trajectory status --session <id> --json
+trajectory summary                   # Current-month corpus report
+trajectory outcomes                  # Yield and delivery-attribution ratios
+trajectory patterns                  # Last-7-day work mix, outcomes, and deliverables
+trajectory patterns --period 30d
+trajectory patterns session SESSION_ID
+trajectory patterns estimate --period 30d
+trajectory patterns analyze --period 30d --yes
 trajectory cost inspect --session <id>
 trajectory cost observations --session <id>
+trajectory cost pricing --since 7d
 trajectory cost validate
 trajectory cost reconcile --latest     # Independent transcript -> v2 outbox fidelity
 trajectory cost-guidance status --session <id>
 trajectory local-ui                  # Open local-ui, preferring http://127.0.0.1:8888
 trajectory local-ui --lapdog         # Hosted Lapdog with local port override
 trajectory user-guide query          # Local data and safe MCP query workflow
+trajectory user-guide reports        # Summary/outcomes semantics and metric alignment
 trajectory user-guide costs          # Cost tracking commands and fidelity checks
 trajectory user-guide cost-guidance  # Optional local advisory checkpoints
 trajectory user-guide cost-attribution # Additive totals and CODEOWNER dashboard patterns
@@ -472,7 +486,11 @@ documents schema-first inspection and `TRAJECTORY_CACHE_DB` handling.
 
 Use `trajectory cost` for local cost tracking. It reads the local SQLite cache,
 automatically repairs obsolete Codex token/cost projections when needed, shows
-recent cost totals, inspects turn-level cost evidence,
+recent cost totals, and adds seven rolling 24-hour cost buckets to the default
+seven-day human view. Empty buckets display `$0.00`; session cost is attributed
+to the bucket containing its latest selected in-window evidence timestamp.
+It also provides a corpus-wide provisional pricing deep dive and inspects
+turn-level cost evidence,
 reports objective cost observations without causal claims, and validates recent
 cost fidelity for Claude Code, Codex, Gemini, Pi, OpenCode, Cursor, Hermes
 Agent, Amp Code, Qwen Code, Kilo Code, and Mistral Vibe. Explicit whole-session
@@ -503,6 +521,22 @@ Human summary output shows credits once in the header and keeps agent/session
 tables dollar-only; JSON retains detailed credit and fidelity fields. Human
 rankings show sessions with complete cost evidence and put excluded-session and
 Guardian proxy-pricing disclosures in compact footnotes.
+
+Use `trajectory patterns` to understand the work agents performed, the outcomes
+they reached, the cost and complexity of that work, and the deliverables they
+produced. The default report covers the last seven days; use `--period 30d`,
+`--details`, or `--json` for broader or deeper views. Historical classification
+is explicit and resumable: `trajectory patterns estimate` makes no model calls,
+and `trajectory patterns analyze --yes` is the spending boundary. Use
+`trajectory patterns session SESSION_ID` to inspect one session locally.
+See [Reports and Work Insights](REPORTS.md) for report semantics, classification
+behavior, GitHub reconciliation, and provisional-cost handling.
+
+The default-off `provisional_cost_estimates` feature can combine qualified
+read-time estimates with verified USD without rewriting recorded attribution.
+Affected totals and rows end in `*`; `trajectory cost pricing --since <window>`
+shows verified, provisional, and unresolved evidence separately. Codex product
+credits remain separate from API-equivalent USD.
 Guardian usage contributes an explicitly labeled provisional
 `codex-auto-review` proxy estimate using $2.50 per million input tokens, $0.25
 per million cached input tokens, and $15 per million output tokens, with
@@ -524,8 +558,8 @@ changing sources and concurrent repair are deferred without blocking. JSON
 exposes `automatic_cost_repair` counts and elapsed time.
 
 Stale rows that cannot yet be repaired remain excluded, but they no longer
-erase valid evidence: cost and credits stay visible as conservative
-known-subtotal lower bounds. Standalone `trajectory cost top` reports
+erase valid evidence: cost and credits stay visible as one recorded estimate,
+with incomplete coverage disclosed in the footnote. Standalone `trajectory cost top` reports
 `ranking_state: partial`, retains sessions with known partial subtotals, and
 exposes the excluded stale-session count rather than claiming a complete
 ranking.
@@ -573,7 +607,7 @@ read-only SQLite access.
 
 | Surface | Names |
 |---------|-------|
-| Tools | `trajectory_status`, `list_active_sessions`, `get_session_trajectory`, `evaluate_markers`, `trajectory_incognito`, `trajectory_schema`, `trajectory_query`, `trajectory_search` |
+| Tools | `trajectory_status`, `list_active_sessions`, `get_session_trajectory`, `trajectory_incognito`, `trajectory_schema`, `trajectory_query`, `trajectory_search` |
 | Resources | `trajectory://status`, `trajectory://config`, `trajectory://sqlite/schema` |
 
 For SQLite queries, call `trajectory_schema` first so the agent uses the live
@@ -746,11 +780,12 @@ not the client registry. Use [SUPPORTED-CLIENTS.md](SUPPORTED-CLIENTS.md) for
 the authoritative, complete setup and support matrix, including preview
 clients added after these examples.
 
-Incognito is a server-side Trajectory gate for every captured session once the
-session is toggled. The privacy matrix calls out whether setup gives that
-client a first-class way to toggle it. Sensitivity classification and task
-segmentation are core Trajectory features for captured non-headless sessions;
-headless sessions always skip sensitivity classification and segmentation.
+Incognito is a server-side Trajectory trace-publication gate for every captured
+session once toggled. Local capture, task segmentation, and aggregate metric
+publication continue. The privacy matrix calls out
+whether setup gives that client a first-class way to toggle it. Sensitivity
+classification is skipped while incognito; headless sessions always skip
+sensitivity classification and segmentation.
 
 #### Capture and telemetry
 
@@ -973,7 +1008,43 @@ For marker-metric readback, use `trajectory markers canary --keep-home`. It runs
 
 `trajectory audit --deep` adds an interpretation block for local capture fidelity, config-driven trace-off states, missing model/cost attribution, and the 24-hour LLMO trace intake backfill limit.
 
-`trajectory audit --source-data` checks the local SQLite cache contracts used by local-ui, including completed-session finalization, session/turn aggregate consistency, tool-call parentage, model/cost attribution, sparse turn IDs, contentless active turns, and CODEOWNER resolution-failure categories. CODEOWNER output is categorical counts only: reason is `missing`, `parse_error`, `snapshot_store_error`, or `change_files_unavailable`, and snapshot source is `session_head`, `persisted_snapshot`, or `pr_turn_range`. It never prints paths, Git object IDs, CODEOWNERS contents, or source content. Use `--json` for machine-readable output or `--db <path>` to inspect a non-default cache.
+`trajectory audit --source-data` checks the local SQLite cache contracts used by local-ui, including completed-session finalization; exact turn/session rollups for turn count, tools, input tokens, output tokens, cache-aware total tokens, and cost; tool-call parentage; model/cost attribution; sparse turn IDs; contentless active turns; and CODEOWNER resolution-failure categories. Input and output are checked independently so compensating drift cannot hide behind a matching combined token total. CODEOWNER output is categorical counts only: reason is `missing`, `parse_error`, `snapshot_store_error`, or `change_files_unavailable`, and snapshot source is `session_head`, `persisted_snapshot`, or `pr_turn_range`. It never prints paths, Git object IDs, CODEOWNERS contents, or source content. Use `--json` for machine-readable output or `--db <path>` to inspect a non-default cache, and require `session_turn_aggregate_drift` to pass.
+
+For a complete local-data diagnosis, use `trajectory audit data`. It rolls the
+cache checks into nine bounded domains covering sessions, conversations,
+tools, delegation, usage, outcomes, optional analysis, storage parity, and
+local delivery. The default view is one line per domain. Session/file parity
+is corpus-wide, while event-level parity defaults to the newest 100 sessions
+and prints its exact coverage. Expensive content, usage-outlier, and outcome
+checks are also deferred in the bounded profile; use `--all` for the complete
+retained-corpus event scan and deep projection checks. Native replay for a
+single extreme-token Codex rollout is capped at 64 MiB and reports
+`unverified` when the source is larger, missing, or unsupported.
+Add `--details` for individual evidence states or `--json` for automation. Missing evidence is
+reported separately from a verified zero. In particular, delegation compares
+canonical `subagent_start` facts with materialized subagent rows and checks
+retained GitHub Copilot CLI history fingerprints directly; Pi delegation is
+reported as unsupported.
+
+Diagnosis is read-only. When the report proves exact session-level repairs,
+write a content-addressed plan and inspect it before applying:
+
+```sh
+trajectory audit data --write-plan repair.json
+trajectory backfill apply --plan repair.json --yes
+```
+
+To repair one area without suppressing the holistic diagnosis, add a stable
+domain filter such as `--only delegation` or
+`--only delegation,storage`. Every planned action retains its exact domain and
+finding IDs.
+
+Apply refuses expired plans, changed source files, disabled provider features,
+and ambiguous repairs. It reuses full-session import/index paths and verifies
+that every planned parity gap is closed. It writes an immutable
+`repair.json.receipt.json` by default; use `--receipt PATH` to select another
+new path. `trajectory doctor` uses this same data-health report and points to
+the detailed audit; it never applies a plan.
 
 For a cleaner troubleshooting flow across doctor, diagnose, audit, validate-spans, and support bundles:
 
@@ -1103,7 +1174,7 @@ series into mutually exclusive owner allocation.
 
 ## Privacy Controls
 
-Use `/incognito` when the current session should not publish to ordinary Datadog observability destinations. Local JSONL capture continues, publish to non-exempt Datadog destinations is suppressed, active-session sensitivity scans are skipped, and the toggle resets when the session ends. Org-managed destinations configured with `incognito_exempt: true` may still receive events for approved security or audit use cases.
+Use `/incognito` when the current session should not publish trace-like content to ordinary Datadog observability destinations. Local JSONL capture continues, as does task segmentation; publish to non-exempt Datadog destinations is suppressed for trace-like content such as traces, logs, evaluations, records, and AI-usage events. Aggregate metrics continue without content-bearing user data. Active-session sensitivity scans are skipped, and the toggle resets when the session ends. Org-managed destinations configured with `incognito_exempt: true` may still receive events for approved security or audit use cases.
 
 Use `<sensitive>...</sensitive>` blocks as an explicit signal to the agent and to human readers:
 
@@ -1145,7 +1216,7 @@ trajectory backfill --from-hermes --session <id>       # explicit Hermes state.d
 trajectory backfill --from-opencode --session <id>     # SQLite or retained JSON history
 trajectory features enable qwen_durable_history        # one-time Qwen history opt-in
 trajectory backfill --from-qwen-sessions --session <id> # active/archive Qwen chat JSONL
-trajectory backfill-my-metrics                         # Dry-run historical dashboard repair
+trajectory repair metrics                              # Local-only historical metric repair preview
 ```
 
 Codex and local-cache backfills use `--limit` as a per-chunk size. The command

@@ -106,6 +106,32 @@ It is canonical only inside the PR-work projection. PR work cost reuses base
 turn cost; it is not incremental spend. Never add it to turn cost, session
 cost, or the legacy creation-tail PR cost metrics.
 
+### Client cost coverage and Codex
+
+Under the v2 usage-integrity contract, the monetary cost metrics
+(`trajectory.turn.cost.usd*`, `trajectory.session.cost.usd*`) emit only for
+turns that carry an explicit priced cost attribution
+(`trajectory.cost_role:attribution`, `trajectory.cost_contract:v2`). Token and
+session-count metrics are pricing-independent and always emit. A model with no
+known price therefore shows tokens and sessions but an empty cost tile - the
+metric is suppressed rather than reported as a misleading zero.
+
+Codex cost is token-derived from the published OpenAI rate card. Codex model
+IDs price at the base model's rates, including `-codex` variants - e.g.
+`gpt-5.4-codex` prices as `gpt-5.4` - provided the base model is in the rate
+card. A model absent from the card (for example a new flagship before its rate
+lands) is fail-closed unpriced and emits no cost metric. Codex turns attach an
+explicit priced token-derived attribution, so priced Codex cost enters the
+authoritative attribution lane above rather than only the legacy untagged
+`trajectory.turn.cost.usd.total`.
+
+The `trajectory cost` warning `N Codex sessions use a stale cost derivation and
+are excluded` is a **local display** exclusion: a session whose stored
+`cost_derivation_version` predates the current Codex derivation is left out of
+the local total until `trajectory backfill --from-codex-sessions --force`
+re-derives and re-publishes it. Staleness gates the local summary, not metric
+emission - already-published cost metrics are unaffected.
+
 ### Exclusive coverage partitions
 
 Coverage metrics partition canonical PR work exactly once per qualifying turn.

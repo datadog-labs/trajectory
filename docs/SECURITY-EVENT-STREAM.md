@@ -16,7 +16,7 @@ Enable the stream only on managed `required_destinations`:
 ```yaml
 required_destinations:
   - name: security-audit
-    type: datadog
+    type: datadog_agentless
     site: us5.datadoghq.com
     ml_app: coding-agents-security
     api_key_ref: dd-security-api-key

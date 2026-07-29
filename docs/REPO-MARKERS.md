@@ -126,7 +126,7 @@ LLM Obs marker evaluations off:
 version: 1
 destinations:
   - name: payments-marker-metrics
-    type: datadog
+    type: datadog_agentless
     site: datadoghq.com
     ml_app: payments-agents
     api_key_ref: payments-dd-api-key

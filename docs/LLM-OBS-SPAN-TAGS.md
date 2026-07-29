@@ -61,18 +61,19 @@ For dashboard consumption guidance, see
 
 ## Trace Tags
 
-Trajectory publishes three trace types. `trajectory.trace_type` identifies the
+Trajectory publishes four trace types. `trajectory.trace_type` identifies the
 trace topology and must not be inferred from parent-child shape alone.
 
 | Trace | Spans | Required trace tags |
 | --- | --- | --- |
 | Turn | Turn root plus inference/tool/LLM children | `trajectory.trace_type:turn`, `trajectory.session_id:<session_id>` |
-| Task | One standalone task span | `trajectory.trace_type:task`, `trajectory.session_id:<session_id>`, `trajectory.task.turn_start:<n>`, `trajectory.task.turn_end:<n>` |
+| Task | One standalone task span | `trajectory.trace_type:task`, `trajectory.session_id:<session_id>`, `task_id:<task_id>`, `trajectory.task.turn_start:<n>`, `trajectory.task.turn_end:<n>` |
+| Automated oversight | One summary span, plus an optional separate reviewer trace in `full` mode | `trajectory.trace_type:oversight`, `trajectory.oversight.kind:<kind>`, `trajectory.oversight.outcome:<outcome>`, `trajectory.oversight.linked:<bool>` |
 | Session | One standalone session span | `trajectory.trace_type:session`, `trajectory.trace_correlation.session_id:<session_id>` |
 
-Turn traces are the only traces with real child spans. Task and session traces
-link to lower-level traces with span links and must not duplicate lower-level
-spans.
+Turn traces and full automated-oversight reviewer traces may have real child
+spans. Oversight summary, task, and session traces link to lower-level or
+correlated traces with span links and must not duplicate those spans.
 
 ## Span-Specific Tags
 
@@ -83,12 +84,18 @@ spans.
 | Tool | `trajectory.session_id:<session_id>` | Parent is the claiming agent-message span when known, otherwise the turn root. |
 | Real LLM call | `trajectory.session_id:<session_id>`, `trajectory.llm_call:true` | Used for captured Trajectory-owned LLM calls. |
 | Synthetic LLM cost span | `trajectory.session_id:<session_id>` | May also carry `trajectory.cost_source:turn_metrics` when derived from turn totals. |
-| Task | `trajectory.semantic_type:task`, `trajectory.session_id:<session_id>`, `task_type:<type>`, `outcome_label:<label>` | Standalone span with turn span links. |
+| Task | `trajectory.semantic_type:task`, `trajectory.session_id:<session_id>`, `task_id:<task_id>`, `task_type:<type>`, `outcome_label:<label>` | Standalone span. The privacy-reduced task-insights family omits turn links when `export.turn_traces` is false and carries Work Insights Level 1/Level 2 tags when available. |
 | Session | `trajectory.semantic_type:session`, `trajectory.trace_correlation.session_id:<session_id>` | Standalone span with task or turn span links. |
 | Compaction/correlation | `trajectory.semantic_type:compaction`, `trajectory.trace_correlation.session_id:<session_id>` | Used for compaction or cross-session correlation spans. |
 
 When a span has a semantic event name, it may also carry
 `trajectory.semantic_name:<name>`.
+
+Privacy-reduced task-insight roots use the validated task label as the span
+name and retain the closed Work Insights taxonomy, task scores, opaque
+session/task identity, and exact start/end turns. They exclude the raw task
+goal, evidence, transcript, project path, host identity, user/email identity,
+provider route, and cost-deduplication identity.
 
 Completed turn roots with one unambiguous durable PR-work assignment carry
 `change_host`, `owner`, `repo`, `change_number`, `context_source`,

@@ -3,9 +3,11 @@ Trajectory captures local JSONL first, then publishes according to config and de
 
 ## Incognito
 Use `/incognito` when ordinary observability destinations should not receive
-the current session. Local JSONL capture continues, publish to non-exempt remote
-destinations is suppressed, active-session sensitivity scans are skipped, and
-the toggle resets when the session ends.
+the current session's trace-like content. Local JSONL capture and segmentation
+continue. Traces, logs, evaluations, records, and AI Usage events are
+suppressed for non-exempt destinations; content-free aggregate metrics
+continue. Active-session sensitivity scans are skipped, and the toggle resets
+when the session ends.
 
 Clients with the Trajectory skill installed accept:
 
@@ -64,10 +66,23 @@ privacy:
 Sensitivity gating applies to span publish. Metrics, marker evaluations, and some event logs can still flow depending on destination policy. Keep metric tags and marker details low-cardinality and non-sensitive.
 
 Incognito sessions skip active-session sensitivity classifier calls.
-`TRAJECTORY_DISABLED=1` is stronger: it prevents local capture for the launched
-process, so there is no local session for the sensitivity scanner to read.
+`trajectory config capture disable` and `TRAJECTORY_DISABLED=1` are stronger:
+they prevent local capture, so there is no new local session data for the
+sensitivity scanner to read.
 
 ## Disable All Capture
+
+To stop capture for the current user until it is explicitly resumed:
+
+```bash
+trajectory config capture disable
+trajectory config capture enable
+```
+
+The durable state is stored at `~/.trajectory/capture.disabled`. Running
+Trajectory servers immediately discard new hook, watcher, and OTLP events, so
+no agent relaunch is required.
+
 For a one-off process where local capture should also stop, use:
 
 ```bash

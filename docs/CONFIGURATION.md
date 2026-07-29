@@ -48,9 +48,11 @@ Project files named `publish.trajectory.yaml` are separate from the user config.
 ```bash
 trajectory config set export.site datadoghq.com
 trajectory config set export.traces standard       # off | minimal | standard | full
+trajectory config set export.turn_traces false
 trajectory config set export.metrics true
 trajectory config set export.placeholder_llm_span false
 trajectory config set export.subagent_span_mode links_only  # semantic | links_only
+trajectory config set segmentation.task_insights.publish true
 trajectory config set local_ui.auto_start false
 trajectory config set capture.retention_days 30
 trajectory config set-secret dd-api-key            # prompts securely
@@ -77,17 +79,17 @@ create the built-in Datadog destination named `_config_datadog`. With
 trace spans do not.
 
 For explicit managed destinations, `type` chooses the backend or transport:
-`datadog`, `datadog_agent`, or `otlp`. Trace export is controlled by `level` on
-that destination. Metrics export is controlled by `export.metrics` and
-destination metric settings. Legacy aliases `dd_llmobs` and
-`dd_llmobs_via_agent` are still accepted.
+`datadog_agentless`, `datadog_agent`, or `otlp`. Trace export is controlled by
+`level` on that destination. Metrics export is controlled by `export.metrics`
+and destination metric settings. The legacy aliases `datadog`, `dd_llmobs`,
+and `dd_llmobs_via_agent` remain accepted for existing configurations.
 
 Managed Datadog security destinations can opt in to a security event stream:
 
 ```yaml
 required_destinations:
   - name: security-audit
-    type: datadog
+    type: datadog_agentless
     level: full
     incognito_exempt: true
     event_stream:
@@ -116,6 +118,7 @@ This is a typical `~/.trajectory/config.yaml` for a user who wants local capture
 export:
   site: datadoghq.com
   traces: standard
+  turn_traces: true
   metrics: true
   placeholder_llm_span: true
   subagent_span_mode: semantic
@@ -128,6 +131,8 @@ capture:
 
 segmentation:
   enabled: true
+  task_insights:
+    publish: false
 ```
 
 Prefer `trajectory config set` for routine edits so Trajectory preserves the expected shape and validates values.
@@ -214,11 +219,11 @@ Explicit destinations can select a backend:
 
 | Backend | Config value | Use when |
 |---|---|---|
-| Datadog | `type: datadog` | Trajectory should publish to Datadog with a Datadog API key; traces and metrics default to agentless OTLP |
+| Datadog | `type: datadog_agentless` | Trajectory should publish to Datadog with a Datadog API key; traces and metrics default to agentless OTLP |
 | Datadog Agent | `type: datadog_agent` | A local or managed Datadog Agent owns egress and credentials |
 | OpenTelemetry collector | `type: otlp` | Trajectory should publish traces, metrics, and marker logs to an OTLP HTTP collector |
 
-Trusted `datadog` destinations can set `traces_transport: direct` or
+Trusted `datadog_agentless` destinations can set `traces_transport: direct` or
 `metrics_transport: dd_metrics_v2` for fallback transports. Omitting those
 fields keeps the OTLP defaults.
 
@@ -278,20 +283,36 @@ trajectory config set export.metrics false
 
 Captured JSONL remains under `~/.trajectory/trajectories/` unless you also disable capture for a launched process.
 
+Disable capture durably for the current user, then resume it later:
+
+```bash
+trajectory config capture disable
+trajectory config capture enable
+```
+
+The durable control is checked on every intake event, so it does not require
+stopping the capture server or relaunching an agent.
+
 For one command where nothing should be recorded:
 
 ```bash
 TRAJECTORY_DISABLED=1 claude "review this repo without recording"
 ```
 
-For session privacy where local capture should continue, use `/incognito` inside the agent session. See [PRIVACY.md](PRIVACY.md).
+For session privacy where local capture should continue, use `/incognito`
+inside the agent session. Incognito keeps local capture and segmentation,
+suppresses trace-like content export to non-exempt destinations, and preserves
+content-free aggregate metric publishing. See [PRIVACY.md](PRIVACY.md).
 
 ## LLM Capacity Controls
 
 Most capture, marker evaluation, local UI, and Datadog publish paths do not ask
 another LLM to process a session. The two main paths that may consume
-additional LLM capacity are task segmentation and sensitivity classification.
-Optional meta-task grouping is independently off by default.
+additional LLM capacity are task segmentation/classification and sensitivity
+classification. Enhanced segmentation is on by default and adds a Work
+Insights call on the existing segmentation cadence. The same call derives
+Level 1/Level 2 classifications and a privacy-reduced task label; it does not
+add another call. Optional meta-task grouping is independently off by default.
 
 Disable both Trajectory-owned LLM paths:
 
@@ -382,15 +403,17 @@ Environment variables are best for temporary overrides, CI jobs, or one launched
 | `export.site` | site selected during setup | Datadog site, such as `datadoghq.com`, `us5.datadoghq.com`, or `datadoghq.eu` |
 | `export.ml_app` | `coding-agents` for implicit destinations | LLM Observability ML app name |
 | `export.traces` | `off` | LLM Observability trace export level: `off`, `minimal`, `standard`, or `full` |
+| `export.turn_traces` | `true` | Publish ordinary per-turn trace and post-hoc turn-evaluation output |
 | `export.metrics` | `true` | Cost, token, marker, and operations metric export |
 | `export.placeholder_llm_span` | `true` | Synthetic LLM child span for turn-level token and cost enrichment |
 | `export.subagent_span_mode` | `semantic` | Parent-side subagent rendering mode: `semantic` adds readable parent-side task spans, `links_only` keeps only child-trace links and metadata |
-| `export.sensitivity.scanning_mode` | `balanced` | Sensitivity classification mode: `balanced`, `near_realtime`, or `off` |
+| `export.sensitivity.scanning_mode` | `off` | Sensitivity classification mode: `balanced`, `near_realtime`, or `off`; user or managed config may explicitly enable it |
 | `segmentation.enabled` | `true` | Async task segmentation |
 | `segmentation.interval` | `10` | Number of turns between segmentation passes |
-| `segmentation.model` | empty | Optional override for the provider-specific default: Claude Haiku, Codex GPT-5.4 Mini, or Gemini Flash-Lite |
+| `segmentation.model` | empty | Optional override for the provider-specific segmentation default |
 | `segmentation.publish_metrics` | `false` | Publish task-derived segmentation metrics |
-| `segmentation.publish_traces` | `false` | Publish segmentation task traces and logs |
+| `segmentation.publish_traces` | `false` | Publish richer task traces, classification evaluations, and raw task logs; also implies task metrics |
+| `segmentation.task_insights.publish` | `false` | Publish privacy-reduced task traces and direct task evaluations without raw task logs; requires trace export and also implies task metrics |
 | `publish_trust.allowed_origins` | empty | Git origins allowed to load project `publish.trajectory.yaml` overlays |
 | `publish_trust.require_committed` | `false` | Require project publish configs to be git-tracked |
 | `publish_trust.allowed_sites` | empty | Optional Datadog site allowlist for project-created destinations |

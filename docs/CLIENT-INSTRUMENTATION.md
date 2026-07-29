@@ -18,7 +18,7 @@ trajectory user-guide clients
 | Client | Setup path | Live capture surface | Backfill |
 |---|---|---|---|
 | Claude Code | `trajectory setup --clients cc` (`--install-client-shims` optional) | Marketplace plugin hooks plus MCP; optional transparent `trajectory claude` launcher | Transcript backfill |
-| Codex CLI | `trajectory setup --clients codex` (`--install-client-shims` optional) | Three boundary command hooks plus authoritative rollout reconciliation by default; optional full ten-hook compatibility and transparent `trajectory codex` launcher | Codex rollout backfill |
+| Codex CLI | `trajectory setup --clients codex` (`--install-client-shims` optional) | Three boundary command hooks plus authoritative rollout reconciliation by default; optional full ten-hook compatibility and transparent `trajectory codex` launcher with complete Responses API request/response capture | Codex rollout backfill |
 | GitHub Copilot CLI | `trajectory setup --clients copilot`; optionally install the explicit command shim and enable `copilot_cli_durable_history` / `copilot_cli_native_otel` | Beta plugin command hooks plus MCP, bounded session-state reconciliation, and strict content-disabled native OTel request capture | Enable `copilot_durable_history`; `trajectory backfill --from-copilot-sessions` remains the explicit bulk-history and repair path |
 | Gemini CLI | `trajectory setup --clients gemini` | Managed command hooks plus MCP | Gemini transcript backfill |
 | Antigravity CLI (`agy`) | `trajectory setup --clients agy` | Antigravity plugin command hooks plus MCP | Default-off exact prompt plus schema-v1 generation-usage reconciliation |
@@ -207,8 +207,8 @@ Compact MCP surface:
 | Surface | Names |
 |---|---|
 | Session/status tools | `trajectory_status`, `list_active_sessions`, `get_session_trajectory` |
-| Evaluation/privacy tools | `evaluate_markers`, `trajectory_incognito` |
-| SQLite tools | `trajectory_schema`, `trajectory_query` |
+| Privacy tools | `trajectory_incognito` |
+| SQLite tools | `trajectory_schema`, `trajectory_query`, `trajectory_search` |
 | Resources | `trajectory://status`, `trajectory://config`, `trajectory://sqlite/schema` |
 
 Agents should call `trajectory_schema` before `trajectory_query` so SQL matches
@@ -271,9 +271,14 @@ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://localhost:<port>/v1/metrics
 OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:<port>/v1/traces
 ```
 
-It also enables Claude's enhanced telemetry beta and tool details in that child
-environment so native tool spans can include the skill and tool attributes
-needed for skill observability.
+It also enables Claude's enhanced telemetry beta, user and assistant content,
+tool details and content, and raw API-body events in that child environment.
+The wrapper preload independently records the complete parsed Anthropic request
+and response bodies on each canonical `llm_call`. The LLM Obs mapper exposes
+those bodies as the real inference span's `meta.input.value` and
+`meta.output.value`, so system blocks, conversation messages, tool names,
+descriptions, input schemas, tool calls, thinking, and response content remain
+available in Datadog and local-ui/Lapdog detail views.
 
 The `/v1/logs` endpoint keeps only native `skill_activated` records, converts
 them into bounded local `Skill` tool activations, and drops other logs after
@@ -340,11 +345,15 @@ When an older Trajectory version injected the exact legacy local OTLP env block
 into `~/.claude/settings.json`, setup may remove only those Trajectory-owned
 user-scope keys; it never cleans project or managed settings.
 
-Use `trajectory claude` when you want Trajectory to route native OTLP for a
-single launched Claude process without changing `~/.claude/settings.json`. The
+Use `trajectory claude` when you want complete request and response capture plus
+native OTLP routing for a single launched Claude process without changing
+`~/.claude/settings.json`. Complete capture is on by default because invoking
+the wrapper is the opt-in boundary; there is no second content flag. The
 wrapper reads effective Claude settings, points the child process at local
-`/v1/logs`, `/v1/metrics`, and `/v1/traces`, and starts `trajectory serve` with
-the original upstream endpoint as `server.otlp_proxy` process configuration.
+`/v1/logs`, `/v1/metrics`, and `/v1/traces`, and passes the original upstream
+endpoint as process configuration when it starts a new shared
+`trajectory serve` owner. An already-running shared owner retains its current
+proxy configuration.
 This process-only interposer is controlled by the
 `claude_native_otlp_interposer` feature flag. It is on by default because
 running `trajectory claude` is the explicit opt-in boundary; disable it with
@@ -556,6 +565,14 @@ There are two upstream Codex streams:
   records, subagent activity, model details, token snapshots, structured
   `<skill>` activation envelopes, and `shutdown_complete`.
 
+`trajectory codex` is the explicit provider-call wrapper. Every complete
+Responses API exchange routed through it retains the full request and response
+by default, including instructions, conversation input, tool results, complete
+tool descriptions and parameter schemas, reasoning, tool calls, and assistant
+output. Streaming responses are stored as the complete ordered JSON event
+sequence. These bodies populate the real LLM span input and output in Datadog
+LLM Observability and local-ui/Lapdog.
+
 Manual and opt-in startup repair additionally discover flat rollout JSONL under
 `$CODEX_HOME/archived_sessions/`. Startup repair processes a bounded page and
 persists its continuation for the next maintenance lease. Historical discovery
@@ -585,7 +602,7 @@ When `capture-hook --ensure-serve` runs for Codex, it ensures a
 watcher-capable rescue `serve` process is present so the rollout fallback stays
 available. For that rescue process only, it overrides Codex watcher-disable
 environment variables and suppresses unrelated client watchers;
-`trajectory disable` and `TRAJECTORY_DISABLED=1` still suppress all capture.
+`trajectory config capture disable` and `TRAJECTORY_DISABLED=1` still suppress all capture.
 The durable user-scoped command also suppresses an already-running watcher.
 Hook-active sentinels under `~/.trajectory/state/codex-hook-active/` suppress
 duplicate non-message watcher events while boundary hooks own the session.

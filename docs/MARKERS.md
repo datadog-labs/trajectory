@@ -88,6 +88,25 @@ trajectory markers enable-security
 
 This writes `~/.trajectory/markers.d/security.yaml` by default. It includes declarative security points for jailbreak-like prompts, system prompt leak requests, web-content prompt injection, suspicious `WebFetch` domains, sensitive reads followed by network activity, and risky shell secret exfiltration patterns. Use `--output PATH` to write a copy somewhere else and `--force` to overwrite an existing output file.
 
+Standard Confluence page creation, Slack message sends, and resolved
+Linear/Jira operations are built-in deterministic deliverables. Trajectory
+also includes an override template for company-specific tools. Install it with
+`trajectory markers enable-deliverables`, then customize its MCP tool names or
+field paths under `~/.trajectory/markers.d/deliverables.yaml`. A successful point named
+`deliverable-*` is included in `trajectory patterns`; standard categories get
+first-class report counts and other names appear under company-defined
+deliverables. The deliverables engine deduplicates extracted IDs and never
+invokes an LLM.
+
+Built-in PR interaction evidence accepts successful, explicitly identified
+create, checkout, inspect, collaboration, merge, and close shell commands plus
+allowlisted provider-native PR/MR tools. Structural provider-tool input
+(host/owner/repository/number) takes precedence over unrelated URLs in output;
+create tools can resolve one normalized result URL. Provider tools that omit a
+separate success field remain eligible when they are not denied and have no
+recorded error. Failed, identity-free, collection-wide, or ambiguous operations
+are excluded.
+
 ## YAML file shape
 
 Marker config files use `version: 2` and may define `tags`, `points`, `ranges`, and `measures`. Files declaring `version: 1` are still loaded but cannot use the v2-only `scope:` and `metric:` fields.
@@ -588,7 +607,7 @@ definitions in `.trajectory/markers.yaml` and put the destination overlay in
 # trajectory-doc-snippet: publish-config
 destinations:
   - name: team-llmobs
-    type: datadog
+    type: datadog_agentless
     site: us5.datadoghq.com
     ml_app: coding-agents
     service: trajectory
@@ -685,6 +704,9 @@ Packaged Datadog dashboard templates are embedded in the binary. For one-off ana
 # Install the optional security marker add-on.
 trajectory markers enable-security [--output PATH] [--force]
 
+# Install company-specific deterministic deliverable starters.
+trajectory markers enable-deliverables [--output PATH] [--force]
+
 # Inspect the resolved marker catalog.
 trajectory markers list [--config PATH]
 trajectory markers explain [--config PATH] <name>
@@ -718,7 +740,9 @@ The synthetic session intentionally exercises:
 
 - Three interleaved assistant-message turns so `assistant_messages_json` must be present for every turn.
 - Skill detection through a `Skill` tool call, a `SKILL.md` file read, and tool provenance.
-- Failed test, code edit, passed test, commit, push, PR, compaction, tool error, permission denial, language activity, cost, and token metrics.
+- Failed test, code edit, passed test, commit, push, PR, Confluence page,
+  Slack message, resolved issue, compaction, tool error, permission denial,
+  language activity, cost, and token metrics.
 - Session, commit, and PR cost attribution from per-turn cost rather than cumulative turn totals.
 
 Local `PASS` means the SQLite cache contains the expected session/turn shape, non-null assistant-message data, marker points, grouped measures, cost, token totals, and commit/PR distribution point dimensions. When the copied config contains a Datadog metrics destination with marker metrics enabled, the command can publish to that destination and print Metrics Explorer query examples.
@@ -730,6 +754,9 @@ trajectory.session.skill_invocations by skill_name: setup-markers=1, integ-valid
 trajectory.session.tool_errors by category: command-failed=1
 trajectory.session.language_activity by language: go=2, markdown=1
 trajectory.session.cli_tool_count.completed_count by tool: go=1, make=1, git=2, gh=1
+trajectory.session.confluence_pages, trajectory.turn.confluence_pages: each 1
+trajectory.session.slack_messages, trajectory.turn.slack_messages: each 1
+trajectory.session.issue_tracker_actions, trajectory.turn.issue_tracker_actions: each 1
 trajectory.session.cost.usd.total: 0.0343
 trajectory.commit.cost.usd.total by branch: feature/marker-canary=0.0343
 trajectory.pr.cost.usd.attributed.total: 0.0343

@@ -58,6 +58,12 @@ interface SessionRuntimeState {
     sentUsageMessages: Set<string>;
 }
 
+interface SubagentLink {
+    parentSessionID: string;
+    childSessionID: string;
+    toolUseID: string;
+}
+
 function payload(value: unknown): KiloPayload {
     return (value ?? {}) as KiloPayload;
 }
@@ -273,6 +279,8 @@ function permissionPayload(properties: KiloPayload, event?: KiloPayload): KiloPa
 
 export const server = async (input: KiloPayload) => {
     const sessionStates = new Map<string, SessionRuntimeState>();
+    const pendingTaskCalls = new Map<string, Set<string>>();
+    const subagentLinks = new Map<string, SubagentLink>();
     let lastSessionID: string | undefined;
 
     function createSessionState(): SessionRuntimeState {
@@ -493,12 +501,66 @@ export const server = async (input: KiloPayload) => {
         await postEvent("Stop", { session_id: sessionID });
     }
 
+    async function endSession(sessionID: string): Promise<void> {
+        const state = sessionStates.get(sessionID);
+        if (!state?.started) return;
+        state.started = false;
+        await ensureSessionStopped(sessionID);
+        await postEvent("SessionEnd", { session_id: sessionID });
+        sessionStates.delete(sessionID);
+        if (lastSessionID === sessionID) lastSessionID = undefined;
+    }
+
+    async function completeSubagent(childSessionID: string): Promise<void> {
+        const link = subagentLinks.get(childSessionID);
+        if (!link) return;
+        subagentLinks.delete(childSessionID);
+        await postEvent("SubagentStop", {
+            session_id: link.parentSessionID,
+            parent_session_id: link.parentSessionID,
+            agent_id: link.childSessionID,
+            child_session_id: link.childSessionID,
+            tool_use_id: link.toolUseID,
+            agent_type: "task",
+        });
+    }
+
     return {
         async event(ev: KiloPayload) {
             const event = ev?.event;
             if (!event) return;
             const type = event?.type;
             const properties = event?.properties;
+            if (type === "server.instance.disposed" || type === "session.deleted") {
+                const sessionID = resolveSessionID(ev, event, properties) || lastSessionID;
+                if (sessionID) {
+                    await completeSubagent(sessionID);
+                    await endSession(sessionID);
+                }
+                return;
+            }
+            if (type === "session.created") {
+                const info = payload(properties?.info);
+                const childSessionID = normalizeSessionID(info?.id);
+                const parentSessionID = normalizeSessionID(info?.parentID ?? info?.parentId ?? info?.parent_id);
+                const candidates = parentSessionID ? pendingTaskCalls.get(parentSessionID) : undefined;
+                if (childSessionID && parentSessionID && childSessionID !== parentSessionID && candidates?.size === 1) {
+                    const toolUseID = candidates.values().next().value;
+                    if (typeof toolUseID === "string") {
+                        candidates.delete(toolUseID);
+                        if (candidates.size === 0) pendingTaskCalls.delete(parentSessionID);
+                        subagentLinks.set(childSessionID, { parentSessionID, childSessionID, toolUseID });
+                        await postEvent("SubagentStart", {
+                            session_id: parentSessionID,
+                            parent_session_id: parentSessionID,
+                            agent_id: childSessionID,
+                            child_session_id: childSessionID,
+                            tool_use_id: toolUseID,
+                            agent_type: "task",
+                        });
+                    }
+                }
+            }
             const sessionID = (await resolveAndStartSession(ev, event, properties)) || lastSessionID;
             if (!sessionID) return;
 
@@ -542,13 +604,16 @@ export const server = async (input: KiloPayload) => {
 
             if (type === "session.idle") {
                 await ensureSessionStopped(sessionID);
+                await completeSubagent(sessionID);
             }
-            if (type === "server.instance.disposed" || type === "session.deleted") {
-                await ensureSessionStopped(sessionID);
-                await postEvent("SessionEnd", { session_id: sessionID });
-                sessionStates.delete(sessionID);
-                if (lastSessionID === sessionID) lastSessionID = undefined;
+        },
+
+        async dispose() {
+            for (const sessionID of [...sessionStates.keys()]) {
+                await endSession(sessionID);
             }
+            sessionStates.clear();
+            lastSessionID = undefined;
         },
 
         async "chat.message"(inp: KiloPayload, out: KiloPayload) {
@@ -569,6 +634,11 @@ export const server = async (input: KiloPayload) => {
             const sessionID = await resolveAndStartSession(inp);
             if (!sessionID) return;
             markTurnOpen(sessionID);
+            if (typeof inp?.tool === "string" && inp.tool.trim().toLowerCase() === "task" && isNonEmptyString(inp?.callID)) {
+                const calls = pendingTaskCalls.get(sessionID) ?? new Set<string>();
+                rememberBounded(calls, inp.callID.trim());
+                pendingTaskCalls.set(sessionID, calls);
+            }
             await postEvent("PreToolUse", {
                 session_id: sessionID,
                 tool_name: inp?.tool,
@@ -583,6 +653,11 @@ export const server = async (input: KiloPayload) => {
             if (!sessionID) return;
             const toolError = stringifyError(out?.error ?? out?.metadata?.error);
             markTurnOpen(sessionID);
+            if (typeof inp?.tool === "string" && inp.tool.trim().toLowerCase() === "task" && isNonEmptyString(inp?.callID)) {
+                const calls = pendingTaskCalls.get(sessionID);
+                calls?.delete(inp.callID.trim());
+                if (calls?.size === 0) pendingTaskCalls.delete(sessionID);
+            }
             await postEvent("PostToolUse", {
                 session_id: sessionID,
                 tool_name: inp?.tool,
