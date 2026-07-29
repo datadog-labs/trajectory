@@ -38,6 +38,24 @@ def canonical_digest(value: Any) -> str:
     return digest(json.dumps(value, sort_keys=True, separators=(",", ":")).encode())
 
 
+def pilot_fixture(status: str = "pass") -> dict[str, Any]:
+    return {
+        "status": status,
+        "aggregate_sha256": "3" * 64,
+        "artifact_sha256": "4" * 64,
+        "issued_at": "2026-07-25T12:00:00Z",
+        "expires_at": "2026-07-25T13:00:00Z",
+        "waiver_sha256": "5" * 64 if status == "waived" else None,
+    }
+
+
+def refresh_request(request: dict[str, Any]) -> bytes:
+    request["publication_receipt_sha256"] = canonical_digest(
+        request["publication_receipt"]
+    )
+    return json.dumps(request, sort_keys=True, separators=(",", ":")).encode()
+
+
 def build_fixture(
     *,
     release_mode: str = "full",
@@ -75,6 +93,7 @@ def build_fixture(
         "prerelease": prerelease,
         "make_latest": True,
     }
+    pilot = pilot_fixture()
     publication_receipt = {
         "schema_version": 1,
         "kind": "trajectory-publication-receipt",
@@ -87,6 +106,7 @@ def build_fixture(
         "published_at": "2026-07-25T12:34:56Z",
         "asset_manifest_sha256": manifest_sha,
         "assets": copy.deepcopy(assets),
+        "pilot": copy.deepcopy(pilot),
         "release_metadata": {
             "name_sha256": digest(release["name"].encode()),
             "body_sha256": digest(release["body"].encode()),
@@ -117,6 +137,7 @@ def build_fixture(
             "sha": TARGET_SHA,
         },
         "release": release,
+        "pilot": pilot,
         "asset_manifest": manifest,
         "asset_manifest_sha256": manifest_sha,
         "publication_receipt": publication_receipt,
@@ -189,10 +210,20 @@ def source_publication_receipt(request: dict[str, Any]) -> dict[str, Any]:
                 "validation_tag": "release-ci-v0.5.28-ccccccccc",
             },
             "pilot": {
-                "aggregate_sha256": "sha256:" + "3" * 64,
-                "artifact_sha256": "sha256:" + "4" * 64,
-                "issued_at": "2026-07-25T12:00:00Z",
-                "expires_at": "2026-07-25T13:00:00Z",
+                "status": request["pilot"]["status"],
+                "aggregate_sha256": (
+                    "sha256:" + request["pilot"]["aggregate_sha256"]
+                ),
+                "artifact_sha256": (
+                    "sha256:" + request["pilot"]["artifact_sha256"]
+                ),
+                "issued_at": request["pilot"]["issued_at"],
+                "expires_at": request["pilot"]["expires_at"],
+                "waiver_sha256": (
+                    "sha256:" + request["pilot"]["waiver_sha256"]
+                    if request["pilot"]["waiver_sha256"] is not None
+                    else None
+                ),
             },
             "signed_tag": {
                 "object_sha": "d" * 40,
@@ -481,6 +512,127 @@ class PublicReleaseMirrorTests(unittest.TestCase):
             self.contract["source_identity"]["publication_artifact_prefix"],
             "public-release-publication-",
         )
+
+    def test_pass_and_waived_pilot_contracts_publish(self) -> None:
+        for status in ("pass", "waived"):
+            request, payloads, _ = build_fixture()
+            request["pilot"] = pilot_fixture(status)
+            request["publication_receipt"]["pilot"] = copy.deepcopy(request["pilot"])
+            raw = refresh_request(request)
+            target = FakeTarget(request, payloads, state="absent")
+
+            with self.subTest(status=status):
+                receipt = self.apply(request, payloads, raw, target)
+                self.assertEqual(receipt["status"], "published")
+                self.assertEqual(target.create_calls, 1)
+                self.assertEqual(target.publish_calls, 1)
+
+    def test_pilot_waiver_semantics_reject_ambiguous_requests(self) -> None:
+        for case in ("missing_waiver", "pass_with_waiver"):
+            request, payloads, _ = build_fixture()
+            if case == "missing_waiver":
+                request["pilot"]["status"] = "waived"
+                request["publication_receipt"]["pilot"]["status"] = "waived"
+            else:
+                request["pilot"]["waiver_sha256"] = "5" * 64
+                request["publication_receipt"]["pilot"]["waiver_sha256"] = "5" * 64
+            raw = refresh_request(request)
+            target = FakeTarget(request, payloads, state="absent")
+
+            with self.subTest(case=case), self.assertRaisesRegex(
+                MIRROR.MirrorError,
+                "waiver_sha256",
+            ):
+                self.apply(request, payloads, raw, target)
+            self.assertEqual(target.create_calls, 0)
+            self.assertEqual(target.publish_calls, 0)
+
+    def test_pilot_copies_must_match_exactly(self) -> None:
+        request, payloads, _ = build_fixture()
+        request["pilot"] = pilot_fixture("waived")
+        raw = refresh_request(request)
+        target = FakeTarget(request, payloads, state="absent")
+
+        with self.assertRaisesRegex(MIRROR.MirrorError, "pilot copies do not match"):
+            self.apply(request, payloads, raw, target)
+        self.assertEqual(target.create_calls, 0)
+        self.assertEqual(target.publish_calls, 0)
+
+    def test_pilot_contract_rejects_extra_keys_in_both_copies(self) -> None:
+        for location in ("request", "publication_receipt"):
+            request, payloads, _ = build_fixture()
+            if location == "request":
+                request["pilot"]["unexpected"] = True
+            else:
+                request["publication_receipt"]["pilot"]["unexpected"] = True
+            raw = refresh_request(request)
+            target = FakeTarget(request, payloads, state="absent")
+
+            with self.subTest(location=location), self.assertRaisesRegex(
+                MIRROR.MirrorError,
+                "pilot keys do not match contract",
+            ):
+                self.apply(request, payloads, raw, target)
+            self.assertEqual(target.create_calls, 0)
+            self.assertEqual(target.publish_calls, 0)
+
+    def test_pilot_contract_rejects_missing_and_malformed_fields(self) -> None:
+        cases = (
+            ("missing_top_level", None, None),
+            ("missing_nested_field", "artifact_sha256", None),
+            ("malformed_aggregate", "aggregate_sha256", "sha256:" + "3" * 64),
+            ("malformed_artifact", "artifact_sha256", "4" * 63),
+            ("malformed_issued_at", "issued_at", "2026-07-25 12:00:00Z"),
+            ("malformed_expires_at", "expires_at", "tomorrow"),
+            ("unsupported_status", "status", "blocked"),
+        )
+        for case, field, value in cases:
+            request, payloads, _ = build_fixture()
+            source_receipt = source_publication_receipt(request)
+            if case == "missing_top_level":
+                del request["pilot"]
+            elif case == "missing_nested_field":
+                assert field is not None
+                del request["publication_receipt"]["pilot"][field]
+            else:
+                assert field is not None
+                request["pilot"][field] = value
+                request["publication_receipt"]["pilot"][field] = value
+            raw = refresh_request(request)
+            source = FakeSource(
+                request,
+                payloads,
+                raw,
+                source_receipt=source_receipt,
+            )
+            target = FakeTarget(request, payloads, state="absent")
+
+            with self.subTest(case=case), self.assertRaises(MIRROR.MirrorError):
+                self.apply(request, payloads, raw, target, source=source)
+            self.assertEqual(target.create_calls, 0)
+            self.assertEqual(target.publish_calls, 0)
+
+    def test_source_receipt_pilot_must_match_handoff(self) -> None:
+        request, payloads, raw = build_fixture()
+        source_receipt = source_publication_receipt(request)
+        source_receipt["binding"]["pilot"]["aggregate_sha256"] = (
+            "sha256:" + "f" * 64
+        )
+        source = FakeSource(
+            request,
+            payloads,
+            raw,
+            source_receipt=source_receipt,
+        )
+        target = FakeTarget(request, payloads, state="absent")
+
+        with self.assertRaisesRegex(
+            MIRROR.MirrorError,
+            "source publication receipt pilot does not match",
+        ):
+            self.apply(request, payloads, raw, target, source=source)
+        self.assertEqual(target.create_calls, 0)
+        self.assertEqual(target.publish_calls, 0)
 
     def test_candidate_and_prerelease_requests_fail_before_target_mutation(self) -> None:
         cases = (
