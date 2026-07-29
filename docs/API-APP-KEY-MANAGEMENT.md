@@ -15,7 +15,7 @@ the Datadog publish path.
 
 | Credential | What Trajectory uses it for | When it is required |
 | --- | --- | --- |
-| Datadog API key | LLM Observability, metrics, logs, and AI Usage intake; Datadog API-key validation; optional AI Guard evaluation | Direct `datadog` publishing, agentless Datadog OTLP forwarding, and the enabled AI Guard evaluator |
+| Datadog API key | LLM Observability, metrics, logs, and AI Usage intake; Datadog API-key validation; optional AI Guard evaluation | Direct `datadog_agentless` publishing, agentless Datadog OTLP forwarding, and the enabled AI Guard evaluator |
 | Datadog application key | Datadog Metrics query readback, log-based metric configuration, and optional AI Guard evaluation | Explicit readback, `trajectory publish sync`, and the enabled AI Guard evaluator; not routine capture or publish |
 | No Trajectory-managed key | Egress owned by another component | `datadog_agent` destinations and generic `otlp` collectors |
 
@@ -98,7 +98,7 @@ auth:
 
 required_destinations:
   - name: primary
-    type: datadog
+    type: datadog_agentless
     site: datadoghq.com
     api_key_ref: dd-primary-api-key
     app_key_ref: dd-primary-app-key
@@ -205,7 +205,7 @@ auth:
 
 required_destinations:
   - name: primary
-    type: datadog
+    type: datadog_agentless
     api_key_ref: managed-primary-api-key
     app_key_ref: managed-primary-app-key
 ```

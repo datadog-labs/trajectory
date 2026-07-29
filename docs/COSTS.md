@@ -23,24 +23,28 @@ responses, or evaluation data. Active or changing sources and concurrent
 repair are deferred without blocking.
 
 Rows that cannot yet be repaired remain excluded, but valid evidence from other
-sessions stays visible as a conservative known-subtotal lower bound.
-`trajectory cost top` reports a partial ranking and the excluded-session count
-instead of presenting the result as complete.
+sessions stays visible as one recorded estimate with incomplete coverage
+disclosed separately. `trajectory cost top` reports a partial ranking and the
+excluded-session count instead of presenting the result as complete.
 
 ## Commands
 
 ```bash
 trajectory cost
 trajectory cost top --since 7d
+trajectory cost pricing --since 7d
 trajectory cost inspect --session <session-id>
 trajectory cost observations --session <session-id>
 trajectory cost validate --since 7d
 ```
 
-`trajectory cost` shows a recent summary by agent and the highest-cost local
-sessions in the selected window. Use `--since all`, `--since 24h`, or
-`--since 2026-06-01` when you need a different window. Finite windows are
-applied to observed turn activity, not to the session's original start time.
+`trajectory cost` shows a recent summary by day and agent plus the highest-cost
+local sessions in the selected window. The default seven-day view starts with
+seven rolling 24-hour cost buckets; empty buckets display `$0.00`. A session's
+selected in-window cost is assigned to the bucket containing its latest
+evidence timestamp. Use `--since all`, `--since 24h`, or `--since 2026-06-01`
+when you need a different window. Finite windows are applied to observed turn
+activity, not to the session's original start time.
 A long-running session therefore contributes only observed turn activity inside
 the window. A current, completed Codex session whose start falls inside the
 window uses its authoritative priced session aggregate; when the window starts
@@ -59,6 +63,31 @@ than compared as text. Legacy or malformed turn timestamps enter a finite
 window only when parseable session bounds or another valid turn prove possible
 overlap; those ambiguous rows remain unavailable rather than exposing a coarse
 fallback as precise turn cost.
+
+Interactive cost commands show their current phase and elapsed time on stderr.
+JSON stdout and redirected output remain stable.
+
+### Provisional Pricing
+
+Trajectory normally reports only recorded cost attribution. The default-off
+`provisional_cost_estimates` feature can add read-time estimates for otherwise
+unpriced token rows:
+
+```bash
+trajectory features enable provisional_cost_estimates
+trajectory cost --since 7d
+trajectory cost pricing --since 7d
+```
+
+Rows and totals containing provisional USD end in `*`. `trajectory cost
+pricing` reconciles verified, provisional, and unresolved evidence for the same
+window and groups pricing decisions by observed model, matched model, agent,
+source, match method, cache-rate basis, sessions, turns, tokens, and estimated
+USD. The estimate is read-only: it does not rewrite recorded attribution,
+publish provisional dollars, or convert Codex product credits into USD.
+
+Cost incurred by `trajectory patterns analyze --yes` is reported separately as
+Trajectory-owned analysis. It is excluded from agent-work totals and rankings.
 
 `trajectory cost inspect --session <session-id>` shows turn-level cost evidence:
 cost, model, token counts, tool counts, and cost provenance. This is the best
@@ -127,11 +156,15 @@ Every subcommand supports `--json` for agents and scripts:
 
 ```bash
 trajectory cost --json
+trajectory cost pricing --since 7d --json
 trajectory cost inspect --session <session-id> --json
 trajectory cost observations --session <session-id> --json
 trajectory cost validate --json
 ```
 
-The command normally reads the local SQLite cache. Its bounded Codex cost repair
-may update obsolete cost projections before output. Override the cache path with
-`--db <path>` or `TRAJECTORY_CACHE_DB` when inspecting an isolated test cache.
+The summary, pricing, inspect, observations, and validation commands read the
+local SQLite cache. Bounded Codex cost repair may update obsolete cost
+projections before output. Override the cache path with `--db <path>` or
+`TRAJECTORY_CACHE_DB` when inspecting an isolated test cache. Summary JSON
+separates verified and provisional USD and identifies whether the displayed
+total contains provisional cost.

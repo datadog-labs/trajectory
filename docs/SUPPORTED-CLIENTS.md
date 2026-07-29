@@ -43,7 +43,7 @@ supported range by itself.
 |--------|-------------------|-------------------|-----------------------|----------------|---------------------------|
 | Claude Code | `trajectory setup --clients cc` (`--install-client-shims` optional) | Supported | 2.0+ | HTTP hooks + MCP; optional transparent `trajectory claude` launcher | Claude native OTLP can be relayed through Trajectory |
 | Claude Desktop (macOS) | On by default; optionally `trajectory setup --clients claude-desktop` | Capture (near-real-time watcher + backfill) | macOS GUI app (bundle `com.anthropic.claudefordesktop`); no CLI | Darwin `serve` audit.jsonl watcher (near-real-time) + filesystem backfill (`--from-claude-desktop`) | Audit JSONL live capture + backfill (`client_source=claude-desktop`); incognito honored; serve-side native-OTLP attribution ready; on by default, `claude_desktop_capture` is the kill switch |
-| Codex CLI | `trajectory setup --clients codex` (`--install-client-shims` optional) | Supported | 0.128.0+ | Three boundary command hooks plus rollout detail/terminal by default; ten-hook compatibility and optional transparent `trajectory codex` launcher | Responses proxy spans and rollout backfill |
+| Codex CLI | `trajectory setup --clients codex` (`--install-client-shims` optional) | Supported | 0.128.0+ | Three boundary command hooks plus rollout detail/terminal by default; ten-hook compatibility and optional transparent `trajectory codex` launcher | Complete Responses API request/response spans and rollout backfill |
 | GitHub Copilot CLI | `trajectory setup --clients copilot`; optional `copilot_cli_durable_history` watcher | Beta | Public plugin hook and session-state contracts; no stable minimum pinned | Copilot plugin command hooks + MCP + provider history backfill/watcher | Fixture-proven hooks, durable watcher, and Lapdog readback; protected live CLI gate pending |
 | Gemini CLI | `trajectory setup --clients gemini` | Supported | 0.30.0+ | Managed command hooks + MCP | Hook payload token/cost fields |
 | Antigravity CLI (`agy`) | `trajectory setup --clients agy` | Supported | 1.0.12 and 1.1.2 inspected | Native Antigravity plugin hooks + MCP; optional exact prompt-history watcher | Current-schema fixture, local plugin validation, real 1.1.2 `agy --print` hook-delivery proof, and provider-history/local-ui fixture proof; successful provider response not claimed |
@@ -79,6 +79,128 @@ supported range by itself.
 
 ## Feature Coverage Matrix
 
+### Main Features
+
+These are the authoritative at-a-glance tables for cross-client support:
+
+- `X` means supported on the primary, strongly validated path.
+- `P` means supported with a meaningful condition, such as a feature flag,
+  capture-mode or fidelity limit, destination requirement, or outstanding live
+  validation.
+- `-` means there is no currently supported path.
+
+The signal columns describe what Trajectory captures, not merely what the
+upstream client can do. Published traces are LLM Observability traces.
+Published security logs use the managed
+[security event stream](SECURITY-EVENT-STREAM.md).
+
+#### Capture And Controls
+
+| Client | Live capture | Backfill | Incognito | Segmentation | Sensitivity |
+|---|---|---|---|---|---|
+| Claude Code | X | X | X | X | X |
+| Claude Desktop (macOS) | P | X | P | P | P |
+| Codex CLI | X | X | X | X | X |
+| GitHub Copilot CLI | P | P | P | P | P |
+| Gemini CLI | X | X | X | X | X |
+| Antigravity CLI (`agy`) | P | P | P | - | - |
+| Goose | X | P | P | - | - |
+| Cline CLI | X | - | P | P | P |
+| Cursor Desktop | X | X | P | P | P |
+| cursor-agent CLI | P | P | P | P | P |
+| Factory Droid | P | - | P | P | P |
+| Hermes Agent | X | P | P | P | P |
+| Amp Code | P | P | P | P | P |
+| Qwen Code | X | X | P | P | P |
+| OpenHands | X | P | P | - | - |
+| Aider | P | P | P | P | P |
+| Continue CLI | P | P | P | P | P |
+| Mistral Vibe | P | P | P | P | P |
+| Grok Build | P | P | P | - | - |
+| Codebuff | P | X | P | P | P |
+| Pi | X | X | X | X | X |
+| Oh My Pi (`omp`) | P | X | P | P | P |
+| OpenCode | X | X | X | X | X |
+| Kilo Code | X | X | P | P | P |
+| Kiro CLI | P | P | P | - | P |
+| Devin CLI | P | P | P | - | - |
+| Qoder CLI | P | P | P | - | - |
+| ZCode | P | X | P | - | - |
+| CommandCode | P | P | P | - | - |
+| Kimi Code CLI | P | X | P | - | - |
+| gptme | P | P | X | P | P |
+| CodeWhale | P | X | P | P | P |
+| ForgeCode | - | P | P | - | - |
+| Warp/Oz CLI | - | P | P | - | - |
+| VS Code Copilot Chat | P | P | P | P | P |
+| Windsurf | P | P | P | P | P |
+| Zed | - | P | P | - | - |
+
+#### Captured Signals And Publishing
+
+| Client | Token/cost | Skills | Tools | Permissions | Subagents | Publish metrics | Publish traces | Publish security logs |
+|---|---|---|---|---|---|---|---|---|
+| Claude Code | X | X | X | X | X | X | X | X |
+| Claude Desktop (macOS) | P | P | P | - | P | X | X | X |
+| Codex CLI | X | X | X | P | P | X | X | X |
+| GitHub Copilot CLI | P | P | P | P | P | X | X | X |
+| Gemini CLI | X | P | X | P | P | X | X | X |
+| Antigravity CLI (`agy`) | P | P | P | P | - | X | X | X |
+| Goose | P | P | P | - | - | X | X | X |
+| Cline CLI | - | P | P | - | - | X | X | X |
+| Cursor Desktop | X | X | X | X | P | X | X | X |
+| cursor-agent CLI | P | X | P | P | P | X | X | X |
+| Factory Droid | - | P | P | P | P | X | X | X |
+| Hermes Agent | P | P | P | X | P | X | X | X |
+| Amp Code | P | P | P | - | - | X | X | X |
+| Qwen Code | X | P | X | X | P | X | X | X |
+| OpenHands | P | P | P | - | - | X | X | X |
+| Aider | P | - | - | - | - | X | X | X |
+| Continue CLI | P | P | P | - | - | X | X | X |
+| Mistral Vibe | P | P | P | - | - | X | X | X |
+| Grok Build | - | P | P | P | P | X | X | X |
+| Codebuff | P | - | - | - | - | X | X | X |
+| Pi | X | P | X | - | - | X | X | X |
+| Oh My Pi (`omp`) | X | P | P | - | P | X | X | X |
+| OpenCode | X | X | X | X | P | X | X | X |
+| Kilo Code | X | P | X | X | P | X | X | X |
+| Kiro CLI | - | P | P | - | - | X | X | X |
+| Devin CLI | P | P | P | - | - | X | X | X |
+| Qoder CLI | P | P | P | - | P | X | X | X |
+| ZCode | P | P | P | - | P | X | X | X |
+| CommandCode | - | P | P | - | - | X | X | X |
+| Kimi Code CLI | P | P | P | - | P | X | X | X |
+| gptme | P | P | P | - | - | X | X | X |
+| CodeWhale | P | P | P | - | P | X | X | X |
+| ForgeCode | P | P | P | - | P | X | X | X |
+| Warp/Oz CLI | - | P | P | - | P | X | X | X |
+| VS Code Copilot Chat | P | P | P | - | P | X | X | X |
+| Windsurf | - | - | - | - | - | X | X | X |
+| Zed | P | P | P | - | P | X | X | X |
+
+#### Cross-client Resume
+
+This matrix is intentionally limited to the clients supported by
+`trajectory resume` today. Rows are source clients and columns are targets.
+`P` for a Cursor target means Trajectory reconstructs a view-only session;
+other supported targets are resumable.
+
+| Source \ Target | Claude Code | Codex CLI | Gemini CLI | Cursor | OpenCode | Pi |
+|---|---|---|---|---|---|---|
+| Claude Code | - | X | X | P | X | X |
+| Codex CLI | X | - | X | P | X | X |
+| Gemini CLI | X | X | - | P | X | X |
+| Cursor | X | X | X | - | X | X |
+| OpenCode | X | X | X | P | - | X |
+| Pi | X | X | X | P | X | - |
+
+The detailed tables below explain the conditions behind each `P`. In
+particular, headless or unknown-mode sessions skip sensitivity and segmentation,
+and some passive-history paths intentionally suppress token/cost attribution
+while retaining base metrics.
+
+### Detailed Coverage
+
 This section separates capture fidelity from privacy and derived-feature
 coverage. Incognito is a server-side Trajectory gate for every captured session
 once the session is toggled; the privacy matrix calls out whether setup gives
@@ -86,6 +208,14 @@ that client a first-class way to toggle it. Sensitivity classification and task
 segmentation are core Trajectory features for captured non-headless sessions;
 headless sessions are captured and published when configured, but always skip
 sensitivity classification and segmentation.
+
+Classifier-provider selection is independent of captured-content eligibility.
+When Trajectory has enough durable content to segment a session, it prefers the
+matching local headless CLI and can use Claude, Codex, or Antigravity
+(`agy --print`); Gemini sessions prefer Antigravity and retain Gemini CLI only
+as a legacy enterprise fallback. Current Antigravity native hooks still need
+durable history before an Antigravity session itself has enough text for
+segmentation, as recorded below.
 
 ### Capture And Telemetry
 
@@ -168,10 +298,12 @@ sensitivity classification and segmentation.
 | Windsurf | Global `/incognito` workflow | Yes | Windsurf IDE/Cascade sessions are non-headless eligible; headless skipped | Non-headless eligible; headless skipped | Canonical JSONL and Lapdog fixture readback; positive privacy-feature, live hook, SessionEnd, and incognito UX pilots remain gaps |
 
 For local cost readback and supported-agent fidelity checks, run
-`trajectory cost`, `trajectory cost inspect --session <id>`, and
-`trajectory cost validate`. The validation command reports recent cost coverage
-for Claude Code, Codex, Gemini, Pi, OpenCode, Cursor, Hermes Agent, Amp Code,
-Qwen Code, Kilo Code, and Mistral Vibe. Vibe's accepted
+`trajectory cost`, `trajectory cost pricing`, `trajectory cost inspect
+--session <id>`, and `trajectory cost validate`. The corpus pricing command
+reconciles qualified provisional and verified local USD for the selected
+window without changing recorded attribution. The validation command reports
+recent cost coverage for Claude Code, Codex, Gemini, Pi, OpenCode, Cursor,
+Hermes Agent, Amp Code, Qwen Code, Kilo Code, and Mistral Vibe. Vibe's accepted
 `session-aggregate` row preserves its explicit whole-session cost without
 fabricating token-positive or costful turns.
 
@@ -814,6 +946,13 @@ Direct or local plugin installs remain supported for development and manual reco
 **Trajectory status: Supported. Minimum supported: 0.128.0; 0.144.6
 live-replayed and source checked.**
 
+Running `trajectory codex` captures each complete Responses API request and
+response by default. The LLM span retains instructions, conversation input,
+tool results, complete tool descriptions and parameter schemas, reasoning,
+tool calls, assistant output, and the ordered JSON event sequence for streaming
+responses. The same complete content is available in Datadog LLM Observability
+and local-ui/Lapdog.
+
 Codex 0.128.0 is the first version where plugin-bundled hooks work end-to-end:
 
 - **0.118.0** - Plugin system and hook notifications introduced
@@ -834,6 +973,14 @@ phases, assistant messages, reasoning, permissions, compaction, subagent
 activity, model and token metadata, and terminal completion. Codex does not
 currently expose a `SessionEnd` hook, so watcher-observed `shutdown_complete`
 performs the final drain and exact-once `session_end`.
+
+Current Codex rollouts prove a subagent launch through a successful
+`spawn_agent` function-call output with a stable call id. Trajectory counts
+that confirmed tool result and deduplicates it against
+`collab_agent_spawn_begin` when richer lifecycle is also retained. Structured
+`agent_id` output supplies child trace linkage; task-name or text-only success
+counts the launch without inventing a child session. Failure and missing
+outputs do not count.
 
 At each command-hook boundary, `trajectory serve` first reads the rollout
 forward, writes the available detail under the same per-session ordering lock,
@@ -911,6 +1058,24 @@ The Codex marketplace plugin also ships the `/incognito` skill. It uses the `tra
 Setup discovers Codex from `PATH`, common user install directories, Volta, nvm, fnm, npm, pnpm, yarn, asdf, and mise/rtx. For npm-style installs, setup also checks for the vendored native Codex binary before falling back to the node launcher. Each candidate must pass `codex --version`; setup skips broken candidates and uses the first working launcher.
 
 If setup reports that every `codex --version` candidate failed with `ENOENT` under an npm, nvm, fnm, or Volta path, the Codex launcher is present but its bundled native binary is missing. Repair or reinstall the Codex CLI first, or install the standalone/Homebrew Codex binary, then rerun `trajectory setup --clients codex`.
+
+### Codex Desktop (Codex.app) attribution
+
+Codex.app (the macOS desktop app, bundle id `com.openai.codex`) writes to the
+same `~/.codex/sessions/` rollout tree as the CLI, so the Codex rollout watcher
+and backfill capture it with no extra setup.
+
+The `codex_app_capture` feature flag (**default on**) controls separate
+attribution: by default, sessions whose `session_meta.originator` identifies
+Codex Desktop are tagged `client_source="codex-app"` instead of `"codex"`, across
+both the live `trajectory serve` Codex watcher and Codex backfill. Disabling the
+flag (user config, managed config, or `TRAJECTORY_DISABLE_FEATURES`) is the kill
+switch that returns every Codex path to `"codex"`. The `codex-app` tag is
+purely an attribution distinction: token, cost, tool-equivalence, audit, and
+transcript-reconstruct handling treat `codex-app` identically to `codex` because
+the rollout format is the same. This flag adds no new capture path, hook, watcher,
+binary, or setup mutation - it only changes the source tag on Codex Desktop
+sessions. See `docs/FEATURE-FLAGS.md`.
 
 ## GitHub Copilot CLI
 
@@ -1175,6 +1340,10 @@ configuration, an admin must make any durable
 managed-settings change. `trajectory claude` preserves the effective OTLP
 protocol shape from Claude settings, falling back from per-signal protocol to
 `OTEL_EXPORTER_OTLP_PROTOCOL` and then to an explicit `http/json` default.
+The wrapper is also the explicit complete-content capture boundary: its Bun or
+Node preload records each full Anthropic request and response body by default,
+and real LLM spans expose them as input and output in Datadog and
+local-ui/Lapdog detail views.
 Trajectory keeps only
 `skill_activated` records from logs, stores them as bounded local `Skill` tool
 activations tagged with
@@ -1665,9 +1834,12 @@ OpenCode uses a plugin SDK (`@opencode-ai/plugin`) with a `server` entrypoint th
 
 OpenCode supports native agent skills from `.opencode/skills/<name>/SKILL.md`, the configured OpenCode user skills directory, `.agents/skills/<name>/SKILL.md`, and Claude-compatible skills paths. `trajectory setup --clients opencode` installs the Trajectory OpenCode plugin under the resolved OpenCode config directory (`OPENCODE_CONFIG_DIR`, then `XDG_CONFIG_HOME/opencode`, then `~/.config/opencode`), merges that plugin path plus a `trajectory` MCP entry into `opencode.json`, and writes the incognito skill into the global OpenCode skills directory. The skill uses `trajectory_incognito` when MCP is available, and falls back to the `/session/incognito` HTTP endpoint.
 
-OpenCode capture currently records native agent metadata on ordinary prompt,
-tool, and message events, but the plugin SDK path used here does not provide a
-dedicated child-agent lifecycle with `child_session_id`. Trajectory therefore
+OpenCode capture records native agent metadata on ordinary prompt, tool, and
+message events. For subagents, the plugin pairs exactly one pending `Task`
+call with a native `session.created` event carrying distinct child `info.id`
+and parent `info.parentID`, then closes that link on child idle or deletion.
+The normalized lifecycle carries both `child_session_id` and `tool_use_id`.
+Concurrent pending Task calls are ambiguous and fail closed. Trajectory still
 does not infer subagent trace parentage from OpenCode `agent_id` or
 `agent_type` alone.
 

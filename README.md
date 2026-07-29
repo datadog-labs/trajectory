@@ -15,6 +15,7 @@ and Markers.
 
 - What happened in this session?
 - Where did time, tokens, and cost go?
+- What kinds of work are agents doing, and what are they delivering?
 - Which repos, files, commits, and pull requests were involved?
 - Did the agent make progress, loop, retry, or stall?
 - Which agent workflows are improving across users and teams?
@@ -86,6 +87,8 @@ agent behavior becomes something you can graph, alert on, compare, and improve.
   Cursor, Pi, OpenCode, GitHub Copilot CLI beta, and Factory Droid beta.
 - **Local-first timelines** for session lifecycle, turns, tool calls, model
   usage, cost signals, and repository context.
+- **Work Insights and reports** for adoption, outcomes, task mix, complexity,
+  agent-work cost, pull-request attribution, and evidence-backed deliverables.
 - **Datadog-native export** for configurable LLM Observability traces and
   operational metrics for tokens, cost, duration, tool use, capture health, and
   attribution workflows.
@@ -166,6 +169,26 @@ See [docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md) for version
 requirements and [docs/CLIENT-INSTRUMENTATION.md](docs/CLIENT-INSTRUMENTATION.md)
 for the per-client hook, MCP, watcher, and backfill surfaces.
 
+## Reports
+
+Turn local agent activity into an operational view:
+
+```bash
+trajectory summary                   # Usage, tokens, cost, agents, and projects
+trajectory outcomes                  # Yield, cost per commit, and cost per PR
+trajectory patterns                  # Work mix, outcomes, cost, and deliverables
+trajectory patterns session ID       # Task spans and turn-level cost drivers
+```
+
+Reports support bounded time windows, stable JSON, local-only PR evidence, and
+optional GitHub reconciliation. Historical classification is explicit:
+`trajectory patterns estimate` makes no model calls, and
+`trajectory patterns analyze --yes` is the spending boundary.
+
+See [docs/REPORTS.md](docs/REPORTS.md) for report semantics and
+[docs/WHY-TRAJECTORY.md](docs/WHY-TRAJECTORY.md) for how Trajectory fits into
+the broader observability stack.
+
 ## Repository Contents
 
 ```text
@@ -193,6 +216,8 @@ This repository accepts changes to public docs, marketplace metadata, plugin ass
 ## Reference
 
 - [docs/USER-GUIDE.md](docs/USER-GUIDE.md): CLI workflows and day-to-day operation
+- [docs/WHY-TRAJECTORY.md](docs/WHY-TRAJECTORY.md): product scope and how Trajectory complements the rest of the observability stack
+- [docs/REPORTS.md](docs/REPORTS.md): summary, outcomes, Patterns, historical analysis, and session drilldown
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md): config files, managed defaults, environment overrides, and common settings
 - [docs/API-APP-KEY-MANAGEMENT.md](docs/API-APP-KEY-MANAGEMENT.md): Datadog API/application key storage, resolution, permissions, and rotation
 - [docs/FEATURE-FLAGS.md](docs/FEATURE-FLAGS.md): feature-flag commands, runtime overrides, and registered flags

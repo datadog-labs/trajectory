@@ -54,9 +54,10 @@ config, `export.site` plus `export.metrics: true` creates the built-in
 metrics publish and LLM Obs trace spans do not.
 
 Destination `type` selects the backend, not the metrics switch. For
-`type: datadog`, metrics use agentless OTLP by default. Trusted config can set
+`type: datadog_agentless`, metrics use agentless OTLP by default. Trusted config can set
 `metrics_transport: dd_metrics_v2` for the deprecation-window fallback. Legacy
-`type: dd_llmobs` remains an alias for `datadog`.
+`type: datadog` and `type: dd_llmobs` remain aliases for
+`datadog_agentless`.
 
 Marker-derived metrics require both marker evaluation and destination marker
 metrics:
@@ -131,6 +132,77 @@ not added to OTLP exports, Claude native OTLP proxy metrics, or process-level
 health/privacy counters. Destination tags and marker dimensions may also be
 present where those publish paths support them. Keep custom tags low-cardinality
 and non-sensitive.
+
+## Live In-Turn Metrics
+
+Live in-turn metrics are default-off behind `live_in_turn_metrics`. They are
+provisional progress signals emitted from bounded hook evidence, active
+durable-source tails, and optional `/llm-call` evidence through the durable
+metric outbox. The current source tails are scoped to exact active-session
+files: Claude transcript JSONL for assistant usage and canonical session JSONL
+for already-normalized usage, tool, MCP, skill, subagent, file, and LOC
+records. Codex and Cursor watcher paths wake the canonical source after durable
+canonical writes. Hook requests do not submit to Datadog, scan provider roots,
+evaluate markers, or run privacy classifiers.
+Completed-turn `trajectory.turn.*` and `gen_ai.usage.*` metrics remain
+authoritative for attribution.
+
+Live gauges are latest accumulated values for an open turn or session. Query
+them with last-value or max-style rollups and do not sum them across time. Live
+additive counts are emitted only when Trajectory has a stable event identity in
+the local live-progress ledger.
+
+Common live tags include `session_id`, `gen_ai.conversation.id`,
+`trajectory.client_source`, `trajectory.turn_id`, `trajectory.live_scope`,
+`trajectory.live_source`, `trajectory.live_status`, and
+`trajectory.trace_type`. Cost and token live metrics also carry bounded
+provenance tags such as `trajectory.cost_role:live_progress`,
+`trajectory.cost_source`, `trajectory.cost_precision`,
+`trajectory.token_source`, `trajectory.token_precision`, and
+`gen_ai.request.model` when known. Live metrics never add raw prompt, command,
+tool argument, tool output, path, or child transcript tags.
+
+| Metric | Type | Unit | Notes |
+|---|---|---|---|
+| `trajectory.live.turn.last_seen.unix` | gauge | second | Last hook, durable-source, or LLM-call activity time observed for the open turn |
+| `trajectory.live.turn.age_ms` | gauge | ms | Elapsed wall time since Trajectory first observed the live turn |
+| `trajectory.live.session.last_seen.unix` | gauge | second | Last observed live activity for the active session |
+| `trajectory.live.session.turns.active` | gauge | turn | Active live turns for the session; normally 0 or 1 |
+| `trajectory.live.turn.llm_calls.elapsed` | gauge | call | Cumulative LLM calls observed so far in the turn |
+| `trajectory.live.turn.llm_calls.additive` | count | call | One deduped LLM-call delta tagged with `llm_call_status` |
+| `trajectory.live.turn.cost.usd.accumulated` | gauge | USD | Cumulative live cost observed so far; provisional |
+| `trajectory.live.session.cost.usd.accumulated` | gauge | USD | Cumulative live cost observed so far for the session |
+| `trajectory.live.turn.cost.usd.additive` | count | USD | One deduped request-cost delta when live source evidence carries cost or enough provider-native usage for a bounded estimate |
+| `trajectory.live.turn.tokens.input.additive` | count | token | Deduped input-token delta |
+| `trajectory.live.turn.tokens.output.additive` | count | token | Deduped output-token delta |
+| `trajectory.live.turn.tokens.cache_read.additive` | count | token | Deduped cache-read token delta |
+| `trajectory.live.turn.tokens.cache_creation.additive` | count | token | Deduped cache-write token delta |
+| `trajectory.live.turn.tokens.reasoning.additive` | count | token | Deduped reasoning-token delta |
+| `trajectory.live.turn.tool_uses.elapsed` | gauge | tool | Cumulative tool requests observed so far |
+| `trajectory.live.session.tool_uses.elapsed` | gauge | tool | Cumulative session tool requests observed so far |
+| `trajectory.live.turn.tool_uses.additive` | count | tool | Deduped tool request/result/failure delta |
+| `trajectory.live.turn.mcp.tool_uses.elapsed` | gauge | tool | Cumulative MCP tool requests when bounded MCP identity is known |
+| `trajectory.live.session.mcp.tool_uses.elapsed` | gauge | tool | Cumulative session MCP tool requests when bounded MCP identity is known |
+| `trajectory.live.turn.mcp.tool_uses.additive` | count | tool | Deduped MCP request/result/failure delta |
+| `trajectory.live.turn.skill_invocations.elapsed` | gauge | skill | Cumulative skill activations observed so far |
+| `trajectory.live.session.skill_invocations.elapsed` | gauge | skill | Cumulative session skill activations observed so far |
+| `trajectory.live.turn.skill_invocations.additive` | count | skill | Deduped skill activation delta |
+| `trajectory.live.turn.subagent_invocations.elapsed` | gauge | subagent | Cumulative subagent starts observed in the turn |
+| `trajectory.live.turn.subagent_invocations.additive` | count | subagent | Deduped subagent start delta |
+| `trajectory.live.turn.subagents.active` | gauge | subagent | Active subagents attributable to the live turn |
+| `trajectory.live.session.subagents.active` | gauge | subagent | Active subagents observed across live session turns |
+| `trajectory.live.turn.subagents.completed.additive` | count | subagent | Deduped subagent stop/completion delta |
+| `trajectory.live.turn.files_read.elapsed` | gauge | file | Distinct files read so far, deduped by local path hash and tagged only with bounded file provenance |
+| `trajectory.live.turn.files_modified.elapsed` | gauge | file | Distinct files modified so far, deduped by local path hash and tagged only with bounded file provenance |
+| `trajectory.live.session.files_modified.elapsed` | gauge | file | Distinct files modified in the active session so far |
+| `trajectory.live.turn.lines_of_code.additive` | count | line | Deduped live line delta tagged with `type:added` or `type:removed` |
+| `trajectory.live.watcher.wake_total` | count | wake | Live watcher wakes processed, tagged by wake source and outcome |
+| `trajectory.live.watcher.read_bytes` | count | byte | Bytes read from exact durable live sources |
+| `trajectory.live.watcher.records_drained` | count | record | Durable records processed or skipped by the live source reader |
+| `trajectory.live.watcher.pass_duration_ms` | distribution | ms | Duration of one bounded live watcher pass |
+| `trajectory.live.watcher.backlog` | gauge | item | Pending live wake backlog after the current pass starts |
+| `trajectory.live.watcher.dropped_total` | count | item | Live wakes or facts dropped by queue/fact bounds |
+| `trajectory.live.watcher.dedupe_conflict_total` | count | event | Stable additive event identity was reused with conflicting metric value or tags |
 
 ### CODEOWNERS Attribution Tags
 
@@ -254,8 +326,9 @@ they remain queryable for investigation but must not be added to a v2 total.
 Generic historical backfill and provider-history replay emit no Trajectory token
 or cost attribution metrics. They may still materialize local sessions, publish
 eligible traces/session data, and emit non-attribution operational metrics. The
-`backfill-metrics` commands are local audit previews only; submit/readback modes
-are rejected. Legacy points already present in Datadog remain outside the v2
+`trajectory repair metrics` is a local audit preview only; its legacy
+`backfill-metrics` aliases remain accepted, and submit/readback modes are
+rejected. Legacy points already present in Datadog remain outside the v2
 contract and are not rewritten.
 
 Trajectory's durable metric outbox assigns each authoritative additive v2 cost
@@ -271,6 +344,46 @@ deduplication.
 ## Per-Turn Metrics
 
 Per-turn metrics are emitted on completed turn events.
+
+### Turn/session aggregation contract
+
+Every built-in turn metric carries executable `turn_aggregation`,
+`rollup_target`, and `rollup_validator` entries in the canonical metric
+catalog. The contract is explicit per metric rather than inferred from its
+type. Additive metrics either reconcile to a named session metric, the
+completed-turn ledger, or a deliberately bounded subset ledger. Observations
+describe an ordinal, latest value, ratio, or population sample and must not be
+added to produce a session total. The catalog test fails when a new turn
+metric lacks any part of this contract.
+
+This distinction matters even for COUNT metrics. For example,
+`trajectory.turn.pr_contexts` counts bounded context observations, while
+`trajectory.pr.contexts.total` counts durable context ranges; they are related
+but are not equal totals. File edit operations and the number of turns that
+touched files are similarly different grains.
+
+The local source-data gate independently recomputes completed-session turn
+count, tool calls, input tokens, output tokens, cache-aware total tokens, and
+cost from `turns`, then compares them with `sessions`. Input and output are
+checked separately so compensating component drift cannot hide behind a
+matching combined token total. Run the same deterministic check used by agents
+and CI with:
+
+```bash
+trajectory audit --source-data --db <cache.db>
+```
+
+Require `session_turn_aggregate_drift` to pass. The base rollup contract test
+executes every base turn `MetricRecord` emitter and reconciles additive values
+at their complete bounded-tag grain. Marker count pairs are derived from the
+same persisted point/range rows by the marker evaluator; the marker contract
+test requires every claimed pair to share its source, outcome, and grouping
+grain, and the publish test feeds every catalogued marker turn point through
+the production iterator. Their completed-session `.completed_count` mirrors
+are transport-safe COUNT views of
+that final value. Additive publish companions (`*.additive`) remain the
+canonical long-window sum and intentionally do not emit a second duplicate
+session COUNT point.
 Marker-derived `trajectory.turn.*` metrics follow the same lifecycle: Trajectory
 evaluates them after the completed turn is materialized, publishes only the
 current turn's points, and reconciles late-discovered turn count points during
@@ -283,6 +396,8 @@ points. Their `trajectory.session.*` rollups remain session-end metrics.
 | `gen_ai.usage.input_tokens` | count | token | Emitted when input tokens are greater than zero; complete strict request records preserve `gen_ai.request.model` and `query_source` |
 | `gen_ai.usage.output_tokens` | count | token | Emitted when output tokens are greater than zero; complete strict request records preserve `gen_ai.request.model` and `query_source` |
 | `gen_ai.usage.cache_creation_tokens` | count | token | Emitted when cache creation tokens are greater than zero; complete strict request records preserve `gen_ai.request.model` and `query_source` |
+| `gen_ai.usage.cache_creation_5m_tokens` | count | token | Cache writes billed at the 5-minute TTL rate. Emitted when the value is greater than zero, the client reported the TTL breakdown, and `cache_creation_ttl_metrics` is enabled |
+| `gen_ai.usage.cache_creation_1h_tokens` | count | token | Cache writes billed at the 1-hour TTL rate. Emitted when the value is greater than zero, the client reported the TTL breakdown, and `cache_creation_ttl_metrics` is enabled |
 | `gen_ai.usage.cache_read_tokens` | count | token | Emitted when cache read tokens are greater than zero; complete strict request records preserve `gen_ai.request.model` and `query_source` |
 | `trajectory.turn.number` | gauge | turn | One-indexed turn number when known |
 | `trajectory.turn.cost.usd` | gauge | USD | Latest-value compatibility view of a completed turn's cost; zero is valid; do not use for spend totals |
@@ -304,8 +419,8 @@ points. Their `trajectory.session.*` rollups remain session-end metrics.
 | `trajectory.turn.files_modified.additive` | count | file | Additive edit/write operation stream; this is not a global distinct-file count |
 | `trajectory.turn.files_read` | gauge | file | Read tool activity in the turn |
 | `trajectory.turn.files_read.additive` | count | file | Additive read operation stream; this is not a global distinct-file count |
-| `trajectory.turn.subagent_invocations` | gauge | invocation | Subagent starts observed in the turn |
-| `trajectory.turn.subagent_invocations.additive` | count | invocation | Additive subagent-start stream |
+| `trajectory.turn.subagent_invocations` | gauge | invocation | Distinct source-backed subagent launches in the completed turn; zero is valid and emitted |
+| `trajectory.turn.subagent_invocations.additive` | count | invocation | Authoritative positive-only launch stream; use `sum:...as_count()` grouped by `session_id` for session totals |
 | `trajectory.turn.compactions` | gauge | compaction | Compactions observed in the turn |
 | `trajectory.turn.compactions.additive` | count | compaction | Additive completed-turn compaction stream |
 | `trajectory.turn.lines_of_code.count` | count | line | Per-turn added/removed line deltas; tagged with `type:added` or `type:removed` |
@@ -319,6 +434,36 @@ counts. The private receipt is keyed by session and tool-use identity, so a
 post-hook in another process and a retried post-hook recover the same result
 without double counting. Unsafe paths, symlinks, oversized files, missing
 identities, failed tools, and provider-history-only rows emit no inferred LOC.
+
+### Cache-Write TTL Breakdown
+
+Providers price cache writes by time-to-live: a 5-minute write and a 1-hour
+write bill at different multiples of the input rate. `gen_ai.usage.cache_creation_5m_tokens`
+and `gen_ai.usage.cache_creation_1h_tokens` expose that split so cache writes
+can be priced from metrics.
+
+These counters are additive companions. `gen_ai.usage.cache_creation_tokens`
+is unchanged: same name, same `count` type, same collapsed total. Nothing about
+the existing series moves.
+
+The TTL series exist only where the client reported the breakdown. Absence is
+not zero. A turn whose client collapsed the counter emits no TTL point at all
+rather than a false `0`, so a missing 1-hour series means "not reported," not
+"no 1-hour writes."
+
+Coverage begins when a client build that forwards the breakdown starts writing
+sessions; for Claude Code that is Trajectory's 2026-07-20 capture change, and
+earlier sessions carry only the collapsed counter. Consequently
+`sum(5m) + sum(1h)` equals `sum(collapsed)` only inside the covered window.
+Over any window that spans the start of coverage the TTL series are a strict
+subset, so do not treat them as a complete decomposition or derive an implied
+1-hour total by subtracting the 5-minute series from the collapsed counter.
+Historical sessions are not backfilled.
+
+Operators can stop new TTL points with the default-on
+`cache_creation_ttl_metrics` feature flag through user config, managed config,
+or `TRAJECTORY_DISABLE_FEATURES=cache_creation_ttl_metrics`. Disabling it never
+affects the collapsed counter.
 
 Grouped per-turn metrics emit one data point per dimension value:
 
@@ -472,20 +617,93 @@ corresponding `trajectory.metric_family` value (`activity`, `context_budget`,
 or `waste`). They should not be mixed with authoritative usage/cost totals
 without keeping the provenance dimension visible.
 
+## Efficiency Shadow Metrics
+
+The deterministic efficiency observer records content-free local findings when
+`efficiency_shadow_observer` is enabled. External metrics are independently
+default-off: only managed `config.defaults.yaml` or assigned cohort policy may
+set `efficiency_observer.export.enabled: true` and name required
+`destination_refs`, and a named managed cohort must be assigned. User and
+project configuration cannot authorize export.
+Disabling the local feature, revoking managed policy, incognito, or destination
+sensitivity suppression stops external delivery.
+
+Detection and cost metrics:
+
+| Metric | Type | Unit | Notes |
+|---|---|---|---|
+| `trajectory.efficiency.detector.evaluations.total` | count | evaluation | Eligible deterministic detector evaluations |
+| `trajectory.efficiency.detector.candidates.total` | count | candidate | Candidate no-progress sequences created |
+| `trajectory.efficiency.findings.total` | count | finding | Findings first opened |
+| `trajectory.efficiency.findings.closed.total` | count | finding | Findings closed |
+| `trajectory.efficiency.no_progress.generations.total` | distribution | generation | Distinct no-progress generations after the establishing generation |
+| `trajectory.efficiency.no_progress.operations.total` | distribution | operation | Matching operations after the establishing observation |
+| `trajectory.efficiency.no_progress.duration_ms.total` | distribution | ms | Closed no-progress window duration |
+| `trajectory.efficiency.no_progress.input_tokens.total` | distribution | token | Known non-overlapping input tokens |
+| `trajectory.efficiency.no_progress.output_tokens.total` | distribution | token | Known non-overlapping output tokens |
+| `trajectory.efficiency.no_progress.cache_read_tokens.total` | distribution | token | Known non-overlapping cache-read tokens |
+| `trajectory.efficiency.no_progress.cache_creation_tokens.total` | distribution | token | Known non-overlapping cache-creation tokens |
+| `trajectory.efficiency.no_progress.cost.usd.total` | distribution | USD | Complete authoritative cost observation for one closed finding |
+| `trajectory.efficiency.no_progress.cost.usd.additive` | count | USD | Replay-safe additive companion for the same complete finding |
+| `trajectory.efficiency.no_progress.cost.lower_bound.usd.total` | distribution | USD | Known priced subtotal when cost evidence is incomplete; never additive |
+
+Exact cost distribution and additive points are emitted together or not at all.
+The lower-bound distribution is mutually exclusive with them for one finding
+version. These values reattribute cost already represented by canonical
+turn/session metrics; they are diagnostic projections, not additional spend.
+Do not add them to canonical billing, provider, PR, CODEOWNER, turn, or session
+cost totals. Across different detector families, finding windows may overlap.
+
+Observer health and rollout metrics:
+
+| Metric | Type | Unit | Notes |
+|---|---|---|---|
+| `trajectory.ops.efficiency.observations.total` | count | observation | Accepted observations, grouped by bounded type |
+| `trajectory.ops.efficiency.observations.skipped.total` | count | observation | Skips grouped by bounded reason |
+| `trajectory.ops.efficiency.detector.duration_ms` | distribution | ms | Detector execution time |
+| `trajectory.ops.efficiency.detector.errors.total` | count | error | Bounded detector error class |
+| `trajectory.ops.efficiency.queue.depth` | gauge | observation | Pending observer backlog; zero for the synchronous V1 observer |
+| `trajectory.ops.efficiency.queue.lag_ms` | gauge | ms | Oldest pending age; zero for the synchronous V1 observer |
+| `trajectory.ops.efficiency.state.entries` | gauge | entry | Current bounded detector state |
+| `trajectory.ops.efficiency.state.evictions.total` | count | entry | Expired bounded detector state |
+| `trajectory.ops.efficiency.finding.persist.duration_ms` | distribution | ms | Local finding persistence latency |
+| `trajectory.ops.efficiency.metric.enqueue.total` | count | metric | Domain metrics durably accepted by managed shadow export |
+
+V1 runs after durable capture and uses no per-tool hook, model call, remote
+request, subprocess, or filesystem scan. Its model/API cost is therefore zero;
+the operational metrics above measure its local resource overhead. Exported
+tags use only bounded detector, finding, evidence, completeness, client, cost,
+result, and managed rollout vocabularies. Every exported point includes
+`managed:true` and its assigned `cohort`. Session, finding, turn, generation,
+tool-use, process, job, resource, repository, host, user, command, path, URL,
+and content identifiers are never metric tags.
+
 ## Task Metrics
 
 Task metrics come from closed task segments. They are emitted with
 `trajectory.trace_type:task` and the dimensions `task_type`, `outcome_label`,
-and `task_id` when `segmentation.publish_metrics` is enabled. With the
+`task_id`, `trajectory.task.turn_start`, and `trajectory.task.turn_end` when
+`segmentation.publish_metrics`, legacy `segmentation.publish_traces`, or
+`segmentation.task_insights.publish` is effectively enabled. The start and end
+tags are the authoritative inclusive turn IDs; `trajectory.task.turns` is
+their exact durable-member count. With the
 default-on `task_segmentation_metrics_v2` feature, leaf points also carry
 `task_level:task` and an optional `meta_task_id`. When the separate default-off
 `task_meta_segmentation` feature is enabled, meta-task cost points also carry
-`task_level:meta_task`, `meta_task_id`, and `task_count`. V2 task metrics emit
+`task_level:meta_task`, `meta_task_id`, and `task_count`. When Work Insights v1
+is stored, leaf task points additionally carry
+`work_insights_taxonomy_version`, `work_insights_level_1`, and
+`work_insights_level_2`; these identify the broad outcome taxonomy separately
+from the coding-specific `task_type`. V2 task metrics emit
 once during final session publication, after final task segmentation and any
 explicitly enabled meta-task pass; this keeps complete cost stable. The legacy
 `segmentation.publish_traces` gate also enables these metrics for existing
-trace-publish opt-ins. Destinations can suppress all task-segmentation-derived
-publish outputs with `segmentation.enabled: false`.
+trace-publish opt-ins. The default-off
+`segmentation.task_insights.publish` gate also enables them alongside its
+privacy-reduced task trace/evaluation family. Destinations can suppress all
+task-segmentation-derived publish outputs with `segmentation.enabled: false`.
+The privacy-reduced free-form task label is intentionally absent from metric
+tags.
 
 | Metric | Type | Unit |
 |---|---|---|
@@ -493,6 +711,7 @@ publish outputs with `segmentation.enabled: false`.
 | `trajectory.task.autonomy_score` | gauge | score |
 | `trajectory.task.complexity_score` | gauge | score |
 | `trajectory.task.risk_score` | gauge | score |
+| `trajectory.task.turns` | gauge | count |
 | `trajectory.task.cost.usd.total` | distribution | USD |
 
 Task cost is the sum of persisted `turns.estimated_cost_usd` for every turn in
@@ -736,7 +955,7 @@ its publication contract.
 | `trajectory.turn.lines_of_code.count` | count | turn | Base line-delta telemetry tagged with `type:added` or `type:removed`; use `type:added` for turn-level code-added reports |
 | `trajectory.session.files_modified` | gauge | session | Built-in files-touched count |
 | `trajectory.turn.files_touched` | count | turn | Per-turn files-touched marker points; `trajectory.turn.files_modified` remains the base edit-count gauge |
-| `trajectory.session.tasks` | gauge | session | Task segment count when `segmentation.publish_metrics` or `segmentation.publish_traces` is enabled and destination segmentation is enabled |
+| `trajectory.session.tasks` | gauge | session | Task segment count when `segmentation.publish_metrics`, `segmentation.publish_traces`, or `segmentation.task_insights.publish` is enabled and destination segmentation is enabled |
 | `trajectory.session.task_outcome_mean` | gauge | session | Mean task outcome score when task-segmentation publish is enabled for the destination |
 | `trajectory.session.task_autonomy_mean` | gauge | session | Mean task autonomy score when task-segmentation publish is enabled for the destination |
 | `trajectory.session.high_risk_tasks` | gauge | session | Tasks with high risk score when task-segmentation publish is enabled for the destination |
@@ -767,6 +986,7 @@ Commit and PR attribution metrics include additive deltas and distribution sampl
 | `trajectory.pr.interaction.cost.usd.additive` | count | turn | Additive priced-turn cost paired with one unambiguous PR interaction identity; ambiguous multi-PR and unpriced turns emit no delta |
 | `trajectory.pr.contexts.total` | distribution | pr | One sample per finalized workspace/creation PR work context; durable projection rows carry `source:prwork` plus bounded identity and range tags |
 | `trajectory.pr.interactions.total` | count | pr | One point per deduplicated explicit PR interaction turn; carries `trajectory.turn_id` and does not create a second spend assignment when another workspace is primary |
+| `trajectory.pr.work.evidence.total` | count | pr | Privacy-bounded diagnostic count of local PR/MR evidence by `reason`, `coverage_state`, and `projection_state`; use it to explain absent PR-work spend or interaction metrics, not as an all-SCM PR denominator |
 | `trajectory.pr.work_turns.total` | distribution | pr | Completed turns assigned to one finalized PR work context |
 | `trajectory.pr.work_duration_ms.total` | distribution | pr | Sum of completed assigned-turn duration for one finalized PR work context, not wall-clock time across gaps |
 | `trajectory.pr.work.cost.usd.total` | distribution | pr | Canonical PR-work cost from completed turns with one primary PR assignment; do not add to turn/session or creation-tail cost |
@@ -774,6 +994,14 @@ Commit and PR attribution metrics include additive deltas and distribution sampl
 | `trajectory.pr.work.output_tokens.total` | distribution | pr | Output tokens from completed turns assigned to one primary PR context |
 | `trajectory.pr.work.cache_read_tokens.total` | distribution | pr | Cache-read tokens from completed turns assigned to one primary PR context |
 | `trajectory.pr.work.cache_creation_tokens.total` | distribution | pr | Cache-creation tokens from completed turns assigned to one primary PR context |
+| `trajectory.session.pr_attribution.total` | gauge | session | Distinct deterministic PR interactions in the session; equivalent to `.interacted` |
+| `trajectory.session.pr_attribution.interacted` | gauge | session | Distinct PRs with successful deterministic create, checkout, inspect, collaborate, merge, or close evidence |
+| `trajectory.session.pr_attribution.created` | gauge | session | Distinct PRs created by the session |
+| `trajectory.session.pr_attribution.attributed` | gauge | session | Interacted PRs with either full-context or exact creation-turn priced work |
+| `trajectory.session.pr_attribution.context` | gauge | session | Interacted PRs with durable full-context spend attribution |
+| `trajectory.session.pr_attribution.direct_only` | gauge | session | PR deliverables attributed only to the exact priced creation turn |
+| `trajectory.session.pr_attribution.unattributed` | gauge | session | Interacted PRs without trustworthy priced work attribution |
+| `trajectory.session.pr_attribution.coverage` | gauge | session | Attributed PRs divided by interacted PRs |
 | `trajectory.codeowner.pr.production.{turns,cost.usd,input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens}.total` | distribution | pr | Per-retained-owner production involvement; six overlapping metrics, never additive across `trajectory.codeowner` |
 | `trajectory.pr.work.codeowner_{attributed,unattributed}_{turns,cost.usd,input_tokens,output_tokens}.total` | distribution | pr | Eight exclusive coverage metrics; each attributed/unattributed pair reconciles to the matching canonical PR-work measurement under identical filters |
 
@@ -840,6 +1068,85 @@ The destination organization must enable Datadog Historical Metrics Ingestion
 for the authorized metric names; replay uses the native Metrics v2 intake so
 backdated points follow that contract.
 
+A managed `metric_projection` campaign is the explicit exception to ordinary
+metric ineligibility. It projects a frozen manifest of reconstructable gauges
+and counts into their existing live metric names. The available administrator
+slices are `model_consumption`, `spend`, `adoption`, `engineering_output`,
+`agent_workflow`, and `outcomes`; `all` selects their union. Exact
+`include_metrics` and `exclude_metrics` refine that selection, while the
+required `metric_manifest` freezes the fully resolved names. The runner rejects
+manifest drift, distributions, replay-only remote tags, and a campaign whose
+`end_at` is after `live_cutover_at`.
+
+The existing-namespace acknowledgement accepts the residual risk that another
+producer may already have written one of the selected cells. Idempotency relies
+on the complete Datadog cell identity: metric name, type, second timestamp, and
+full tag set. Campaign identity is retained only in the local ledger and never
+added as a metric tag. Same-cell count observations are coalesced before the
+native Metrics v2 outbox is written.
+
+The initial projector retains the managed replay framework's current macOS
+scope and Claude Code, Codex, Cursor, Pi, and OpenCode source allowlist. A
+selected name is a projection capability, not a promise that every source
+retains the evidence needed to emit it.
+
+`engineering_output` covers reconstructable files/LOC plus built-in commit,
+PR, push, test, build-retry, and language-activity measures. It is
+capability-dependent: missing tool, file, diff, Git, or provider evidence is
+omitted rather than reported as zero, and managed config must acknowledge that
+limitation. `agent_workflow` similarly includes built-in CLI-tool, permission,
+subagent, tool-error, and interruption measures when their source facts exist.
+`outcomes` runs the pinned marker
+definitions against retained content and requires both a matching
+`outcomes_definition_hash` and an evaluation-cost acknowledgement. The current
+in-memory marker projector makes no provider call itself, but the acknowledgement
+is mandatory because outcome policies may depend on separately paid historical
+classification. Use the campaign receipt's selected/projected counts and source
+failures to distinguish coverage gaps from true zero activity.
+
+`trajectory markers validate` prints the resolved `config_hash` used for
+`outcomes_definition_hash`. The `metric_manifest` is intentionally explicit:
+operators review and copy the resolved gauge/count names into managed policy
+rather than authorizing a moving `all` target.
+
+```yaml
+historical_replay:
+  campaigns:
+    - id: customer-onboarding-2026-07
+      kind: metric_projection
+      enabled: true
+      historical_metrics_ingestion_confirmed: true
+      start_at: "2026-04-18T04:00:00Z"
+      end_at: "2026-07-17T04:00:00Z"
+      live_cutover_at: "2026-07-17T04:00:00Z"
+      window_timezone: America/New_York
+      claim_deadline: "2026-09-01T04:00:00Z"
+      extractor_version: 1
+      platforms: [darwin]
+      cohort: all
+      sources: [claude_code, codex, cursor, pi, opencode]
+      metric_slices: [model_consumption, spend, adoption]
+      include_metrics: [trajectory.turn.lines_of_code.count]
+      exclude_metrics: [trajectory.turn.number]
+      metric_manifest:
+        - gen_ai.usage.input_tokens
+        - gen_ai.usage.output_tokens
+        - gen_ai.usage.cache_creation_tokens
+        - gen_ai.usage.cache_read_tokens
+        - trajectory.turn.cost.usd.additive
+        - trajectory.session.turns.elapsed
+        - trajectory.turn.duration_ms
+        - trajectory.session.last_seen.unix
+        - trajectory.turn.lines_of_code.count
+      acknowledge_existing_namespace_replay: true
+```
+
+Selecting `engineering_output` additionally requires
+`acknowledge_engineering_output_limitations: true`. Selecting `outcomes` (also
+selected by `all`) additionally requires
+`acknowledge_outcomes_evaluation_cost: true` and the exact
+`outcomes_definition_hash`.
+
 The first cost campaign materializes 90 complete Eastern days through EOD July
 16, 2026, while its initial product view defaults to the most recent 60 days.
 Token-derived amounts are recomputed with the campaign extractor's verified
@@ -886,6 +1193,10 @@ privacy/publish diagnostics.
 | `trajectory.ops.agent.version` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `client_version`, `trajectory.client_version`, `version_source` | Daily installed-agent freshness signal. Emits `1` for detected clients with the best available CLI-probed version, or `client_version:unknown` when the client is present but the version probe is unavailable. |
 | `trajectory.ops.agent.active_sessions` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source` | Hourly count of fresh active sessions by canonical client source, deduped across concurrent `trajectory serve` processes using per-PID heartbeat sentinels. Emits `0` for known clients with no fresh active sessions. |
 | `trajectory.ops.agent.active_session_version` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `client_version`, `trajectory.client_version`, `version_source` | Hourly active-session count by client version, using captured session-start state from heartbeat sentinels. Missing versions are reported as `client_version:unknown`. |
+| `trajectory.ops.cli.command.started` | count | `trajectory.command`, `trajectory.command_class`, `trajectory.invocation_mode`, `trajectory.distribution`, `trajectory.version`, `host`, `os.type`, and metric-catalog tags | One durable count recorded before central CLI dispatch. Export requires both the managed `cli_command_telemetry` feature and its separate destination policy. Arguments, paths, session identity, prompts, errors, and arbitrary user tags are never included. |
+| `trajectory.ops.mcp.tool.started` | count | `trajectory.mcp_tool`, `trajectory.mcp_tool_class`, `trajectory.mcp_transport`, `trajectory.version`, `host`, `os.type`, and metric-catalog tags | One durable count recorded before a centrally registered MCP tool handler runs. |
+| `trajectory.ops.mcp.tool.completed` | count | MCP tool tags plus `trajectory.mcp_outcome` | One durable terminal count classified as `success`, `tool_error`, `handler_error`, `canceled`, or `panic`. |
+| `trajectory.ops.mcp.tool.duration_ms` | distribution | MCP tool tags plus `trajectory.mcp_outcome` | Registered handler duration. Export requires both the managed `mcp_tool_telemetry` feature and its separate destination policy. Arguments, results, queries, paths, session identity, prompts, errors, credentials, and arbitrary user tags are never included. |
 | `trajectory.publish.active_destinations` | gauge | Canonical tags plus top-level and destination tags on DD destinations | Number of active destinations seen for a session |
 | `trajectory.publish.turns` | count | OTLP publish path tags | Publish turn counter |
 | `trajectory.serve.incognito.enabled` | count | `client_source` | User or tool enabled incognito; intentionally not tagged by session ID; direct agentless OTLP submission |
@@ -902,8 +1213,10 @@ privacy/publish diagnostics.
 | `trajectory.serve.publish.sensitivity_held` | count | `client_source`, `destination`, `reason` | Spans held while classification is pending or unresolved |
 | `trajectory.serve.publish.spans_suppressed_total` | count | `client_source`, `destination`, `category`, `label` | Number of spans suppressed by sensitivity policy |
 | `trajectory.serve.publish.spans_held_total` | count | `client_source`, `destination` | Number of spans held pending sensitivity classification |
-| `trajectory.serve.llm_capacity.calls.total` | count | `feature`, `backend`, `gen_ai.request.model`, `pass`, `cost_source` | Successful Trajectory-owned background LLM calls for segmentation or sensitivity classification |
+| `trajectory.serve.llm_capacity.calls.total` | count | `feature`, `backend`, `gen_ai.request.model`, `pass`, `cost_source` | Trajectory-owned classifier invocations; `feature` includes `segmentation`, `work_insights_classification`, `sensitivity`, and explicit `user_driven_segmentation` backfill |
 | `trajectory.serve.llm_capacity.cost.usd.total` | count | `feature`, `backend`, `gen_ai.request.model`, `pass`, `cost_source` | Estimated USD cost for priced Trajectory-owned background LLM calls |
+| `trajectory.serve.llm_capacity.failures.total` | count | `feature`, `pass`, `error_class` | Failed Trajectory-owned classifier operations, including durable historical-analysis attempts |
+| `trajectory.serve.llm_capacity.format_errors.total` | count | `feature`, `pass`, `error_class` | Classifier responses rejected for malformed JSON, schema, or closed-taxonomy validation |
 | `trajectory.serve.sensitivity.classifier_unavailable` | count | `client_source`, `reason` | No classifier path was available; rate-limited direct agentless OTLP submission |
 | `trajectory.serve.sensitivity.classifier_backend_error` | count | `backend`, `error_class`, optional `classifier_agent` | One classifier backend failed before fallback; headless CLI failures identify `claude`, `agent`, `codex`, or `gemini` without changing `backend:headless_cli` |
 | `trajectory.serve.segmentation.failure_total` | count | `stage`, `error_class` | An incremental or final segmentation pass failed while `task_segmentation_metrics_v2` is enabled, or an explicitly enabled meta-task pass failed |
@@ -1119,6 +1432,7 @@ org-config deployment cannot look like an unmanaged host. Version values are san
 metrics contain no PID, session, path, user, or rollout-episode identity. Use
 gauge queries with an hourly `max` rollup over at least four hours. Do not use
 `.as_count()`, which turns repeated gauge samples into false population growth.
+
 
 ## Heartbeat Metric Definitions
 
