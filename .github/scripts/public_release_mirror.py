@@ -242,6 +242,71 @@ def validate_asset_records(
     return normalized
 
 
+def validate_pilot_binding(
+    value: Any,
+    label: str,
+    *,
+    prefixed_digests: bool = False,
+) -> dict[str, Any]:
+    pilot = exact_keys(
+        value,
+        {
+            "status",
+            "aggregate_sha256",
+            "artifact_sha256",
+            "issued_at",
+            "expires_at",
+            "waiver_sha256",
+        },
+        label,
+    )
+    status = require_string(pilot["status"], f"{label}.status")
+    if status not in {"pass", "waived"}:
+        raise MirrorError(f"{label}.status must be pass or waived")
+
+    def validate_digest(field: str, raw: Any) -> str:
+        digest = require_string(raw, f"{label}.{field}")
+        if prefixed_digests:
+            if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+                raise MirrorError(
+                    f"{label}.{field} must be canonical sha256:<64 lowercase hex>"
+                )
+            return digest.removeprefix("sha256:")
+        if not SHA256_RE.fullmatch(digest):
+            raise MirrorError(f"{label}.{field} must be lowercase SHA256")
+        return digest
+
+    normalized = {
+        "status": status,
+        "aggregate_sha256": validate_digest(
+            "aggregate_sha256",
+            pilot["aggregate_sha256"],
+        ),
+        "artifact_sha256": validate_digest(
+            "artifact_sha256",
+            pilot["artifact_sha256"],
+        ),
+        "issued_at": require_string(pilot["issued_at"], f"{label}.issued_at"),
+        "expires_at": require_string(pilot["expires_at"], f"{label}.expires_at"),
+        "waiver_sha256": None,
+    }
+    for field in ("issued_at", "expires_at"):
+        if not TIMESTAMP_RE.fullmatch(normalized[field]):
+            raise MirrorError(f"{label}.{field} must be a UTC timestamp")
+
+    waiver = pilot["waiver_sha256"]
+    if status == "pass":
+        if waiver is not None:
+            raise MirrorError(
+                f"{label}.waiver_sha256 is forbidden when status is pass"
+            )
+    else:
+        if waiver is None:
+            raise MirrorError(f"{label}.waiver_sha256 is required when status is waived")
+        normalized["waiver_sha256"] = validate_digest("waiver_sha256", waiver)
+    return normalized
+
+
 def validate_request(
     request: dict[str, Any],
     contract: dict[str, Any],
@@ -263,6 +328,7 @@ def validate_request(
             "source",
             "target",
             "release",
+            "pilot",
             "asset_manifest",
             "asset_manifest_sha256",
             "publication_receipt",
@@ -345,6 +411,8 @@ def validate_request(
     if release["make_latest"] is not True:
         raise MirrorError("full public releases must set latest")
 
+    pilot = validate_pilot_binding(request["pilot"], "request.pilot")
+
     manifest = exact_keys(
         request["asset_manifest"],
         {"schema_version", "kind", "version", "tag", "source_sha", "assets"},
@@ -382,6 +450,7 @@ def validate_request(
             "published_at",
             "asset_manifest_sha256",
             "assets",
+            "pilot",
             "release_metadata",
         },
         "request.publication_receipt",
@@ -416,6 +485,13 @@ def validate_request(
     )
     if receipt_assets != assets:
         raise MirrorError("request.publication_receipt assets do not match the manifest")
+
+    receipt_pilot = validate_pilot_binding(
+        receipt["pilot"],
+        "request.publication_receipt.pilot",
+    )
+    if receipt_pilot != pilot:
+        raise MirrorError("request pilot copies do not match")
 
     release_metadata = exact_keys(
         receipt["release_metadata"],
@@ -527,6 +603,14 @@ def validate_source_publication_receipt(
     }
     if workflow != expected_workflow:
         raise MirrorError("source publication receipt workflow identity does not match the run")
+
+    source_pilot = validate_pilot_binding(
+        binding["pilot"],
+        "source publication receipt.binding.pilot",
+        prefixed_digests=True,
+    )
+    if source_pilot != request["pilot"]:
+        raise MirrorError("source publication receipt pilot does not match the request")
 
     publication = exact_keys(
         receipt["publication"],
