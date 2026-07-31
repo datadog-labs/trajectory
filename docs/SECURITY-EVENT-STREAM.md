@@ -78,6 +78,11 @@ The log body includes event-stream metadata such as
 profile. Event-stream schema version 2 adds the vendor-neutral
 `tool_operation` detection contract and makes `security` full-fidelity.
 
+Resolved identity fields are emitted as trusted top-level attributes:
+`trajectory.user` on every log, plus `trajectory.user_email`, `git.email`, and
+`github.username` when available. Locally resolved values override same-named
+captured event fields.
+
 Registered common tools retain three complementary identities:
 
 - `tool_operation`, such as `shell.execute`, is the vendor-neutral field for
