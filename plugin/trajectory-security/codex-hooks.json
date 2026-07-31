@@ -1,0 +1,36 @@
+{
+  "hooks": {
+    "SessionStart": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "\"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" security setup --marketplace --clients codex >/dev/null 2>&1 || true",
+        "timeout": 5
+      }]
+    }],
+    "UserPromptSubmit": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" hook-dispatch --product-plugin datadog-security --client codex --event UserPromptSubmit --phase foreground_decision",
+        "timeout": 3
+      }]
+    }],
+    "PreToolUse": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" hook-dispatch --product-plugin datadog-security --client codex --event PreToolUse --phase foreground_decision",
+        "timeout": 3
+      }]
+    }],
+    "PostToolUse": [{
+      "matcher": "",
+      "hooks": [{
+        "type": "command",
+        "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" hook-dispatch --product-plugin datadog-security --client codex --event PostToolUse --phase foreground_decision",
+        "timeout": 3
+      }]
+    }]
+  }
+}

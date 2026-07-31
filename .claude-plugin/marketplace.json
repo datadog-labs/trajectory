@@ -11,6 +11,11 @@
     {
       "name": "trajectory",
       "source": "./plugin/trajectory"
+    },
+    {
+      "name": "trajectory-security",
+      "source": "./plugin/trajectory-security",
+      "category": "Security"
     }
   ]
 }

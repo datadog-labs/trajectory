@@ -419,7 +419,7 @@ points. Their `trajectory.session.*` rollups remain session-end metrics.
 | `trajectory.turn.files_modified.additive` | count | file | Additive edit/write operation stream; this is not a global distinct-file count |
 | `trajectory.turn.files_read` | gauge | file | Read tool activity in the turn |
 | `trajectory.turn.files_read.additive` | count | file | Additive read operation stream; this is not a global distinct-file count |
-| `trajectory.turn.subagent_invocations` | gauge | invocation | Distinct source-backed subagent launches in the completed turn; zero is valid and emitted |
+| `trajectory.turn.subagent_invocations` | gauge | invocation | Distinct source-backed subagent launches in the completed turn; zero is valid and emitted. Claude Code, Codex, Cursor, GitHub Copilot CLI, and OpenCode share this canonical counting contract; unsupported or ambiguous source shapes fail closed. |
 | `trajectory.turn.subagent_invocations.additive` | count | invocation | Authoritative positive-only launch stream; use `sum:...as_count()` grouped by `session_id` for session totals |
 | `trajectory.turn.compactions` | gauge | compaction | Compactions observed in the turn |
 | `trajectory.turn.compactions.additive` | count | compaction | Additive completed-turn compaction stream |
@@ -943,8 +943,8 @@ its publication contract.
 | `trajectory.turn.skill_observations` | count | turn | Lower-confidence skill observations tagged by `skill_name`, `detected_from`, `source_scope`, and `signal_confidence` |
 | `trajectory.session.cli_tool_count` | gauge | session | Recognized shell command-line tool invocations grouped by normalized `tool`; use the `.completed_count` mirror for toplists |
 | `trajectory.turn.cli_tool_count` | count | turn | Per-turn recognized shell command-line tool invocations tagged by normalized `tool` |
-| `trajectory.session.subagents` | gauge | session | Built-in subagent count |
-| `trajectory.turn.subagents` | count | turn | Per-turn subagent spawn points |
+| `trajectory.session.subagents` | gauge | session | Deprecated compatibility marker for the built-in `Agent`-tool signal; do not combine it with source-backed launch lifecycle metrics. |
+| `trajectory.turn.subagents` | count | turn | Deprecated compatibility marker; use `trajectory.turn.subagent_invocations.additive` for authoritative cross-client launch totals. |
 | `trajectory.session.tests_written` | gauge | session | Built-in new-test count |
 | `trajectory.turn.tests_written` | count | turn | Per-turn new-test points |
 | `trajectory.session.force_pushes` | gauge | session | Built-in force-push count |
@@ -1189,6 +1189,7 @@ privacy/publish diagnostics.
 |---|---|---|---|
 | `trajectory.ops.install.current_state` | gauge | Canonical serve tags plus `managed`, `role`, `outcome`, `reason`, `setup_binary_status`, `setup_binary_version` | Managed setup summary. Current state emits `1`; prior state series are emitted as `0` when the setup state changes so dashboards can filter on the latest active state. |
 | `trajectory.ops.install.agent_state` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `agent_status`, `setup_outcome`, `setup_stage`, `setup_component`, `setup_capture_path`, `setup_next_step`, `reason`, `setup_binary_status`, `setup_binary_version` | Per-integration setup state for every selected client. Distinguishes registration failures from verification failures and degraded fallback paths such as MCP watcher fallback. |
+| `trajectory.ops.install.auto_instrument_state` | gauge | Canonical serve tags plus `install_owner`, `managed`, `auto_instrument_enabled`, `apply_enabled`, `allow_clients_configured`, `clients_hooked`, `publish_configured`, `reason` | Managed-host auto-instrument readiness. Emits `1` when effective policy will instrument at least one client and `0` for a publish-on/instrument-off gap. |
 | `trajectory.ops.agent.present` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source` | Daily local inventory signal for each known coding-agent client. Emits `1` when the client is detected on the machine and `0` when absent. Client aliases such as `cc` are reported as canonical runtime sources such as `claude-code`. |
 | `trajectory.ops.agent.version` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `client_version`, `trajectory.client_version`, `version_source` | Daily installed-agent freshness signal. Emits `1` for detected clients with the best available CLI-probed version, or `client_version:unknown` when the client is present but the version probe is unavailable. |
 | `trajectory.ops.agent.active_sessions` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source` | Hourly count of fresh active sessions by canonical client source, deduped across concurrent `trajectory serve` processes using per-PID heartbeat sentinels. Emits `0` for known clients with no fresh active sessions. |
@@ -1198,6 +1199,8 @@ privacy/publish diagnostics.
 | `trajectory.ops.mcp.tool.completed` | count | MCP tool tags plus `trajectory.mcp_outcome` | One durable terminal count classified as `success`, `tool_error`, `handler_error`, `canceled`, or `panic`. |
 | `trajectory.ops.mcp.tool.duration_ms` | distribution | MCP tool tags plus `trajectory.mcp_outcome` | Registered handler duration. Export requires both the managed `mcp_tool_telemetry` feature and its separate destination policy. Arguments, results, queries, paths, session identity, prompts, errors, credentials, and arbitrary user tags are never included. |
 | `trajectory.publish.active_destinations` | gauge | Canonical tags plus top-level and destination tags on DD destinations | Number of active destinations seen for a session |
+| `trajectory.ops.required_destination.health` | gauge | Canonical serve tags plus `destination`, `incognito_exempt`, `destination_state` | Three-valued required-destination health: `1` active, `0` a proven gap, and `-1` not provable. Group by destination and state; alert on `0`, not values below `1`. |
+| `trajectory.ops.org_sync.success_age_seconds` | gauge | Canonical serve tags plus `verified` | Seconds since the last observed successful organization-config sync. `-1` means no verified success; alert on it separately from ordinary staleness. |
 | `trajectory.publish.turns` | count | OTLP publish path tags | Publish turn counter |
 | `trajectory.serve.incognito.enabled` | count | `client_source` | User or tool enabled incognito; intentionally not tagged by session ID; direct agentless OTLP submission |
 | `trajectory.serve.process.start_total` | count | `start_source` | Capture server listener started; `start_source:rescue_hook` identifies hook-driven recovery after a dead listener |
@@ -1209,6 +1212,7 @@ privacy/publish diagnostics.
 | `trajectory.serve.local_state.instrumentation_health_records` | gauge | Canonical serve tags plus `stage`, `warning`, `scan_error` | Count of records retained in the rolling local instrumentation-health diagnostic buffer during the local-state health scan |
 | `trajectory.serve.local_state.serve_log_bytes` | gauge | Canonical serve tags plus `stage`, `warning`, `scan_error` | Current `trajectory-serve.log` size in bytes at the local-state health scan |
 | `trajectory.serve.local_state.serve_diag_bytes` | gauge | Canonical serve tags plus `stage`, `warning`, `scan_error` | Current `serve-diag.ndjson` size in bytes at the local-state health scan |
+| `trajectory.serve.local_state.publish_ledger_held_claims` | gauge | Canonical serve tags plus `artifact_scope` | Read-only count of publish-ledger claims held past a plausible live publish. `artifact_scope:final_session` is the operator-actionable orphan count; recover with `trajectory publish ledger status` and `trajectory publish ledger repair`. |
 | `trajectory.serve.publish.sensitivity_suppressed` | count | `client_source`, `destination`, `category`, `label` | Sensitive spans dropped for a destination |
 | `trajectory.serve.publish.sensitivity_held` | count | `client_source`, `destination`, `reason` | Spans held while classification is pending or unresolved |
 | `trajectory.serve.publish.spans_suppressed_total` | count | `client_source`, `destination`, `category`, `label` | Number of spans suppressed by sensitivity policy |

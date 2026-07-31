@@ -25,6 +25,20 @@ existing parent span.
 The child session remains its own trace in every mode. The parent turn trace
 must not directly parent child-session turns, tools, or LLM spans.
 
+## Metrics Contract
+
+Claude Code, Codex, Cursor, GitHub Copilot CLI, and OpenCode use the same
+canonical launch-count contract: one distinct, source-backed `subagent_start`
+increments `trajectory.turn.subagent_invocations` and its positive-only
+`.additive` companion once. Stable launch or child identity deduplicates
+replayed lifecycle. Missing, failed, or ambiguous provider evidence emits no
+launch.
+
+The older `trajectory.session.subagents` and `trajectory.turn.subagents`
+marker metrics are compatibility views of an Agent-tool signal. They are not
+cross-client lifecycle metrics and must not be combined with the canonical
+invocation family.
+
 ## Client Validation Matrix
 
 | Client | Current subagent source shape | Expected rendering |
@@ -36,8 +50,27 @@ must not directly parent child-session turns, tools, or LLM spans.
 | Gemini CLI | No native lifecycle hook; Trajectory synthesizes `subagent_start` and `subagent_stop` from `kind:"subagent"` chat artifacts during session end. | Synthetic subagent lifecycle attaches under the synthesized launch tool. |
 | Antigravity CLI (`agy`) | Gemini-compatible hook path; Trajectory synthesizes subagent lifecycle from `kind:"subagent"` chat artifacts during session end when Antigravity emits the same files. | Synthetic subagent lifecycle attaches under the synthesized launch tool. |
 | Factory Droid | Current hook set includes `SubagentStop` but not `SubagentStart`. | Stop-only lifecycle falls back to a standalone active-turn subagent span. |
-| OpenCode and Kilo | The plugin pairs exactly one pending `Task` call with a child `session.created` event carrying parent and child session IDs; child idle, deletion, or plugin disposal closes the link. | The normalized launch carries both child and launch-tool identity. Multiple pending Task calls fail closed, and generic agent metadata alone never creates parentage. |
+| OpenCode | Every observed child `session.created` carries exact parent and child IDs, recorded as immediate ancestry on the child's first `SessionStart`. A semantic launch additionally requires exactly one pending `Task` call. | Immediate ancestry supports navigation on its own. A launch span is emitted only for the one-candidate Task pairing; ambiguous Task calls keep ancestry but emit no launch. |
+| Kilo | OpenCode-compatible plugin events use the same immediate-ancestry and one-candidate launch rules. | Identical to OpenCode: ancestry supports navigation, while only a proven Task pairing emits a launch span. |
 | Pi | Current extension records normal session, prompt, tool, turn, compaction, model, and fork events but no dedicated child-session subagent lifecycle. | No semantic subagent parentage is inferred from fork or agent metadata alone. |
+
+## OpenCode And Kilo Nested Sessions
+
+OpenCode and Kilo record two independent facts for nested sessions:
+
+- `parent_session_id` is the exact immediate provider parent and powers parent,
+  breadcrumb, and immediate-child navigation.
+- Semantic launch lifecycle requires an exact Task-to-child correlation and is
+  the only fact that increments the canonical subagent invocation metrics.
+
+An ancestry-only child remains navigable but does not claim a launch. With
+multiple concurrent candidate Task calls, Trajectory retains exact ancestry
+and fails closed on launch attribution rather than guessing. Recursive children
+keep immediate edges, so a grandchild points to its child parent instead of
+being flattened to the root.
+
+Each child remains a separate, directly loadable trace. The local viewer
+derives root and breadcrumb navigation from those immediate edges.
 
 ## When Adding A Client Pattern
 

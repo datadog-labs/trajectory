@@ -1,6 +1,23 @@
-const CAPTURE_URL = "http://localhost:19222/capture/kilo";
+const DEFAULT_CAPTURE_PORT = 19222;
+
+function resolveCapturePort(): number {
+    const rawPort = (
+        globalThis as typeof globalThis & {
+            process?: { env?: Record<string, string | undefined> };
+        }
+    ).process?.env?.TRAJECTORY_PORT;
+    if (typeof rawPort !== "string" || !/^\d+$/.test(rawPort)) return DEFAULT_CAPTURE_PORT;
+
+    const port = Number(rawPort);
+    return Number.isSafeInteger(port) && port >= 1 && port <= 65535 ? port : DEFAULT_CAPTURE_PORT;
+}
+
+const CAPTURE_URL = "http://localhost:" + resolveCapturePort() + "/capture/kilo";
 const POST_TIMEOUT_MS = 5000;
 const MAX_TRACKED_SESSIONS = 128;
+const MAX_RETAINED_SESSIONS = 512;
+const MAX_PENDING_STOP_TURN_SNAPSHOTS = 8;
+const MAX_COALESCED_STOP_PLACEHOLDERS = 128;
 const MAX_TRACKED_MESSAGES_PER_TURN = 128;
 const MAX_BUFFERED_TEXT_PARTS_PER_TURN = 64;
 const MAX_BUFFERED_TEXT_CHARS_PER_TURN = 1024 * 1024;
@@ -48,9 +65,21 @@ interface BufferedAssistantPart {
 
 interface SessionRuntimeState {
     started: boolean;
-    turnOpen: boolean;
-    nativeAgentMessageSeen: boolean;
+    creationObserved: boolean;
+    parentSessionID?: string;
     model?: string;
+    launchedTaskCalls: Set<string>;
+    pendingTaskCalls: Set<string>;
+    subagentLink?: SubagentLink;
+    activeTurn?: TurnRuntimeState;
+    pendingStopTurns: TurnRuntimeState[];
+    coalescedStopCount: number;
+    stopInFlight?: Promise<void>;
+}
+
+interface TurnRuntimeState {
+    model?: string;
+    nativeAgentMessageSeen: boolean;
     assistantMessages: Map<string, AssistantMessageMeta>;
     bufferedTextParts: Map<string, BufferedAssistantPart>;
     bufferedTextChars: number;
@@ -279,14 +308,22 @@ function permissionPayload(properties: KiloPayload, event?: KiloPayload): KiloPa
 
 export const server = async (input: KiloPayload) => {
     const sessionStates = new Map<string, SessionRuntimeState>();
-    const pendingTaskCalls = new Map<string, Set<string>>();
-    const subagentLinks = new Map<string, SubagentLink>();
     let lastSessionID: string | undefined;
 
     function createSessionState(): SessionRuntimeState {
         return {
             started: false,
-            turnOpen: false,
+            creationObserved: false,
+            launchedTaskCalls: new Set(),
+            pendingTaskCalls: new Set(),
+            pendingStopTurns: [],
+            coalescedStopCount: 0,
+        };
+    }
+
+    function createTurnState(model: string | undefined): TurnRuntimeState {
+        return {
+            model,
             nativeAgentMessageSeen: false,
             assistantMessages: new Map(),
             bufferedTextParts: new Map(),
@@ -294,6 +331,31 @@ export const server = async (input: KiloPayload) => {
             sentAgentMessages: new Set(),
             sentUsageMessages: new Set(),
         };
+    }
+
+    function isProtectedSessionState(state: SessionRuntimeState): boolean {
+        return (
+            state.activeTurn !== undefined ||
+            state.stopInFlight !== undefined ||
+            state.subagentLink !== undefined ||
+            state.pendingTaskCalls.size > 0 ||
+            state.launchedTaskCalls.size > 0 ||
+            state.parentSessionID !== undefined
+        );
+    }
+
+    function evictDormantSession(): boolean {
+        for (const [sessionID, state] of sessionStates) {
+            if (isProtectedSessionState(state)) continue;
+            sessionStates.delete(sessionID);
+            return true;
+        }
+        return false;
+    }
+
+    function evictOldestSession(): void {
+        const oldest = sessionStates.keys().next().value;
+        if (typeof oldest === "string") sessionStates.delete(oldest);
     }
 
     function sessionState(sessionID: string): SessionRuntimeState {
@@ -304,32 +366,25 @@ export const server = async (input: KiloPayload) => {
             return existing;
         }
         while (sessionStates.size >= MAX_TRACKED_SESSIONS) {
-            const oldest = sessionStates.keys().next().value;
-            if (typeof oldest !== "string") break;
-            sessionStates.delete(oldest);
+            if (!evictDormantSession()) break;
         }
+        if (sessionStates.size >= MAX_RETAINED_SESSIONS) evictOldestSession();
         const created = createSessionState();
         sessionStates.set(sessionID, created);
         return created;
     }
 
-    function resetTurnState(state: SessionRuntimeState): void {
-        state.nativeAgentMessageSeen = false;
-        state.assistantMessages.clear();
-        state.bufferedTextParts.clear();
-        state.bufferedTextChars = 0;
-        state.sentAgentMessages.clear();
-        state.sentUsageMessages.clear();
-    }
-
     function recordSessionModel(sessionID: string, model: unknown): void {
-        if (isNonEmptyString(model)) sessionState(sessionID).model = model;
+        if (!isNonEmptyString(model)) return;
+        const state = sessionState(sessionID);
+        state.model = model;
+        if (state.activeTurn) state.activeTurn.model = model;
     }
 
-    function markTurnOpen(sessionID: string): void {
+    function markTurnOpen(sessionID: string): TurnRuntimeState {
         const state = sessionState(sessionID);
-        if (!state.turnOpen) resetTurnState(state);
-        state.turnOpen = true;
+        if (!state.activeTurn) state.activeTurn = createTurnState(state.model);
+        return state.activeTurn;
     }
 
     function rememberBounded(set: Set<string>, value: string): void {
@@ -346,23 +401,23 @@ export const server = async (input: KiloPayload) => {
         const info = payload(rawInfo);
         const messageID = firstString(info.id, info.messageID, info.message_id);
         if (!messageID) return;
-        const state = sessionState(sessionID);
         if (info.role === "user") {
             markTurnOpen(sessionID);
             return;
         }
         if (info.role !== "assistant") return;
-        state.assistantMessages.delete(messageID);
-        state.assistantMessages.set(messageID, {
+        const turn = markTurnOpen(sessionID);
+        turn.assistantMessages.delete(messageID);
+        turn.assistantMessages.set(messageID, {
             model: info.modelID ?? info.model?.modelID,
             provider: info.providerID ?? info.model?.providerID,
             timestamp: normalizeTimestamp(info.time?.completed ?? info.time?.created),
             usage: nativeMessageUsage(info),
         });
-        while (state.assistantMessages.size > MAX_TRACKED_MESSAGES_PER_TURN) {
-            const oldest = state.assistantMessages.keys().next().value;
+        while (turn.assistantMessages.size > MAX_TRACKED_MESSAGES_PER_TURN) {
+            const oldest = turn.assistantMessages.keys().next().value;
             if (typeof oldest !== "string") break;
-            state.assistantMessages.delete(oldest);
+            turn.assistantMessages.delete(oldest);
         }
     }
 
@@ -372,33 +427,37 @@ export const server = async (input: KiloPayload) => {
         const messageID = firstString(part.messageID, part.message_id);
         const partID = firstString(part.id, part.partID, part.part_id);
         if (!messageID || !partID) return;
-        markTurnOpen(sessionID);
-        const state = sessionState(sessionID);
+        const turn = markTurnOpen(sessionID);
         const key = messageID + ":" + partID;
-        const existing = state.bufferedTextParts.get(key);
+        const existing = turn.bufferedTextParts.get(key);
         if (existing) {
-            state.bufferedTextChars -= existing.text.length;
-            state.bufferedTextParts.delete(key);
+            turn.bufferedTextChars -= existing.text.length;
+            turn.bufferedTextParts.delete(key);
         }
         const normalized = part.text.trim();
         const text = normalized.slice(0, MAX_AGENT_MESSAGE_CHARS);
         if (text.length === 0) return;
         while (
-            state.bufferedTextParts.size > 0 &&
-            (state.bufferedTextParts.size >= MAX_BUFFERED_TEXT_PARTS_PER_TURN ||
-                state.bufferedTextChars + text.length > MAX_BUFFERED_TEXT_CHARS_PER_TURN)
+            turn.bufferedTextParts.size > 0 &&
+            (turn.bufferedTextParts.size >= MAX_BUFFERED_TEXT_PARTS_PER_TURN ||
+                turn.bufferedTextChars + text.length > MAX_BUFFERED_TEXT_CHARS_PER_TURN)
         ) {
-            const oldestKey = state.bufferedTextParts.keys().next().value;
+            const oldestKey = turn.bufferedTextParts.keys().next().value;
             if (typeof oldestKey !== "string") break;
-            const removed = state.bufferedTextParts.get(oldestKey);
-            if (removed) state.bufferedTextChars -= removed.text.length;
-            state.bufferedTextParts.delete(oldestKey);
+            const removed = turn.bufferedTextParts.get(oldestKey);
+            if (removed) turn.bufferedTextChars -= removed.text.length;
+            turn.bufferedTextParts.delete(oldestKey);
         }
-        state.bufferedTextParts.set(key, { messageID, partID, text, originalLength: normalized.length });
-        state.bufferedTextChars += text.length;
+        turn.bufferedTextParts.set(key, { messageID, partID, text, originalLength: normalized.length });
+        turn.bufferedTextChars += text.length;
     }
 
-    async function emitAgentMessage(sessionID: string, text: unknown, meta: Record<string, unknown> = {}): Promise<void> {
+    async function emitAgentMessage(
+        sessionID: string,
+        turn: TurnRuntimeState,
+        text: unknown,
+        meta: Record<string, unknown> = {},
+    ): Promise<void> {
         if (!isNonEmptyString(text)) return;
         const normalized = text.trim();
         const boundedText = normalized.slice(0, MAX_AGENT_MESSAGE_CHARS);
@@ -412,18 +471,16 @@ export const server = async (input: KiloPayload) => {
             : isNonEmptyString(messageID)
               ? sessionID + ":message:" + messageID
               : sessionID + ":text:" + normalized.length + ":" + boundedText.slice(0, 1024);
-        markTurnOpen(sessionID);
-        const state = sessionState(sessionID);
-        if (state.sentAgentMessages.has(key)) return;
-        rememberBounded(state.sentAgentMessages, key);
-        state.nativeAgentMessageSeen = true;
+        if (turn.sentAgentMessages.has(key)) return;
+        rememberBounded(turn.sentAgentMessages, key);
+        turn.nativeAgentMessageSeen = true;
 
         await postEvent("AgentMessage", {
             session_id: sessionID,
             text: boundedText,
             message_truncated: boundedText.length !== originalLength,
             message_original_length: originalLength,
-            model: meta?.model ?? state.model,
+            model: meta?.model ?? turn.model,
             provider: meta?.provider,
             message_index: meta?.message_index,
             message_timestamp: meta?.message_timestamp,
@@ -431,17 +488,16 @@ export const server = async (input: KiloPayload) => {
             agent: meta?.agent,
             usage: meta?.usage,
         });
-        if (isNonEmptyString(messageID) && meta?.usage) rememberBounded(state.sentUsageMessages, messageID);
+        if (isNonEmptyString(messageID) && meta?.usage) rememberBounded(turn.sentUsageMessages, messageID);
     }
 
-    async function flushAssistantMessages(sessionID: string): Promise<void> {
-        const state = sessionState(sessionID);
-        if (state.nativeAgentMessageSeen) return;
+    async function flushAssistantMessages(sessionID: string, turn: TurnRuntimeState): Promise<void> {
+        if (turn.nativeAgentMessageSeen) return;
         let index = 0;
-        for (const part of state.bufferedTextParts.values()) {
-            const meta = state.assistantMessages.get(part.messageID);
+        for (const part of turn.bufferedTextParts.values()) {
+            const meta = turn.assistantMessages.get(part.messageID);
             if (!meta) continue;
-            await emitAgentMessage(sessionID, part.text, {
+            await emitAgentMessage(sessionID, turn, part.text, {
                 messageID: part.messageID,
                 partID: part.partID,
                 model: meta.model,
@@ -455,20 +511,27 @@ export const server = async (input: KiloPayload) => {
         }
     }
 
-    async function flushAssistantUsage(sessionID: string): Promise<void> {
-        const state = sessionState(sessionID);
-        for (const [messageID, meta] of state.assistantMessages) {
-            if (!meta.usage || state.sentUsageMessages.has(messageID)) continue;
-            rememberBounded(state.sentUsageMessages, messageID);
+    async function flushAssistantUsage(sessionID: string, turn: TurnRuntimeState): Promise<void> {
+        for (const [messageID, meta] of turn.assistantMessages) {
+            if (!meta.usage || turn.sentUsageMessages.has(messageID)) continue;
+            rememberBounded(turn.sentUsageMessages, messageID);
             await postEvent("AgentUsage", {
                 session_id: sessionID,
                 message_id: messageID,
-                model: meta.model ?? state.model,
+                model: meta.model ?? turn.model,
                 provider: meta.provider,
                 timestamp: meta.timestamp,
                 usage: meta.usage,
             });
         }
+    }
+
+    function recordSessionParent(sessionID: string, parentSessionID: string | undefined): SessionRuntimeState {
+        const state = sessionState(sessionID);
+        if (parentSessionID && parentSessionID !== sessionID && !state.parentSessionID) {
+            state.parentSessionID = parentSessionID;
+        }
+        return state;
     }
 
     async function ensureSessionStarted(sessionID: string): Promise<void> {
@@ -481,6 +544,7 @@ export const server = async (input: KiloPayload) => {
             cwd: input.directory,
             project_dir: input.worktree || input.directory,
             client_source: "kilo",
+            parent_session_id: state.parentSessionID,
         });
     }
 
@@ -491,14 +555,44 @@ export const server = async (input: KiloPayload) => {
         return sessionID;
     }
 
+    async function drainStops(sessionID: string, state: SessionRuntimeState): Promise<void> {
+        while (true) {
+            const turn = state.pendingStopTurns.shift();
+            if (turn) {
+                await flushAssistantMessages(sessionID, turn);
+                await flushAssistantUsage(sessionID, turn);
+                await postEvent("Stop", { session_id: sessionID });
+                continue;
+            }
+            if (state.coalescedStopCount > 0) {
+                state.coalescedStopCount--;
+                await postEvent("Stop", { session_id: sessionID, turn_snapshot_dropped: true });
+                continue;
+            }
+            state.stopInFlight = undefined;
+            return;
+        }
+    }
+
+    function enqueueStop(sessionID: string, state: SessionRuntimeState, turn: TurnRuntimeState): Promise<void> {
+        if (state.pendingStopTurns.length < MAX_PENDING_STOP_TURN_SNAPSHOTS) {
+            state.pendingStopTurns.push(turn);
+        } else {
+            state.coalescedStopCount = Math.min(state.coalescedStopCount + 1, MAX_COALESCED_STOP_PLACEHOLDERS);
+        }
+        if (!state.stopInFlight) state.stopInFlight = drainStops(sessionID, state);
+        return state.stopInFlight;
+    }
+
     async function ensureSessionStopped(sessionID: string): Promise<void> {
         const state = sessionState(sessionID);
-        if (!state.turnOpen) return;
-        await flushAssistantMessages(sessionID);
-        await flushAssistantUsage(sessionID);
-        state.turnOpen = false;
-        resetTurnState(state);
-        await postEvent("Stop", { session_id: sessionID });
+        const turn = state.activeTurn;
+        let drain = state.stopInFlight;
+        if (turn) {
+            state.activeTurn = undefined;
+            drain = enqueueStop(sessionID, state, turn);
+        }
+        if (drain) await drain;
     }
 
     async function endSession(sessionID: string): Promise<void> {
@@ -512,9 +606,10 @@ export const server = async (input: KiloPayload) => {
     }
 
     async function completeSubagent(childSessionID: string): Promise<void> {
-        const link = subagentLinks.get(childSessionID);
+        const state = sessionStates.get(childSessionID);
+        const link = state?.subagentLink;
         if (!link) return;
-        subagentLinks.delete(childSessionID);
+        state.subagentLink = undefined;
         await postEvent("SubagentStop", {
             session_id: link.parentSessionID,
             parent_session_id: link.parentSessionID,
@@ -523,6 +618,37 @@ export const server = async (input: KiloPayload) => {
             tool_use_id: link.toolUseID,
             agent_type: "task",
         });
+    }
+
+    async function startSubagent(parentSessionID: string, childSessionID: string, toolUseID: string): Promise<boolean> {
+        if (parentSessionID === childSessionID) return false;
+        const parentState = sessionState(parentSessionID);
+        if (parentState.launchedTaskCalls.has(toolUseID)) return false;
+        const state = sessionState(childSessionID);
+        if (state.subagentLink) return false;
+        rememberBounded(parentState.launchedTaskCalls, toolUseID);
+        state.subagentLink = { parentSessionID, childSessionID, toolUseID };
+        await postEvent("SubagentStart", {
+            session_id: parentSessionID,
+            parent_session_id: parentSessionID,
+            agent_id: childSessionID,
+            child_session_id: childSessionID,
+            tool_use_id: toolUseID,
+            agent_type: "task",
+        });
+        return true;
+    }
+
+    function resumedTaskSessionID(inp: KiloPayload, out: KiloPayload): string | undefined {
+        const args = payload(firstValue(out?.args, inp?.args));
+        return normalizeSessionID(args?.task_id);
+    }
+
+    function isIdleSessionEvent(type: unknown, properties: KiloPayload | undefined): boolean {
+        if (type === "session.idle") return true;
+        if (type !== "session.status") return false;
+        const statusType = payload(properties?.status).type;
+        return typeof statusType === "string" && statusType.trim().toLowerCase() === "idle";
     }
 
     return {
@@ -543,23 +669,28 @@ export const server = async (input: KiloPayload) => {
                 const info = payload(properties?.info);
                 const childSessionID = normalizeSessionID(info?.id);
                 const parentSessionID = normalizeSessionID(info?.parentID ?? info?.parentId ?? info?.parent_id);
-                const candidates = parentSessionID ? pendingTaskCalls.get(parentSessionID) : undefined;
-                if (childSessionID && parentSessionID && childSessionID !== parentSessionID && candidates?.size === 1) {
-                    const toolUseID = candidates.values().next().value;
-                    if (typeof toolUseID === "string") {
-                        candidates.delete(toolUseID);
-                        if (candidates.size === 0) pendingTaskCalls.delete(parentSessionID);
-                        subagentLinks.set(childSessionID, { parentSessionID, childSessionID, toolUseID });
-                        await postEvent("SubagentStart", {
-                            session_id: parentSessionID,
-                            parent_session_id: parentSessionID,
-                            agent_id: childSessionID,
-                            child_session_id: childSessionID,
-                            tool_use_id: toolUseID,
-                            agent_type: "task",
-                        });
+                if (childSessionID) {
+                    const childState = recordSessionParent(childSessionID, parentSessionID);
+                    if (!childState.creationObserved) {
+                        childState.creationObserved = true;
+                        const parentState = parentSessionID ? sessionStates.get(parentSessionID) : undefined;
+                        const candidates = parentState?.pendingTaskCalls;
+                        if (parentSessionID && childSessionID !== parentSessionID && candidates?.size === 1) {
+                            const toolUseID = candidates.values().next().value;
+                            if (typeof toolUseID === "string" && (await startSubagent(parentSessionID, childSessionID, toolUseID))) {
+                                candidates.delete(toolUseID);
+                            }
+                        }
                     }
                 }
+            }
+            if (isIdleSessionEvent(type, properties)) {
+                const sessionID = (await resolveAndStartSession(ev, event, properties)) || lastSessionID;
+                if (sessionID) {
+                    await ensureSessionStopped(sessionID);
+                    await completeSubagent(sessionID);
+                }
+                return;
             }
             const sessionID = (await resolveAndStartSession(ev, event, properties)) || lastSessionID;
             if (!sessionID) return;
@@ -573,13 +704,16 @@ export const server = async (input: KiloPayload) => {
             }
 
             if (type === "session.next.text.ended") {
-                await emitAgentMessage(sessionID, properties?.text, {
-                    messageID: properties?.messageID,
-                    partID: properties?.partID,
-                    model: properties?.modelID ?? properties?.model?.modelID,
-                    provider: properties?.providerID ?? properties?.model?.providerID,
-                    message_timestamp: normalizeTimestamp(properties?.time?.completed ?? properties?.time?.created),
-                });
+                if (isNonEmptyString(properties?.text)) {
+                    const turn = markTurnOpen(sessionID);
+                    await emitAgentMessage(sessionID, turn, properties.text, {
+                        messageID: properties?.messageID,
+                        partID: properties?.partID,
+                        model: properties?.modelID ?? properties?.model?.modelID,
+                        provider: properties?.providerID ?? properties?.model?.providerID,
+                        message_timestamp: normalizeTimestamp(properties?.time?.completed ?? properties?.time?.created),
+                    });
+                }
             }
 
             if (type === "permission.asked") {
@@ -602,14 +736,14 @@ export const server = async (input: KiloPayload) => {
                 });
             }
 
-            if (type === "session.idle") {
-                await ensureSessionStopped(sessionID);
-                await completeSubagent(sessionID);
-            }
         },
 
         async dispose() {
-            for (const sessionID of [...sessionStates.keys()]) {
+            const sessionIDs = [...sessionStates.keys()];
+            for (const sessionID of sessionIDs) {
+                await completeSubagent(sessionID);
+            }
+            for (const sessionID of sessionIDs) {
                 await endSession(sessionID);
             }
             sessionStates.clear();
@@ -635,9 +769,14 @@ export const server = async (input: KiloPayload) => {
             if (!sessionID) return;
             markTurnOpen(sessionID);
             if (typeof inp?.tool === "string" && inp.tool.trim().toLowerCase() === "task" && isNonEmptyString(inp?.callID)) {
-                const calls = pendingTaskCalls.get(sessionID) ?? new Set<string>();
-                rememberBounded(calls, inp.callID.trim());
-                pendingTaskCalls.set(sessionID, calls);
+                const toolUseID = inp.callID.trim();
+                const resumedChildSessionID = resumedTaskSessionID(inp, out);
+                if (resumedChildSessionID) {
+                    sessionState(sessionID).pendingTaskCalls.delete(toolUseID);
+                    await startSubagent(sessionID, resumedChildSessionID, toolUseID);
+                } else {
+                    rememberBounded(sessionState(sessionID).pendingTaskCalls, toolUseID);
+                }
             }
             await postEvent("PreToolUse", {
                 session_id: sessionID,
@@ -654,9 +793,7 @@ export const server = async (input: KiloPayload) => {
             const toolError = stringifyError(out?.error ?? out?.metadata?.error);
             markTurnOpen(sessionID);
             if (typeof inp?.tool === "string" && inp.tool.trim().toLowerCase() === "task" && isNonEmptyString(inp?.callID)) {
-                const calls = pendingTaskCalls.get(sessionID);
-                calls?.delete(inp.callID.trim());
-                if (calls?.size === 0) pendingTaskCalls.delete(sessionID);
+                sessionStates.get(sessionID)?.pendingTaskCalls.delete(inp.callID.trim());
             }
             await postEvent("PostToolUse", {
                 session_id: sessionID,
@@ -673,7 +810,9 @@ export const server = async (input: KiloPayload) => {
         async "experimental.text.complete"(inp: KiloPayload, out: KiloPayload) {
             const sessionID = await resolveAndStartSession(inp, out);
             if (!sessionID) return;
-            await emitAgentMessage(sessionID, out?.text, {
+            if (!isNonEmptyString(out?.text)) return;
+            const turn = markTurnOpen(sessionID);
+            await emitAgentMessage(sessionID, turn, out.text, {
                 messageID: inp?.messageID,
                 partID: inp?.partID,
             });

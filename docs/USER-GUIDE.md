@@ -53,10 +53,21 @@ mutate client hooks or Datadog configuration.
 `trajectory plugins list` shows opt-in product activation profiles layered over
 compiled modules. Baseline `trajectory setup` remains observability-only; use
 `trajectory security setup --mode observe --clients cc,codex,cursor` to enable
-the Datadog Security plugin for explicit supported clients. Enforce mode can
-block agent actions and requires `--yes`. Use `trajectory security disable
---clients ... --remove-hooks` to disable config and remove stale
-Trajectory-managed dispatcher hooks while preserving baseline capture hooks.
+and install the Datadog Security plugin for explicit supported clients. The
+command installs the standalone marketplace plugin for Claude Code and Codex
+and synchronizes Cursor's native hooks. Enforce mode can block agent actions
+and requires `--yes`. Use `trajectory security disable --clients ...
+--remove-hooks` to disable config, uninstall the selected standalone plugins,
+and remove stale Trajectory-managed dispatcher hooks while preserving baseline
+capture hooks.
+
+The Trajectory marketplace includes `trajectory-security` as an independently
+installable plugin alongside the core `trajectory` plugin. Use `trajectory
+security destination add --destination <name> --app-key-ref <ref>` to enable
+native `agent-security` module spans and application-key readback on an
+existing Datadog destination. Store secret values with `trajectory config
+set-secret <ref> --stdin`; do not put key values in YAML or command arguments.
+See [SECURITY.md](SECURITY.md) for the complete setup and ownership contract.
 
 Agent Cost Guidance is also disabled by default and is advisory-only. End users
 can run `trajectory cost-guidance setup --clients codex` for local visibility;
@@ -131,7 +142,7 @@ configurations; and names the strongest reconciliation claim each data shape
 can support.
 
 
-Use `trajectory flare` as the critical debug/support action when you need to share a redacted ZIP under `~/.trajectory/` with doctor output, process state, metrics fast-path diagnostics, config files, managed `config.defaults.yaml`, cohort overlay files, log tails, and version/pricing metadata. `trajectory doctor --support-bundle` remains available for the older single-JSON support summary.
+Use `trajectory flare` as the critical debug/support action when you need to share a redacted ZIP under `~/.trajectory/` with doctor output, process state, metrics fast-path diagnostics, config files, managed `config.defaults.yaml`, cohort overlay files, log tails, and version/pricing metadata. When support needs raw evidence for one session, use `trajectory flare --privileged --session <id>` and review the ZIP before sharing. `trajectory doctor --support-bundle` remains available for the older single-JSON support summary.
 
 For slow Codex launch or exit reports, the default doctor output includes recent Trajectory MCP lifecycle timing and any existing Codex startup traces. If attribution is unclear, run `trajectory doctor --codex-startup` to launch a bounded Codex startup probe. The probe records whether Codex is delayed before `thread_spawn`, before Trajectory MCP is launched, or inside Trajectory itself.
 
@@ -147,6 +158,7 @@ For repeated Codex turns or malformed LLM Obs spans, check the capture and publi
 ```bash
 trajectory config show               # View merged runtime config
 trajectory config set <key> <value>  # Set a config value
+trajectory config sync               # Refresh organization-managed config now
 trajectory config reload             # Dry-run live serve reload/restart plan
 trajectory config reload --yes       # Ask the exact adopted owner to hot-reload config
 trajectory update converge --dry-run # Preview managed desired-version convergence
@@ -792,7 +804,7 @@ sensitivity classification and segmentation.
 | Client | Live capture | Tool/model events | Token/cost usage | Backfill | Resume |
 |--------|--------------|-------------------|------------------|----------|--------|
 | Claude Code | HTTP hooks | Yes | Yes | Transcript backfill | Yes |
-| Codex CLI | Three boundary hooks plus rollout detail/terminal; optional ten-hook compatibility | Yes, except default explicit-ephemeral detail gap | Yes when rollout data exists | Codex rollout backfill | Yes |
+| Codex CLI | CLI and Desktop use four boundary hooks plus rollout reconciliation; optional eleven-hook compatibility | Yes, except default explicit-ephemeral detail gap | Yes when rollout data exists | Codex rollout backfill | Yes |
 | GitHub Copilot CLI | Beta Copilot plugin command hooks plus provider session-state backfill | Live command lifecycle/prompt/tool/session events; history adds assistant text/reasoning, tool results, permissions, and subagents | Session-only shutdown aggregate with cache categories separated | Copilot session-state backfill | Not yet |
 | Gemini CLI | Managed command hooks | Yes | Yes | Gemini transcript backfill | Yes |
 | Antigravity CLI (`agy`) | Antigravity plugin command hooks plus optional `antigravity_durable_history` prompt/usage watcher | Tool input/completion/error, invocation wake signals, Stop metadata, exact provider JSONL prompts, and current schema-v1 generation models when enabled | Exact provider uncached-input, total-output, and cache-read counts; output includes thinking, no reasoning breakdown or provider-billed cost | Default-off watcher baselines existing JSONL/SQLite rows, then reconciles later appends/sessions; no manual pre-baseline replay | No setup-managed resume |

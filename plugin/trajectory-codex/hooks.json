@@ -15,6 +15,9 @@
     "Stop": [{ "matcher": "", "hooks": [
       { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s Stop >/dev/null 2>&1 || true", "timeout": 10 }
     ] }],
+    "SessionEnd": [{ "matcher": "", "hooks": [
+      { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s SessionEnd >/dev/null 2>&1 || true", "timeout": 3 }
+    ] }],
     "PreCompact": [{ "matcher": "", "hooks": [
       { "type": "command", "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client codex --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PreCompact >/dev/null 2>&1 || true", "timeout": 8 }
     ] }],
