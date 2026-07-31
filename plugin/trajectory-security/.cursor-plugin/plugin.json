@@ -1,0 +1,12 @@
+{
+  "name": "trajectory-security",
+  "displayName": "Trajectory Security",
+  "version": "0.1.0",
+  "description": "AI Guard and AI-EDR security controls for coding agents, powered by Trajectory.",
+  "publisher": "Datadog",
+  "license": "Apache-2.0",
+  "category": "Security",
+  "hooks": "./cursor-hooks.json",
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/"
+}

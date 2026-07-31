@@ -92,10 +92,13 @@ agent behavior becomes something you can graph, alert on, compare, and improve.
 - **Datadog-native export** for configurable LLM Observability traces and
   operational metrics for tokens, cost, duration, tool use, capture health, and
   attribution workflows.
+- **Agent Security controls** through the independently installable
+  `trajectory-security` plugin for Claude Code, Codex, and Cursor.
 - **Investigation tools** including `trajectory status`, `trajectory view`,
   diagnostics, support bundles, MCP tools, and historical backfill.
 - **Privacy and capacity controls** including `/incognito`, local-only capture,
-  durable `trajectory disable` / `trajectory enable` capture control,
+  durable `trajectory config capture disable` / `trajectory config capture enable`
+  capture control,
   sensitivity scanning, configurable trace detail, and controls for
   Trajectory-owned LLM calls.
 - **Workflow attribution** across repositories, commits, pull requests, and
@@ -123,6 +126,13 @@ trajectory-darwin-universal
 trajectory-linux-amd64
 trajectory-linux-arm64
 trajectory-windows-amd64.exe
+
+trajectory-mdm-darwin-amd64
+trajectory-mdm-darwin-arm64
+trajectory-mdm-darwin-universal
+trajectory-mdm-linux-amd64
+trajectory-mdm-linux-arm64
+trajectory-mdm-windows-amd64.exe
 ```
 
 ## Supported Clients
@@ -197,6 +207,7 @@ the broader observability stack.
 commands/                 Gemini command assets
 docs/                     Public user documentation
 plugin/trajectory/        Claude Code plugin
+plugin/trajectory-security/ Standalone Agent Security plugin
 plugin/trajectory-codex/  Codex plugin
 plugin/trajectory-gemini/ Gemini context assets
 plugin/trajectory-antigravity/ Antigravity CLI plugin
@@ -220,6 +231,8 @@ This repository accepts changes to public docs, marketplace metadata, plugin ass
 - [docs/REPORTS.md](docs/REPORTS.md): summary, outcomes, Patterns, historical analysis, and session drilldown
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md): config files, managed defaults, environment overrides, and common settings
 - [docs/API-APP-KEY-MANAGEMENT.md](docs/API-APP-KEY-MANAGEMENT.md): Datadog API/application key storage, resolution, permissions, and rotation
+- [docs/SECURITY.md](docs/SECURITY.md): standalone Agent Security plugin setup, modes, destinations, and secret handling
+- [docs/MANAGED-ENDPOINTS.md](docs/MANAGED-ENDPOINTS.md): managed endpoint bundle preparation and endpoint verification
 - [docs/FEATURE-FLAGS.md](docs/FEATURE-FLAGS.md): feature-flag commands, runtime overrides, and registered flags
 - [docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md): supported coding-agent clients and version requirements
 - [docs/CLIENT-INSTRUMENTATION.md](docs/CLIENT-INSTRUMENTATION.md): per-client hook, watcher, MCP, and backfill surfaces

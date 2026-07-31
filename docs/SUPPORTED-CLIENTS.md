@@ -43,7 +43,7 @@ supported range by itself.
 |--------|-------------------|-------------------|-----------------------|----------------|---------------------------|
 | Claude Code | `trajectory setup --clients cc` (`--install-client-shims` optional) | Supported | 2.0+ | HTTP hooks + MCP; optional transparent `trajectory claude` launcher | Claude native OTLP can be relayed through Trajectory |
 | Claude Desktop (macOS) | On by default; optionally `trajectory setup --clients claude-desktop` | Capture (near-real-time watcher + backfill) | macOS GUI app (bundle `com.anthropic.claudefordesktop`); no CLI | Darwin `serve` audit.jsonl watcher (near-real-time) + filesystem backfill (`--from-claude-desktop`) | Audit JSONL live capture + backfill (`client_source=claude-desktop`); incognito honored; serve-side native-OTLP attribution ready; on by default, `claude_desktop_capture` is the kill switch |
-| Codex CLI | `trajectory setup --clients codex` (`--install-client-shims` optional) | Supported | 0.128.0+ | Three boundary command hooks plus rollout detail/terminal by default; ten-hook compatibility and optional transparent `trajectory codex` launcher | Complete Responses API request/response spans and rollout backfill |
+| Codex CLI | `trajectory setup --clients codex` (`--install-client-shims` optional) | Supported | 0.128.0+ | CLI and Desktop session, prompt, Stop, and SessionEnd boundary hooks plus rollout reconciliation by default; eleven-hook compatibility and optional transparent `trajectory codex` launcher | Complete Responses API request/response spans and rollout backfill; Desktop is attributed as `codex-app` |
 | GitHub Copilot CLI | `trajectory setup --clients copilot`; optional `copilot_cli_durable_history` watcher | Beta | Public plugin hook and session-state contracts; no stable minimum pinned | Copilot plugin command hooks + MCP + provider history backfill/watcher | Fixture-proven hooks, durable watcher, and Lapdog readback; protected live CLI gate pending |
 | Gemini CLI | `trajectory setup --clients gemini` | Supported | 0.30.0+ | Managed command hooks + MCP | Hook payload token/cost fields |
 | Antigravity CLI (`agy`) | `trajectory setup --clients agy` | Supported | 1.0.12 and 1.1.2 inspected | Native Antigravity plugin hooks + MCP; optional exact prompt-history watcher | Current-schema fixture, local plugin validation, real 1.1.2 `agy --print` hook-delivery proof, and provider-history/local-ui fixture proof; successful provider response not claimed |
@@ -966,13 +966,15 @@ Earlier versions may have partial support (marketplace without hook discovery, o
 
 The default-on `codex_boundary_capture` feature activates `SessionStart`,
 `UserPromptSubmit`, and `Stop` plus `^Bash$`-matched `PreToolUse` and
-`PostToolUse`. The paired Bash hooks capture immediate PR-work evidence only;
+`PostToolUse`, plus `SessionEnd`. The paired Bash hooks capture immediate
+PR-work evidence only;
 the rollout watcher tails
 `$CODEX_HOME/sessions/` (normally `~/.codex/sessions/`) and provides tool
 phases, assistant messages, reasoning, permissions, compaction, subagent
-activity, model and token metadata, and terminal completion. Codex does not
-currently expose a `SessionEnd` hook, so watcher-observed `shutdown_complete`
-performs the final drain and exact-once `session_end`.
+activity, model and token metadata, and terminal completion. Hook-delivered
+`SessionEnd` and watcher-observed `shutdown_complete` both wake one
+generation-fenced final reconciler, which performs the final drain and
+exact-once `session_end`.
 
 Current Codex rollouts prove a subagent launch through a successful
 `spawn_agent` function-call output with a stable call id. Trajectory counts
@@ -992,8 +994,8 @@ the two paths and prevents duplicate non-message events.
 Boundary reads drain every complete durable rollout record and commit their
 source cursor only after canonical persistence succeeds.
 
-The plugin retains definitions for all ten events supported by current Codex.
-Disabling `codex_boundary_capture` activates all ten and restores direct
+The plugin retains definitions for all eleven events supported by current Codex.
+Disabling `codex_boundary_capture` activates all eleven and restores direct
 per-tool hook fidelity at higher process CPU. Run one of these before starting
 a new Codex session:
 
@@ -1007,9 +1009,9 @@ A running Codex process keeps the hook snapshot it loaded at startup. Feature
 changes reconcile the installed plugin's enabled states for new sessions; they
 do not install a second extension or opt an unconfigured user into setup.
 During setup, Trajectory asks Codex's app server to enumerate the exact hooks
-loaded from the installed plugin cache, validates that all ten belong to
+loaded from the installed plugin cache, validates that all eleven belong to
 `trajectory@trajectory`, and asks Codex to persist its own reported current
-hashes. A readback must report all ten as trusted before setup succeeds.
+hashes. A readback must report all eleven as trusted before setup succeeds.
 Trajectory preserves those Codex-owned hashes during later mode, update, and
 startup repair runs. Codex's separate first-use workspace trust prompt is
 unchanged.

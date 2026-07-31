@@ -1,0 +1,29 @@
+{
+  "name": "trajectory-security",
+  "version": "0.1.0",
+  "description": "AI Guard and AI-EDR security controls for coding agents, powered by Trajectory.",
+  "author": {
+    "name": "Datadog",
+    "url": "https://github.com/datadog-labs/trajectory"
+  },
+  "homepage": "https://github.com/datadog-labs/trajectory",
+  "repository": "https://github.com/datadog-labs/trajectory",
+  "license": "Apache-2.0",
+  "keywords": ["trajectory", "security", "datadog", "ai-guard", "ai-edr"],
+  "hooks": "./codex-hooks.json",
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Trajectory Security",
+    "shortDescription": "AI Guard and AI-EDR controls for coding agents.",
+    "longDescription": "Installs standalone agent-security hooks and exposes status, enable, disable, and destination setup workflows without requiring the core Trajectory marketplace plugin.",
+    "developerName": "Datadog",
+    "category": "Security",
+    "capabilities": [],
+    "websiteURL": "https://github.com/datadog-labs/trajectory",
+    "defaultPrompt": [
+      "Check Trajectory Security status",
+      "Configure a destination for agent-security results"
+    ]
+  }
+}

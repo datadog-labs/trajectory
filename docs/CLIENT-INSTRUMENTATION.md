@@ -18,7 +18,7 @@ trajectory user-guide clients
 | Client | Setup path | Live capture surface | Backfill |
 |---|---|---|---|
 | Claude Code | `trajectory setup --clients cc` (`--install-client-shims` optional) | Marketplace plugin hooks plus MCP; optional transparent `trajectory claude` launcher | Transcript backfill |
-| Codex CLI | `trajectory setup --clients codex` (`--install-client-shims` optional) | Three boundary command hooks plus authoritative rollout reconciliation by default; optional full ten-hook compatibility and transparent `trajectory codex` launcher with complete Responses API request/response capture | Codex rollout backfill |
+| Codex CLI | `trajectory setup --clients codex` (`--install-client-shims` optional) | CLI and Desktop session, prompt, Stop, and SessionEnd boundary hooks plus authoritative rollout reconciliation by default; optional full eleven-hook compatibility and transparent `trajectory codex` launcher with complete Responses API request/response capture | Codex rollout backfill |
 | GitHub Copilot CLI | `trajectory setup --clients copilot`; optionally install the explicit command shim and enable `copilot_cli_durable_history` / `copilot_cli_native_otel` | Beta plugin command hooks plus MCP, bounded session-state reconciliation, and strict content-disabled native OTel request capture | Enable `copilot_durable_history`; `trajectory backfill --from-copilot-sessions` remains the explicit bulk-history and repair path |
 | Gemini CLI | `trajectory setup --clients gemini` | Managed command hooks plus MCP | Gemini transcript backfill |
 | Antigravity CLI (`agy`) | `trajectory setup --clients agy` | Antigravity plugin command hooks plus MCP | Default-off exact prompt plus schema-v1 generation-usage reconciliation |
@@ -517,9 +517,10 @@ Finder does not inherit shell `OTEL_*` env, and there is no verified
 Setup writes a local Codex marketplace under `~/.trajectory/codex-marketplace`
 and registers it with Codex. The plugin provides command hooks, MCP
 configuration, and the `/incognito` skill. `codex_boundary_capture` is on by
-default and activates `SessionStart`, `UserPromptSubmit`, and `Stop` plus
-paired Bash-only `PreToolUse` and `PostToolUse` evidence hooks.
-Disabling it activates all ten events supported by current Codex and is the
+default and activates `SessionStart`, `UserPromptSubmit`, `Stop`, and
+`SessionEnd` plus paired Bash-only `PreToolUse` and `PostToolUse` evidence
+hooks. The same installed hook contract applies when Codex Desktop runs the
+plugin. Disabling it activates all eleven events supported by current Codex and is the
 full-hook compatibility path.
 
 Setup extracts a same-platform minimal hook helper and, on Darwin, native relay
@@ -555,7 +556,7 @@ definite-unavailability and compatibility fallback.
 Codex is a hybrid capture integration, not a simple hook-to-JSONL integration.
 There are two upstream Codex streams:
 
-- **Command hook payloads** cover the three default lifecycle/turn boundaries
+- **Command hook payloads** cover the four default lifecycle/turn boundaries
   plus paired Bash-only before/after evidence. The paired tool hooks do not
   emit canonical events. Full-hook compatibility additionally activates all
   tool, permission, compaction, and subagent events. Codex waits for each command.
@@ -584,10 +585,10 @@ cannot replay an already captured session.
 The JSONL under `~/.trajectory/trajectories/` is the normalized result of
 merging those streams. At each boundary, `trajectory serve` reads the rollout
 forward, derives canonical tool phases in one ordered durable batch, applies
-token/model enrichment, and then dispatches the boundary event. Watcher-seen
-assistant messages wake an immediate drain without adding a command hook.
-Watcher-seen `shutdown_complete` performs the final drain and exact-once
-`session_end`, because current Codex has no `SessionEnd` hook.
+token/model enrichment, and then dispatches the boundary event. Every watcher
+event becomes a reconciliation wake while hooks are active. Hook-delivered
+`SessionEnd` and watcher-seen `shutdown_complete` converge on one final drain
+and exact-once `session_end`.
 Boundary mode never fast-forwards a large unread rollout suffix. Its source
 cursor is committed only after the derived canonical events are persisted; a
 write failure leaves the source checkpoint retryable.
@@ -604,8 +605,9 @@ available. For that rescue process only, it overrides Codex watcher-disable
 environment variables and suppresses unrelated client watchers;
 `trajectory config capture disable` and `TRAJECTORY_DISABLED=1` still suppress all capture.
 The durable user-scoped command also suppresses an already-running watcher.
-Hook-active sentinels under `~/.trajectory/state/codex-hook-active/` suppress
-duplicate non-message watcher events while boundary hooks own the session.
+Hook-active sentinels under `~/.trajectory/state/codex-hook-active/` route
+watcher activity through the shared reconciler. They do not authorize dropping
+a watcher fact that a hook missed.
 
 `codex exec --ephemeral` does not write a rollout. Default boundary mode
 therefore cannot derive tool, permission, compaction, or subagent detail for an
@@ -1772,6 +1774,20 @@ or 10 ms admission timeout fails closed so the durable delivery can retry
 without replacing richer or stale history. Existing history still requires
 explicit `backfill --from-opencode`.
 
+### Nested session topology
+
+OpenCode records the exact immediate `parentID` from native `session.created`
+events on a child session's first `SessionStart`. Immediate ancestry is kept
+separate from semantic Task-launch correlation: an exact parent remains
+navigable even when concurrent or ambiguous Task calls fail closed rather than
+claiming a subagent launch.
+
+The local viewer keeps each child as a separate session with its own trace.
+Parent, breadcrumb, and immediate-child controls navigate by exact session ID;
+children remain directly loadable while being excluded from the normal
+top-level session list. See [SUBAGENT-TRACE-MODEL.md](SUBAGENT-TRACE-MODEL.md)
+for ancestry, launch, and span-link semantics.
+
 ## Kilo Code
 
 Kilo Code uses an OpenCode-compatible plugin surface. Setup installs the
@@ -1779,6 +1795,10 @@ Trajectory plugin under the Kilo config directory (`KILO_CONFIG_DIR` when set,
 otherwise `XDG_CONFIG_HOME/kilo` or `~/.config/kilo`), merges the plugin path
 plus a `trajectory` MCP entry into `opencode.json`, and writes the incognito
 skill into the Kilo skills directory.
+
+Kilo shares the OpenCode nested-session topology and local viewer navigation,
+including exact immediate ancestry on child sessions and separate semantic
+Task-launch correlation.
 
 The plugin SDK posts events to `/capture/kilo/...`; the server routes those
 events through the OpenCode-compatible capture path. Kilo can also send native

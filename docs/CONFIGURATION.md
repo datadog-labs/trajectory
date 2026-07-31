@@ -184,6 +184,24 @@ capture:
 
 In this example, users may still opt in to trace export from `config.yaml`, but automatic local-ui startup remains disabled because a managed `false` value is authoritative for that setting.
 
+### Refresh Organization Configuration
+
+Trajectory refreshes configured organization files automatically. To fetch
+them immediately, run:
+
+```bash
+trajectory config sync
+```
+
+The command uses the configured `org.config_source` or legacy
+`org.markers_repo`, validates and atomically writes every updated file, and
+reports what changed. It does not signal live processes. When managed defaults
+or cohort assignment changes, apply the refreshed runtime configuration with:
+
+```bash
+trajectory config reload --yes
+```
+
 ## Export And Credentials
 
 Set the Datadog site, store an API key, and validate the publish configuration:
