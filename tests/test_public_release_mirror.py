@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import base64
 import hashlib
 import importlib.util
 import json
@@ -1112,6 +1113,40 @@ class PublicReleaseMirrorTests(unittest.TestCase):
         self.assertIn("scope=DataDog%2Ftrajectory", calls[1][0])
         self.assertIn("identity=trajectory-labs.public-release-read", calls[1][0])
         self.assertEqual(calls[1][1]["Authorization"], "Bearer oidc-token")
+
+    def test_source_token_exchange_failure_reports_only_safe_identity_claims(self) -> None:
+        payload = {
+            "sub": "repo:datadog-labs/trajectory:environment:public-release-mirror",
+            "repository": "datadog-labs/trajectory",
+            "ref": "refs/heads/main",
+            "event_name": "workflow_dispatch",
+            "environment": "public-release-mirror",
+            "workflow_ref": (
+                "datadog-labs/trajectory/.github/workflows/"
+                "public-release-mirror.yml@refs/heads/main"
+            ),
+            "repository_id": "secret-adjacent-unneeded-value",
+        }
+        encoded = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+        oidc_token = f"header.{encoded}.signature"
+        environment = {
+            "ACTIONS_ID_TOKEN_REQUEST_URL": (
+                "https://pipelines.actions.githubusercontent.com/token?api-version=2.0"
+            ),
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "runner-token",
+        }
+        with mock.patch.dict(os.environ, environment, clear=False), mock.patch.object(
+            MIRROR,
+            "request_json_url",
+            side_effect=[{"value": oidc_token}, MIRROR.MirrorError("STS denied")],
+        ), self.assertRaisesRegex(MIRROR.MirrorError, "GitHub OIDC claims") as raised:
+            MIRROR.exchange_source_token(self.contract)
+
+        message = str(raised.exception)
+        self.assertIn("public-release-mirror", message)
+        self.assertNotIn(oidc_token, message)
+        self.assertNotIn("runner-token", message)
+        self.assertNotIn("secret-adjacent-unneeded-value", message)
 
     def test_github_client_creates_draft_and_sets_latest_only_on_publish(self) -> None:
         request, _, _ = build_fixture()
