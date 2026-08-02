@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import http.client
 import json
@@ -39,6 +40,15 @@ PUBLIC_DOWNLOAD_SUFFIXES = (
     ".githubusercontent.com",
 )
 CHUNK_SIZE = 1024 * 1024
+OIDC_DIAGNOSTIC_CLAIMS = (
+    "sub",
+    "repository",
+    "ref",
+    "event_name",
+    "environment",
+    "workflow_ref",
+    "job_workflow_ref",
+)
 
 
 class MirrorError(RuntimeError):
@@ -990,6 +1000,22 @@ def request_json_url(url: str, headers: dict[str, str]) -> dict[str, Any]:
     return value
 
 
+def oidc_claim_diagnostics(token: str) -> str:
+    """Return only non-secret identity claims needed to diagnose STS policy mismatches."""
+    try:
+        encoded_payload = token.split(".")[1]
+        padded_payload = encoded_payload + "=" * (-len(encoded_payload) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded_payload))
+    except (IndexError, ValueError, json.JSONDecodeError):
+        return "unavailable"
+    if not isinstance(payload, dict):
+        return "unavailable"
+    return json.dumps(
+        {key: payload[key] for key in OIDC_DIAGNOSTIC_CLAIMS if key in payload},
+        sort_keys=True,
+    )
+
+
 def exchange_source_token(contract: dict[str, Any]) -> str:
     oidc_url = require_string(
         os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL"),
@@ -1023,10 +1049,15 @@ def exchange_source_token(contract: dict[str, Any]) -> str:
             }
         )
     )
-    exchanged = request_json_url(
-        exchange_url,
-        {"Authorization": f"Bearer {oidc_token}"},
-    )
+    try:
+        exchanged = request_json_url(
+            exchange_url,
+            {"Authorization": f"Bearer {oidc_token}"},
+        )
+    except MirrorError as error:
+        raise MirrorError(
+            f"{error}; GitHub OIDC claims: {oidc_claim_diagnostics(oidc_token)}"
+        ) from error
     return require_string(exchanged.get("token"), "Octo STS source token")
 
 
