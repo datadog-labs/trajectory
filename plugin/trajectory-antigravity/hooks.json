@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/agy/PreToolUse >/dev/null 2>&1 || true; printf '%s\\n' '{\"decision\":\"allow\"}'",
+            "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PreToolUse >/dev/null 2>&1 || true; printf '%s\\n' '{\"decision\":\"allow\"}'",
             "timeout": 5
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/agy/PostToolUse >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
+            "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PostToolUse >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
             "timeout": 5
           }
         ]
@@ -27,21 +27,21 @@
     "PreInvocation": [
       {
         "type": "command",
-        "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/agy/PreInvocation >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
+        "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PreInvocation >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
         "timeout": 5
       }
     ],
     "PostInvocation": [
       {
         "type": "command",
-        "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/agy/PostInvocation >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
+        "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PostInvocation >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
         "timeout": 5
       }
     ],
     "Stop": [
       {
         "type": "command",
-        "command": "curl -sS --connect-timeout 0.2 --max-time 2 -X POST -H 'Content-Type: application/json' --data-binary @- http://localhost:19222/capture/agy/Stop >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
+        "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s Stop >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
         "timeout": 10
       }
     ]

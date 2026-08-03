@@ -1,6 +1,6 @@
 # Trajectory Plugin
 
-Capture plugin for AI coding agents. Registers lifecycle hooks that post session events to the Trajectory capture server, primarily over HTTP with command shims for startup and shutdown.
+Capture plugin for AI coding agents. Registers lifecycle command hooks that invoke Trajectory's receipt-backed `capture-hook` helper for every session event.
 
 ## Install
 
@@ -23,6 +23,7 @@ This manual path remains supported for recovery after setup has staged the local
 ## What It Does
 
 - 12 lifecycle hooks capture every session event (tool calls, prompts, compaction, subagents)
-- Events POST to the Trajectory capture server at localhost:19222, with command hooks for startup/shutdown paths that need local process handling
+- Every hook invokes `capture-with-serve.sh`, which uses one delivery ID across bounded owner ensure/retry and duplicate suppression during retirement
+- Claude Code loads the standard `hooks/hooks.json` file automatically, so the plugin manifest intentionally omits a `hooks` entry to avoid duplicate hook loading
 
 For CLI usage, run `trajectory user-guide` or see `docs/USER-GUIDE.md`.

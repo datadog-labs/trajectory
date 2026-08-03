@@ -1117,6 +1117,9 @@ trajectory user-guide resume
 
 Trajectory ships embedded Datadog dashboards for enterprise, developer,
 operations, skill observability, data fidelity, and install outcomes views.
+The install-outcomes view exposes lifecycle components, agent discovery,
+recovered retries, deployed versions, and installer revisions so missing
+telemetry is not mistaken for success.
 
 ```bash
 trajectory dashboard export --type enterprise --output trajectory-enterprise.json

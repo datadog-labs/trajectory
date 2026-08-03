@@ -421,6 +421,7 @@ points. Their `trajectory.session.*` rollups remain session-end metrics.
 | `trajectory.turn.files_read.additive` | count | file | Additive read operation stream; this is not a global distinct-file count |
 | `trajectory.turn.subagent_invocations` | gauge | invocation | Distinct source-backed subagent launches in the completed turn; zero is valid and emitted. Claude Code, Codex, Cursor, GitHub Copilot CLI, and OpenCode share this canonical counting contract; unsupported or ambiguous source shapes fail closed. |
 | `trajectory.turn.subagent_invocations.additive` | count | invocation | Authoritative positive-only launch stream; use `sum:...as_count()` grouped by `session_id` for session totals |
+| `trajectory.subagent_usage_status` | count | subagent stop | Child usage-evidence count, tagged `trajectory.subagent_usage_status:complete|partial|unavailable`; later child-usage amendments replace an unavailable stop projection once. This is a fidelity signal, not a cost metric. |
 | `trajectory.turn.compactions` | gauge | compaction | Compactions observed in the turn |
 | `trajectory.turn.compactions.additive` | count | compaction | Additive completed-turn compaction stream |
 | `trajectory.turn.lines_of_code.count` | count | line | Per-turn added/removed line deltas; tagged with `type:added` or `type:removed` |
@@ -1189,9 +1190,9 @@ privacy/publish diagnostics.
 |---|---|---|---|
 | `trajectory.ops.install.current_state` | gauge | Canonical serve tags plus `managed`, `role`, `outcome`, `reason`, `setup_binary_status`, `setup_binary_version` | Managed setup summary. Current state emits `1`; prior state series are emitted as `0` when the setup state changes so dashboards can filter on the latest active state. |
 | `trajectory.ops.install.agent_state` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `agent_status`, `setup_outcome`, `setup_stage`, `setup_component`, `setup_capture_path`, `setup_next_step`, `reason`, `setup_binary_status`, `setup_binary_version` | Per-integration setup state for every selected client. Distinguishes registration failures from verification failures and degraded fallback paths such as MCP watcher fallback. |
-| `trajectory.ops.install.auto_instrument_state` | gauge | Canonical serve tags plus `install_owner`, `managed`, `auto_instrument_enabled`, `apply_enabled`, `allow_clients_configured`, `clients_hooked`, `publish_configured`, `reason` | Managed-host auto-instrument readiness. Emits `1` when effective policy will instrument at least one client and `0` for a publish-on/instrument-off gap. |
-| `trajectory.ops.agent.present` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source` | Daily local inventory signal for each known coding-agent client. Emits `1` when the client is detected on the machine and `0` when absent. Client aliases such as `cc` are reported as canonical runtime sources such as `claude-code`. |
-| `trajectory.ops.agent.version` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `client_version`, `trajectory.client_version`, `version_source` | Daily installed-agent freshness signal. Emits `1` for detected clients with the best available CLI-probed version, or `client_version:unknown` when the client is present but the version probe is unavailable. |
+| `trajectory.ops.install.auto_instrument_state` | gauge | Canonical serve tags plus `install_owner`, `managed`, `auto_instrument_enabled`, `apply_enabled`, `allow_clients_configured`, `clients_hooked`, `publish_configured`, `reason` | Managed-host observed auto-instrument readiness. Emits `1` only when the latest durable reconciliation receipt proves at least one detected allowed client is configured, and `0` for a publish-on/instrument-off gap. `ready_with_drift` remains value `1` with an actionable partial-repair warning. |
+| `trajectory.ops.agent.present` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source` | Daily local inventory signal for every supported public coding-agent installation surface. Emits `1` when the client is detected and `0` when absent. Aliases such as `cc` are reported as `claude-code`, while Cursor Desktop and `cursor-agent` share `cursor`. |
+| `trajectory.ops.agent.version` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `client_version`, `trajectory.client_version`, `version_source` | Daily installed-agent freshness signal. Emits `1` for each detected client. `client_version` is the exact CLI-probed semantic version when available and `unknown` otherwise; `version_source` distinguishes a successful probe, missing CLI, failed probe, and unsupported probe. |
 | `trajectory.ops.agent.active_sessions` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source` | Hourly count of fresh active sessions by canonical client source, deduped across concurrent `trajectory serve` processes using per-PID heartbeat sentinels. Emits `0` for known clients with no fresh active sessions. |
 | `trajectory.ops.agent.active_session_version` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `client_version`, `trajectory.client_version`, `version_source` | Hourly active-session count by client version, using captured session-start state from heartbeat sentinels. Missing versions are reported as `client_version:unknown`. |
 | `trajectory.ops.cli.command.started` | count | `trajectory.command`, `trajectory.command_class`, `trajectory.invocation_mode`, `trajectory.distribution`, `trajectory.version`, `host`, `os.type`, and metric-catalog tags | One durable count recorded before central CLI dispatch. Export requires both the managed `cli_command_telemetry` feature and its separate destination policy. Arguments, paths, session identity, prompts, errors, and arbitrary user tags are never included. |
@@ -1200,7 +1201,7 @@ privacy/publish diagnostics.
 | `trajectory.ops.mcp.tool.duration_ms` | distribution | MCP tool tags plus `trajectory.mcp_outcome` | Registered handler duration. Export requires both the managed `mcp_tool_telemetry` feature and its separate destination policy. Arguments, results, queries, paths, session identity, prompts, errors, credentials, and arbitrary user tags are never included. |
 | `trajectory.publish.active_destinations` | gauge | Canonical tags plus top-level and destination tags on DD destinations | Number of active destinations seen for a session |
 | `trajectory.ops.required_destination.health` | gauge | Canonical serve tags plus `destination`, `incognito_exempt`, `destination_state` | Three-valued required-destination health: `1` active, `0` a proven gap, and `-1` not provable. Group by destination and state; alert on `0`, not values below `1`. |
-| `trajectory.ops.org_sync.success_age_seconds` | gauge | Canonical serve tags plus `verified` | Seconds since the last observed successful organization-config sync. `-1` means no verified success; alert on it separately from ordinary staleness. |
+| `trajectory.ops.org_sync.success_age_seconds` | gauge | Canonical serve and fleet heartbeat tags plus `verified`, `sync_status`, `failure_reason`, `failure_scope`, `failure_streak` | Seconds since the last observed successful managed-sync pass. `-1` means no observed success. `sync_status` distinguishes healthy, degraded, failing, never, and unverified states; failure tags are bounded and contain no raw errors or paths. |
 | `trajectory.publish.turns` | count | OTLP publish path tags | Publish turn counter |
 | `trajectory.serve.incognito.enabled` | count | `client_source` | User or tool enabled incognito; intentionally not tagged by session ID; direct agentless OTLP submission |
 | `trajectory.serve.process.start_total` | count | `start_source` | Capture server listener started; `start_source:rescue_hook` identifies hook-driven recovery after a dead listener |
@@ -1212,18 +1213,25 @@ privacy/publish diagnostics.
 | `trajectory.serve.local_state.instrumentation_health_records` | gauge | Canonical serve tags plus `stage`, `warning`, `scan_error` | Count of records retained in the rolling local instrumentation-health diagnostic buffer during the local-state health scan |
 | `trajectory.serve.local_state.serve_log_bytes` | gauge | Canonical serve tags plus `stage`, `warning`, `scan_error` | Current `trajectory-serve.log` size in bytes at the local-state health scan |
 | `trajectory.serve.local_state.serve_diag_bytes` | gauge | Canonical serve tags plus `stage`, `warning`, `scan_error` | Current `serve-diag.ndjson` size in bytes at the local-state health scan |
-| `trajectory.serve.local_state.publish_ledger_held_claims` | gauge | Canonical serve tags plus `artifact_scope` | Read-only count of publish-ledger claims held past a plausible live publish. `artifact_scope:final_session` is the operator-actionable orphan count; recover with `trajectory publish ledger status` and `trajectory publish ledger repair`. |
+| `trajectory.serve.local_state.publish_ledger_held_claims` | gauge | Canonical serve tags plus `artifact_scope` | Exact count of publish-ledger claims held past a plausible live publish. `artifact_scope:final_session` is the operator-actionable orphan count; recover with `trajectory publish ledger status` and `trajectory publish ledger repair`. |
+| `trajectory.serve.local_state.publish_ledger_held_claims_detail` | gauge | Canonical serve tags plus `artifact_type`, `claim_scope`, `age_bucket`, `hold_reason` | Exact bounded partitions of held claims. Session, claim, destination, and path identities are never tags. |
+| `trajectory.serve.terminal_recovery.pending` | gauge | Canonical serve tags plus `feature` | Exact terminal projections still awaiting complete finalization. `feature` is `finalization`, `sensitivity`, or `segmentation`; healthy zero series are emitted. |
+| `trajectory.serve.terminal_recovery.pending_detail` | gauge | Canonical serve tags plus `feature`, `reason`, `retry_state` | Actionable bounded partitions of pending terminal recovery. `retry_state` is `ready`, `backoff`, or `exhausted`; session and receipt identities are never tags. |
+| `trajectory.serve.terminal_recovery.oldest_age_seconds` | gauge | Canonical serve tags plus `feature` | Age of the oldest pending terminal projection in each feature class. Healthy classes emit `0`. |
+| `trajectory.serve.terminal_recovery.attempt_total` | count | Canonical serve tags plus `feature`, `outcome` | A durable same-process terminal recovery attempt, classified as `success` or `failure`. |
+| `trajectory.serve.terminal_recovery.success_age_seconds` | gauge | Canonical serve tags plus `feature` | Seconds since the last successful bounded repair. `-1` means the host has not observed a successful automatic repair. |
+| `trajectory.serve.historical_replay.failure_total` | count | Canonical serve tags plus `stage`, `reason` | A managed historical replay or repricing step failed, using bounded stage and reason values without raw errors or paths. |
 | `trajectory.serve.publish.sensitivity_suppressed` | count | `client_source`, `destination`, `category`, `label` | Sensitive spans dropped for a destination |
 | `trajectory.serve.publish.sensitivity_held` | count | `client_source`, `destination`, `reason` | Spans held while classification is pending or unresolved |
 | `trajectory.serve.publish.spans_suppressed_total` | count | `client_source`, `destination`, `category`, `label` | Number of spans suppressed by sensitivity policy |
 | `trajectory.serve.publish.spans_held_total` | count | `client_source`, `destination` | Number of spans held pending sensitivity classification |
 | `trajectory.serve.llm_capacity.calls.total` | count | `feature`, `backend`, `gen_ai.request.model`, `pass`, `cost_source` | Trajectory-owned classifier invocations; `feature` includes `segmentation`, `work_insights_classification`, `sensitivity`, and explicit `user_driven_segmentation` backfill |
 | `trajectory.serve.llm_capacity.cost.usd.total` | count | `feature`, `backend`, `gen_ai.request.model`, `pass`, `cost_source` | Estimated USD cost for priced Trajectory-owned background LLM calls |
-| `trajectory.serve.llm_capacity.failures.total` | count | `feature`, `pass`, `error_class` | Failed Trajectory-owned classifier operations, including durable historical-analysis attempts |
-| `trajectory.serve.llm_capacity.format_errors.total` | count | `feature`, `pass`, `error_class` | Classifier responses rejected for malformed JSON, schema, or closed-taxonomy validation |
+| `trajectory.serve.llm_capacity.failures.total` | count | `feature`, `pass`, `error_class`, `reason` | Failed Trajectory-owned classifier operations, including durable historical-analysis attempts |
+| `trajectory.serve.llm_capacity.format_errors.total` | count | `feature`, `pass`, `error_class`, `reason` | Classifier responses rejected for malformed JSON, schema, or closed-taxonomy validation |
 | `trajectory.serve.sensitivity.classifier_unavailable` | count | `client_source`, `reason` | No classifier path was available; rate-limited direct agentless OTLP submission |
-| `trajectory.serve.sensitivity.classifier_backend_error` | count | `backend`, `error_class`, optional `classifier_agent` | One classifier backend failed before fallback; headless CLI failures identify `claude`, `agent`, `codex`, or `gemini` without changing `backend:headless_cli` |
-| `trajectory.serve.segmentation.failure_total` | count | `stage`, `error_class` | An incremental or final segmentation pass failed while `task_segmentation_metrics_v2` is enabled, or an explicitly enabled meta-task pass failed |
+| `trajectory.serve.sensitivity.classifier_backend_error` | count | `backend`, `error_class`, `reason`, optional `classifier_agent` | One classifier backend failed before fallback. Tags use bounded remediation categories without paths, models, stderr, or raw errors. |
+| `trajectory.serve.segmentation.failure_total` | count | `stage`, `error_class`, `reason` | An incremental, final, or explicitly enabled meta-task segmentation pass failed. `reason` is a bounded remediation category; raw provider errors are never tags. |
 | `trajectory.serve.sensitivity.watermark_write_error` | count | `error_class` | Sensitivity watermark write failed |
 | `trajectory.serve.sensitivity.watermark_parse_error` | count | `error_class` | Sensitivity watermark read/parse failed |
 | `trajectory.serve.sensitivity.sensitivity_held_at_session_end` | count | `reason` | Session ended while sensitivity was still held |
@@ -1327,26 +1335,27 @@ only by code paths that explicitly create health records.
 | `trajectory.instrumentation.capture.hook_event` | count |
 | `trajectory.instrumentation.capture.gap` | count |
 | `trajectory.instrumentation.capture.write_latency_ms` | distribution |
-| `trajectory.instrumentation.fidelity.drift` | count |
-| `trajectory.instrumentation.fidelity.token_delta` | distribution |
-| `trajectory.instrumentation.fidelity.cost_delta_usd` | distribution |
-| `trajectory.instrumentation.fidelity.turn_delta` | distribution |
 | `trajectory.instrumentation.derivation.fallback` | count |
 | `trajectory.instrumentation.derivation.correction` | count |
 | `trajectory.instrumentation.privacy.gate` | count |
-| `trajectory.instrumentation.privacy.sensitivity_lag_ms` | distribution |
 | `trajectory.instrumentation.marker.evaluation` | count |
 | `trajectory.instrumentation.marker.evaluation_latency_ms` | distribution |
-| `trajectory.instrumentation.local_ui.forward_attempt` | count |
-| `trajectory.instrumentation.local_ui.forward_latency_ms` | distribution |
-| `trajectory.instrumentation.local_ui.query_failure` | count |
 | `trajectory.instrumentation.watchdog.gap_detected` | count |
-| `trajectory.instrumentation.backfill.replay` | count |
-| `trajectory.instrumentation.backfill.lag_ms` | distribution |
 | `trajectory.instrumentation.health.spool_depth` | gauge |
 | `trajectory.instrumentation.health.emit_dropped` | count |
 | `trajectory.instrumentation.runtime_reconcile.attempt` | count |
 | `trajectory.instrumentation.runtime_reconcile.duration_ms` | distribution |
+| `trajectory.instrumentation.lifecycle.incident` | count |
+
+The catalog lists production-backed metrics. Earlier placeholders without a
+production producer are not part of the current inventory.
+
+On 0.5.31 and later, marker evaluation distinguishes missing tables, missing
+columns, other schema mismatches, unavailable local storage, canceled contexts,
+invalid marker configuration, and internal evaluator fallback. Publish failures
+likewise distinguish cancellation, serialization failure, and internal publish
+failure. These are bounded reason values; raw errors, responses, paths, and
+content are excluded from tags.
 
 ### Managed cost-fidelity heartbeat
 
@@ -1417,6 +1426,12 @@ finite `trigger`, top-level `result_status`, `process_status`, `outcome`, and
 PID, session identity, plugin output, or error text. An active owner reports
 `process_status:active_sessions_deferred`; a later automatic retry reports the
 eventual replacement outcome separately.
+
+When a reconcile attempt identifies a lifecycle failure or safe deferral,
+`trajectory.instrumentation.lifecycle.incident` emits one count. Its bounded
+`reason`, `component`, `signal`, `trigger`, and `outcome` tags support fleet
+diagnosis without host-local paths, PIDs, session identity, raw errors, or user
+content. Counts represent incidents or attempts, not unique affected users.
 
 ### Fleet update heartbeat
 

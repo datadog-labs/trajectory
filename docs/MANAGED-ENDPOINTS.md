@@ -1,6 +1,6 @@
 # Managed Endpoint Deployment
 
-Trajectory 0.5.29 includes a provider-neutral `trajectory-mdm` administrator
+Trajectory includes a provider-neutral `trajectory-mdm` administrator
 helper for preparing and verifying managed endpoint policy bundles. Keep this
 helper on an administrator workstation or deployment automation runner; it is
 not the Trajectory runtime installed for end users.

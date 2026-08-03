@@ -236,14 +236,14 @@ reconciles the staged payload so enabled module hooks remain intact. Unknown
 paths, symlinks, malformed registries, and ambiguous ownership fail closed.
 
 The plugin ships Claude `hooks/hooks.json`, which Claude Code loads
-automatically from that standard path. Those lifecycle hooks post to the local
-capture server. Claude Code supports native HTTP hook entries, so most lifecycle
-events use HTTP hooks. `SessionStart` and `SessionEnd` use `trajectory
-capture-hook` command hooks: startup must survive a server that is not ready
-yet, and session shutdown must keep stdin attached long enough to spool the
-terminal event before delegating final delivery to a background worker. That
-worker triggers the normal final publish metrics path through `trajectory
-serve`. The plugin manifest intentionally omits a `hooks` entry for
+automatically from that standard path. Every lifecycle entry is a command hook
+that runs the staged `capture-with-serve.sh` helper and then `trajectory
+capture-hook`. The helper keeps one delivery ID across bounded ensure/retry, so
+an EOF or reset during serve retirement cannot require a blind non-idempotent
+POST. Session shutdown keeps stdin attached long enough to spool the terminal
+event before delegating final delivery to a background worker. That worker
+triggers the normal final publish metrics path through `trajectory serve`. The
+plugin manifest intentionally omits a `hooks` entry for
 `hooks/hooks.json` to avoid duplicate hook-file loading. It also omits inline
 MCP configuration. Normally the plugin root `.mcp.json` is the only MCP
 declaration. When read-only inspection finds a released explicit user
@@ -1426,6 +1426,10 @@ Setup writes a local Copilot marketplace under
 `trajectory@trajectory`. The plugin includes command hooks, `.mcp.json`, and an
 incognito skill.
 
+Every command hook invokes `trajectory capture-hook --client copilot
+--ensure-serve`, preserving one delivery ID across retirement resets and
+duplicate suppression.
+
 Provider-owned local history is available through
 `trajectory backfill --from-copilot-sessions [--session ID] [--force]`.
 `COPILOT_HOME` replaces the complete default `~/.copilot` root. The importer
@@ -1493,9 +1497,10 @@ system home. The override replaces the home exclusively; it is not the
 lookup, setup diagnostics, inventory, update refresh, and resume placement use
 the same resolver and scan `<effective-home>/.gemini/tmp` for history.
 
-`settings.json` registers Trajectory MCP. `hooks.json` uses command hooks with
-`curl` to post supported Gemini events to the capture server. The skill and
-command expose `/incognito` with an MCP path and HTTP fallback.
+`settings.json` registers Trajectory MCP. `hooks.json` uses receipt-backed
+`trajectory capture-hook --client gemini --ensure-serve` command hooks for
+supported Gemini events. The skill and command expose `/incognito` with an MCP
+path and HTTP fallback.
 
 ## Antigravity CLI
 
@@ -1511,7 +1516,8 @@ Setup writes:
 
 `settings.json` registers Trajectory MCP. The root-level named hook definition
 uses Antigravity's current `PreToolUse`, `PostToolUse`, `PreInvocation`,
-`PostInvocation`, and `Stop` events and posts to `/capture/agy/...`. The adapter
+`PostInvocation`, and `Stop` events and invokes the receipt-backed `trajectory
+capture-hook --client agy --ensure-serve`. The adapter
 normalizes camelCase identity and workspace fields while preserving
 `client_source=agy`. `stepIdx` provides deterministic pre/post tool correlation;
 the current PostToolUse payload supplies completion/error status but not tool
@@ -1560,7 +1566,8 @@ Cursor has two distinct capture paths.
 
 Cursor Desktop uses setup-managed `~/.cursor/hooks.json` and
 `~/.cursor/mcp.json`. Command hooks use Trajectory's durable capture helper and
-route Cursor payloads through `/capture/cursor/...`.
+invoke `trajectory capture-hook --client cursor --ensure-serve`, preserving one
+delivery ID across retirement resets.
 Cursor does not accept every Claude lifecycle hook name, so setup writes only
 the supported Cursor event set. If Claude Code is not installed, setup also
 writes `~/.cursor/skills/incognito/SKILL.md`.
@@ -1644,6 +1651,9 @@ Setup writes a local Factory marketplace under
 `trajectory@trajectory`. The plugin includes command hooks, `mcp.json`, and an
 incognito skill.
 
+Every Factory command hook invokes `trajectory capture-hook --client droid
+--ensure-serve`, preserving one delivery ID across retirement resets.
+
 Capture is beta live CLI capture only. There is no Factory/Droid historical
 backfill or transcript import path.
 
@@ -1700,9 +1710,9 @@ The Pi TypeScript extension subscribes to lifecycle events such as session
 start, message end, tool call, tool result, turn end, compaction, model change,
 and session shutdown. Current fork/new transitions arrive through
 `session_start`; Trajectory links them only when the new session header confirms
-the provider's previous-session file. Key events also write through `trajectory
-capture-hook` for robustness when a short-lived `pi --print` process exits
-before async HTTP posting completes.
+the provider's previous-session file. Every captured event is queued through
+`trajectory capture-hook --client pi`; the helper preserves one delivery ID
+across retirement resets.
 
 Pi exposes native Trajectory tools through the extension and can use the shared
 MCP catalog when the environment supports MCP. It does not install a

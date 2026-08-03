@@ -1,8 +1,8 @@
 /**
  * Trajectory Capture Extension for Pi
  *
- * Subscribes to Pi lifecycle events and forwards them to the trajectory
- * HTTP capture server. Capture runs through bounded background queues so Pi
+ * Subscribes to Pi lifecycle events and forwards them through trajectory's
+ * receipt-backed capture-hook helper. Capture runs through bounded background queues so Pi
  * callbacks never wait on trajectory being slow or unavailable.
  *
  * Install: copy to ~/.pi/agent/extensions/trajectory/
@@ -60,7 +60,6 @@ type SensitivityCategory = typeof V2_CATEGORIES_BY_LENGTH[number];
 export interface TrajectoryExtensionRuntime {
 	captureQueue?: BoundedSerialQueue;
 	lifecycleQueue?: BoundedSerialQueue;
-	postCapture?: (path: string, body: Record<string, unknown>) => Promise<void>;
 	captureHook?: (eventType: string, body: Record<string, unknown>) => Promise<void>;
 	ensureServe?: () => Promise<boolean>;
 	classifyTurn?: (content: string) => Promise<SensitivityCategory | "">;
@@ -116,7 +115,6 @@ function withPluginProvenance(body: Record<string, unknown>): Record<string, unk
 export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: TrajectoryExtensionRuntime = {}) {
 	const port = parseInt(process.env.TRAJECTORY_PORT ?? String(DEFAULT_PORT), 10);
 	const baseUrl = `http://127.0.0.1:${port}`;
-	const captureUrl = `${baseUrl}/capture/pi`;
 	const captureQueue = runtime.captureQueue ?? new BoundedSerialQueue(CAPTURE_QUEUE_CAPACITY);
 	const lifecycleQueue = runtime.lifecycleQueue ?? new BoundedSerialQueue(LIFECYCLE_QUEUE_CAPACITY);
 
@@ -249,32 +247,7 @@ export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: Trajector
 		return "";
 	}
 
-	// ── HTTP helpers ─────────────────────────────────────────────────
-
-	async function postCapture(path: string, body: Record<string, unknown>): Promise<void> {
-		try {
-			await fetch(`${captureUrl}/${path}`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(body),
-				signal: AbortSignal.timeout(POST_TIMEOUT_MS),
-			});
-		} catch {
-			// Fire-and-forget - trajectory serve being down never blocks Pi
-		}
-	}
-
-	const postCaptureTask = runtime.postCapture ?? postCapture;
-
-	function post(path: string, body: Record<string, unknown>): void {
-		captureQueue.enqueue(() => postCaptureTask(path, withPluginProvenance(body)));
-	}
-
-	function postTerminal(path: string, body: Record<string, unknown>): void {
-		captureQueue.enqueueTerminal(() => postCaptureTask(path, withPluginProvenance(body)));
-	}
-
-	// ── Binary lifecycle ─────────────────────────────────────────────
+	// -- Receipt-backed binary delivery -------------------------------
 
 	function findTrajectoryBinary(): string | undefined {
 		const candidates = [
@@ -493,6 +466,10 @@ export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: Trajector
 
 	const captureHookTask = runtime.captureHook ?? captureHookCLI;
 
+	function post(path: string, body: Record<string, unknown>): void {
+		captureQueue.enqueue(() => captureHookTask(path, body));
+	}
+
 	function captureLifecycle(eventType: string, body: Record<string, unknown>): void {
 		lifecycleQueue.enqueue(() => captureHookTask(eventType, body));
 	}
@@ -542,7 +519,6 @@ export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: Trajector
 		// Preserve startup ordering without making Pi wait for serve recovery.
 		captureQueue.enqueue(async () => {
 			await ensureServeTask();
-			await postCaptureTask("SessionStart", withPluginProvenance(body));
 			// The classifier prompt fetch is independent of capture ordering.
 			void fetchSensitivityPrompt();
 		});
@@ -708,7 +684,6 @@ export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: Trajector
 		// async POST completes - e.g. under `pi --print`). JSONL is the source of
 		// truth; serve picks it up via fsnotify if the live POST is dropped.
 		captureLifecycle("TurnEnd", body);
-		post("TurnEnd", body);
 	});
 
 	pi.on("session_compact", async (event, _ctx) => {
@@ -736,7 +711,6 @@ export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: Trajector
 
 		// CLI writes directly to JSONL (always works, even if serve is dead)
 		captureTerminalLifecycle("SessionEnd", body);
-		postTerminal("SessionEnd", body);
 
 		// Pi permits an async shutdown callback. Give already-admitted work one
 		// short, explicit chance to finish without restoring the old multi-second
