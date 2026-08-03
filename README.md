@@ -126,6 +126,7 @@ trajectory-darwin-universal
 trajectory-linux-amd64
 trajectory-linux-arm64
 trajectory-windows-amd64.exe
+trajectory-windows-amd64
 
 trajectory-mdm-darwin-amd64
 trajectory-mdm-darwin-arm64
@@ -134,6 +135,10 @@ trajectory-mdm-linux-amd64
 trajectory-mdm-linux-arm64
 trajectory-mdm-windows-amd64.exe
 ```
+
+The `trajectory-mdm-*` assets are administrator tools for preparing and
+verifying managed endpoint deployment kits. They are not installed on employee
+endpoints.
 
 ## Supported Clients
 
@@ -236,6 +241,7 @@ This repository accepts changes to public docs, marketplace metadata, plugin ass
 - [docs/FEATURE-FLAGS.md](docs/FEATURE-FLAGS.md): feature-flag commands, runtime overrides, and registered flags
 - [docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md): supported coding-agent clients and version requirements
 - [docs/CLIENT-INSTRUMENTATION.md](docs/CLIENT-INSTRUMENTATION.md): per-client hook, watcher, MCP, and backfill surfaces
+- [docs/CURSOR-CAPTURE-TRUST.md](docs/CURSOR-CAPTURE-TRUST.md): trustworthy Cursor tokens, cost, surface, and subagent signals
 - [docs/COSTS.md](docs/COSTS.md): local cost summaries, turn evidence, objective observations, and fidelity checks
 - [docs/COST-ATTRIBUTION.md](docs/COST-ATTRIBUTION.md): additive cost totals, overlapping CODEOWNER associations, and safe dashboard patterns
 - [docs/PRIVACY.md](docs/PRIVACY.md): incognito, sensitive tags, and sensitivity scanning

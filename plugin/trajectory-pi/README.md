@@ -35,6 +35,8 @@ versions or workflows that scan package-root extension entrypoints.
 Then point `~/.pi/agent/mcp.json` at `~/.pi/agent/extensions/trajectory/bin/trajectory mcp`.
 
 Current Pi reports fork and new-session transitions through `session_start`.
+Every captured Pi event is queued through `trajectory capture-hook --client pi`;
+the helper safely retries a serve retirement reset with one delivery ID.
 The extension records the exact provider session and parent IDs when the new
 header confirms the provider's previous-session file. OhMyPi uses a different
 CLI, configuration root, extension manifest, and package namespace; this Pi

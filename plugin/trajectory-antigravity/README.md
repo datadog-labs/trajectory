@@ -2,8 +2,8 @@
 
 Capture plugin for Antigravity CLI (`agy`). Registers the current native
 `PreToolUse`, `PostToolUse`, `PreInvocation`, `PostInvocation`, and `Stop`
-command hooks at the plugin root, posts their payloads to the local Trajectory
-capture server, preserves `modelName` as a non-authoritative model label, and
+command hooks at the plugin root, sends their payloads through Trajectory's
+receipt-backed `capture-hook`, preserves `modelName` as a non-authoritative model label, and
 includes the Trajectory incognito skill.
 
 Install through setup:

@@ -25,6 +25,13 @@
     "trajectory-linux-amd64",
     "trajectory-linux-arm64",
     "trajectory-windows-amd64.exe",
+    "trajectory-windows-amd64",
+    "trajectory-mdm-darwin-amd64",
+    "trajectory-mdm-darwin-arm64",
+    "trajectory-mdm-darwin-universal",
+    "trajectory-mdm-linux-amd64",
+    "trajectory-mdm-linux-arm64",
+    "trajectory-mdm-windows-amd64.exe",
     "checksums.sha256"
   ],
   "release": {
