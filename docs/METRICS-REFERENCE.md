@@ -40,8 +40,8 @@ Metric type is part of the contract. A metric name should not be reused as both
 a gauge and a distribution. Completed samples use distinct names from live
 gauges for that reason.
 
-The `.total` suffix means “completed sample,” not “safe to add across every
-dimension.” Additivity still depends on the metric's grain and association
+The `.total` suffix means "completed sample," not "safe to add across every
+dimension." Additivity still depends on the metric's grain and association
 semantics. Do not add turn, session, PR, or owner projections merely because
 each name ends in `.total`.
 
@@ -323,13 +323,17 @@ visible as legacy/uncategorized and do not infer a source in the query layer.
 Authoritative cost totals must additionally require
 `trajectory.cost_contract:v2`. Untagged samples are legacy/unverified history;
 they remain queryable for investigation but must not be added to a v2 total.
-Generic historical backfill and provider-history replay emit no Trajectory token
-or cost attribution metrics. They may still materialize local sessions, publish
-eligible traces/session data, and emit non-attribution operational metrics. The
-`trajectory repair metrics` is a local audit preview only; its legacy
-`backfill-metrics` aliases remain accepted, and submit/readback modes are
-rejected. Legacy points already present in Datadog remain outside the v2
-contract and are not rewritten.
+Generic historical backfill and unapproved provider-history replay emit no
+Trajectory token or live cost attribution metrics. They may still materialize
+local sessions, publish eligible traces/session data, and emit non-attribution
+operational metrics. The `trajectory repair metrics` command is a local audit
+preview by default; its legacy `backfill-metrics` aliases remain accepted.
+An explicit user-driven Codex repair, or an explicitly confirmed managed
+`turn_cost_additive` campaign, may instead publish the isolated
+`trajectory.historical.turn.cost.usd.additive` COUNT namespace through
+`trajectory backfill-my-metrics --yes` (optionally with `--campaign <id>`).
+Legacy points already present in Datadog remain outside the v2 contract and are
+not rewritten.
 
 Trajectory's durable metric outbox assigns each authoritative additive v2 cost
 sample a logical turn/session identity that excludes delivery timestamp,
@@ -1051,9 +1055,9 @@ cardinality or its metadata-only privacy boundary.
 | Metric | Type | Scope | Notes |
 |---|---|---|---|
 | `trajectory.historical.pr.ai_assisted.observed` | gauge | historical | Value `1` at the first eligible interaction on each campaign-local activity day. Carries normalized PR identity plus `campaign_id`, extractor, user, version, client, host, and OS provenance. It never carries session, turn, project, model, email, or provider-user identity. Use a `max` reducer grouped by PR identity before counting distinct PRs; never sum raw points. |
-| `trajectory.historical.turn.cost.usd.additive` | count | historical | One trustworthy completed-turn USD delta for a managed `turn_cost_additive` campaign. Sum only with `.as_count()` and an authoritative `campaign_id`. It carries the authoritative `trajectory.cost_contract:v2` label plus bounded user, client, model, host, extractor, and cost-attribution tags, but no session or turn identity. Never overlap it with the live additive namespace in one time range. |
+| `trajectory.historical.turn.cost.usd.additive` | count | historical | One trustworthy completed-turn USD delta for an explicit user-driven Codex repair or managed `turn_cost_additive` campaign. Effective-dated managed reruns resolve a checksum-pinned card at the original completed-turn time and fill only previously unpriced cells. Sum only with `.as_count()` and an authoritative repair/campaign identity. It carries the authoritative `trajectory.cost_contract:v2` label plus bounded user, client, model, host, extractor, and cost-attribution tags, but no session or turn identity. Never overlap it with the live additive namespace in one time range. |
 | `trajectory.turn.lines_of_code.count` | count | historical turn repair | A managed `turn_loc_additive` campaign may restore missing Codex `type:added` and `type:removed` points into the existing live metric, so dashboards need no query change. The campaign window must end before corrected live capture begins. Points carry campaign, extractor, user, client, model, host, and OS provenance but no session or turn identity. |
-| `trajectory.historical.replay.completed` | gauge | historical | Current completion signal for one managed campaign and laptop provenance. |
+| `trajectory.historical.replay.completed` | gauge | historical | Current completion signal for one user-driven repair or managed campaign and laptop provenance. |
 | `trajectory.historical.replay.source_coverage_days` | gauge | historical | Readable in-window source span by client; it does not claim activity on every day. |
 | `trajectory.historical.replay.sessions_scanned` | gauge | historical | Canonical sessions scanned by client during materialization. |
 | `trajectory.historical.replay.sources_failed` | gauge | historical | Provider or canonical-source gaps retained with the materialized receipt. |
@@ -1061,13 +1065,14 @@ cardinality or its metadata-only privacy boundary.
 | `trajectory.historical.replay.turns_priced` | gauge | historical | In-window completed turns accepted by the cost projector, by client source. |
 | `trajectory.historical.replay.turns_unpriced` | gauge | historical | In-window completed turns rejected for missing, unknown, proxy, or invalid cost evidence, by client source. |
 
-Historical replay metrics are authorized only by managed campaign config and
-managed required destinations. User trace, marker, cost, incognito, and
+Managed historical replay metrics require managed campaign config and managed
+required destinations. The user-driven Codex cost path instead requires the
+explicit `--yes` confirmation, a bounded window, Codex source scope, and a
+resolved Datadog metric destination. User trace, marker, cost, incognito, and
 sensitivity settings do not suppress this metadata-only namespace. Imported
 provider events remain `_metric_ineligible` for every ordinary metric family.
-The destination organization must enable Datadog Historical Metrics Ingestion
-for the authorized metric names; replay uses the native Metrics v2 intake so
-backdated points follow that contract.
+Both paths use the native Metrics v2 intake so backdated points follow the
+Datadog Historical Metrics Ingestion contract.
 
 A managed `metric_projection` campaign is the explicit exception to ordinary
 metric ineligibility. It projects a frozen manifest of reconstructable gauges
@@ -1195,10 +1200,10 @@ privacy/publish diagnostics.
 | `trajectory.ops.agent.version` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `client_version`, `trajectory.client_version`, `version_source` | Daily installed-agent freshness signal. Emits `1` for each detected client. `client_version` is the exact CLI-probed semantic version when available and `unknown` otherwise; `version_source` distinguishes a successful probe, missing CLI, failed probe, and unsupported probe. |
 | `trajectory.ops.agent.active_sessions` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source` | Hourly count of fresh active sessions by canonical client source, deduped across concurrent `trajectory serve` processes using per-PID heartbeat sentinels. Emits `0` for known clients with no fresh active sessions. |
 | `trajectory.ops.agent.active_session_version` | gauge | Canonical serve tags plus `client_source`, `trajectory.client_source`, `client_version`, `trajectory.client_version`, `version_source` | Hourly active-session count by client version, using captured session-start state from heartbeat sentinels. Missing versions are reported as `client_version:unknown`. |
-| `trajectory.ops.cli.command.started` | count | `trajectory.command`, `trajectory.command_class`, `trajectory.invocation_mode`, `trajectory.distribution`, `trajectory.version`, `host`, `os.type`, and metric-catalog tags | One durable count recorded before central CLI dispatch. Export requires both the managed `cli_command_telemetry` feature and its separate destination policy. Arguments, paths, session identity, prompts, errors, and arbitrary user tags are never included. |
+| `trajectory.ops.cli.command.started` | count | `trajectory.command`, `trajectory.command_class`, `trajectory.invocation_mode`, `trajectory.distribution`, `trajectory.version`, `host`, `os.type`, and metric-catalog tags | One durable count recorded immediately before central CLI dispatch. Export is default-on to managed required Datadog destinations; managed policy can narrow or revoke it. Arguments, paths, session identity, prompts, errors, and arbitrary user tags are never included. |
 | `trajectory.ops.mcp.tool.started` | count | `trajectory.mcp_tool`, `trajectory.mcp_tool_class`, `trajectory.mcp_transport`, `trajectory.version`, `host`, `os.type`, and metric-catalog tags | One durable count recorded before a centrally registered MCP tool handler runs. |
 | `trajectory.ops.mcp.tool.completed` | count | MCP tool tags plus `trajectory.mcp_outcome` | One durable terminal count classified as `success`, `tool_error`, `handler_error`, `canceled`, or `panic`. |
-| `trajectory.ops.mcp.tool.duration_ms` | distribution | MCP tool tags plus `trajectory.mcp_outcome` | Registered handler duration. Export requires both the managed `mcp_tool_telemetry` feature and its separate destination policy. Arguments, results, queries, paths, session identity, prompts, errors, credentials, and arbitrary user tags are never included. |
+| `trajectory.ops.mcp.tool.duration_ms` | distribution | MCP tool tags plus `trajectory.mcp_outcome` | Registered handler duration. Completion telemetry preserves the original result, error, cancellation, or panic. MCP lifecycle export is default-on to managed required Datadog destinations; managed policy can narrow or revoke it. Arguments, results, queries, paths, session identity, prompts, errors, credentials, and arbitrary user tags are never included. |
 | `trajectory.publish.active_destinations` | gauge | Canonical tags plus top-level and destination tags on DD destinations | Number of active destinations seen for a session |
 | `trajectory.ops.required_destination.health` | gauge | Canonical serve tags plus `destination`, `incognito_exempt`, `destination_state` | Three-valued required-destination health: `1` active, `0` a proven gap, and `-1` not provable. Group by destination and state; alert on `0`, not values below `1`. |
 | `trajectory.ops.org_sync.success_age_seconds` | gauge | Canonical serve and fleet heartbeat tags plus `verified`, `sync_status`, `failure_reason`, `failure_scope`, `failure_streak` | Seconds since the last observed successful managed-sync pass. `-1` means no observed success. `sync_status` distinguishes healthy, degraded, failing, never, and unverified states; failure tags are bounded and contain no raw errors or paths. |
@@ -1207,6 +1212,7 @@ privacy/publish diagnostics.
 | `trajectory.serve.process.start_total` | count | `start_source` | Capture server listener started; `start_source:rescue_hook` identifies hook-driven recovery after a dead listener |
 | `trajectory.serve.process.exit_total` | count | `exit_reason`, optional `signal` | Capture server observed a graceful or error exit path before publish shutdown; hard kills are inferred from later rescue starts |
 | `trajectory.serve.capture.request_error_total` | count | `client`, `event_type`, `error_kind`, `http_status_class` | Capture HTTP request returned 4xx/5xx or hit a handler error |
+| `trajectory.serve.operational_log.dropped_total` | count | `reason:queue_full` plus canonical serve tags | Operational events dropped before durable enqueue because the bounded process-local queue was full; emitted on the next owner maintenance pass |
 | `trajectory.serve.goroutine.panic_recovered_total` | count | `goroutine`, `action` | Serve background goroutine panic was recovered; `action` is `restart` or `give_up` |
 | `trajectory.serve.local_state.live_session_files` | gauge | Canonical serve tags plus `stage`, `warning`, `scan_error` | Count of non-lock live-session projection files found during the local-state health scan |
 | `trajectory.serve.local_state.heartbeat_files` | gauge | Canonical serve tags plus `stage`, `warning`, `scan_error` | Count of active-session heartbeat sentinel files found during the local-state health scan |
@@ -1313,6 +1319,12 @@ cases now have bounded owners in the canonical pipeline:
   estimation emits
   `trajectory.instrumentation.capture.gap{reason:usage_missing}` and is stored
   with `tokens_status=missing`;
+- a provider rollout observed by a scoped watcher but rejected by its project
+  filter emits `trajectory.instrumentation.capture.gap{component:serve,client_source:codex,signal:jsonl,reason:scope_filtered}`;
+- if that excluded rollout later contains a native `token_count` record,
+  Trajectory emits the same metric with `reason:usage_unregistered`. This is
+  source evidence that provider usage existed without a canonical registration;
+  it is a bounded gap count, not a token or cost value.
 - eligible Cursor generations without terminal token usage contribute to
   `trajectory.cursor.token_capture.turns_total{status:missing}`.
 

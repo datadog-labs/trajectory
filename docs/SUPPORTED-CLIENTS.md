@@ -1067,6 +1067,11 @@ Codex.app (the macOS desktop app, bundle id `com.openai.codex`) writes to the
 same `~/.codex/sessions/` rollout tree as the CLI, so the Codex rollout watcher
 and backfill capture it with no extra setup.
 
+The live watcher is account-scoped to the active `CODEX_HOME` or
+`CODEX_SESSIONS_DIR` root. It does not apply the current invocation's
+`TRAJECTORY_PROJECT_ROOT` as a filter, because CLI and Desktop sessions may
+run from different projects while sharing that rollout tree.
+
 The `codex_app_capture` feature flag (**default on**) controls separate
 attribution: by default, sessions whose `session_meta.originator` identifies
 Codex Desktop are tagged `client_source="codex-app"` instead of `"codex"`, across
@@ -1204,13 +1209,17 @@ and retains the previous generation for active sessions. Concurrent workers
 coalesce through an account-scoped lock, and sequential starts inside a short
 input-fingerprinted success cooldown skip repeated work.
 
-Trajectory never directly writes, merges, or deletes Claude user settings,
-including `~/.claude.json`, `~/.claude/settings.json`, and settings variants.
+Trajectory never adds, merges, or deletes Claude user settings itself,
+including `~/.claude.json`, `~/.claude/settings.json`, and settings variants;
+its only write is restoring an exact pre-command snapshot after a destructive
+Claude plugin-manager result.
 Explicit setup invokes Claude's supported plugin manager to install or repair
-the user-scope plugin. Autonomous startup and update repair invokes the manager
-only after verifying an existing owned user-scope installation, then
-reconciles the staged payload so enabled module hooks remain intact. Claude may
-update its own plugin registration fields while preserving unrelated settings.
+the user-scope plugin. Setup verifies that the manager preserved every existing
+settings value; a destructive rewrite restores the original files byte-for-byte
+and fails setup. Autonomous startup and update repair never invoke Claude; they
+reconcile only Trajectory-owned plugin registry and cache state so enabled
+module hooks remain intact. Claude may update its own plugin registration fields
+while preserving unrelated settings.
 The standard plugin has one root `.mcp.json`; the manifest has no inline MCP
 block and no nested MCP file. Setup does not run `claude mcp add` or `claude mcp
 remove`. When a released explicit user MCP entry already exists, Trajectory
