@@ -229,11 +229,12 @@ that user-scope entry. Setup refreshes after enabled module hooks are injected,
 and background repair restores preserved `hook-dispatch` entries after a
 same-version Claude cache refresh. Project and local scope entries remain
 unchanged. The old generation remains available to an active Claude process.
-Trajectory does not directly write Claude settings. Explicit setup invokes
-Claude's plugin manager to install or repair the plugin; autonomous repair
-invokes it only after verifying an existing owned user-scope installation, then
-reconciles the staged payload so enabled module hooks remain intact. Unknown
-paths, symlinks, malformed registries, and ambiguous ownership fail closed.
+Trajectory does not add, merge, or delete Claude settings itself. Explicit
+setup invokes Claude's plugin manager to install or repair the plugin and
+restores the exact pre-command settings snapshot if any existing value is lost
+or changed. Autonomous repair never invokes Claude; it reconciles only the
+owned registry entry and cache payload. Unknown paths, symlinks, malformed
+registries, and ambiguous ownership fail closed.
 
 The plugin ships Claude `hooks/hooks.json`, which Claude Code loads
 automatically from that standard path. Every lifecycle entry is a command hook
@@ -565,6 +566,19 @@ There are two upstream Codex streams:
   used for assistant messages, reasoning blocks, tools, permissions, compaction
   records, subagent activity, model details, token snapshots, structured
   `<skill>` activation envelopes, and `shutdown_complete`.
+
+The live Codex watcher is account-scoped: it follows the configured
+`CODEX_HOME`/`CODEX_SESSIONS_DIR` rollout root for every project in that
+account. `TRAJECTORY_PROJECT_ROOT` may still describe the current invocation
+for hook context and privacy tooling, but it is not a live-watcher boundary;
+CLI and Desktop sessions can share one rollout root while using different
+working directories.
+
+If a future scoped watcher observes a rollout outside its project filter, the
+instrumentation-health stream records `capture.gap{reason:scope_filtered}`.
+When a later native `token_count` arrives from that excluded rollout, it also
+records `capture.gap{reason:usage_unregistered}` so source usage without a
+canonical registration is visible before a cost report is missing.
 
 `trajectory codex` is the explicit provider-call wrapper. Every complete
 Responses API exchange routed through it retains the full request and response

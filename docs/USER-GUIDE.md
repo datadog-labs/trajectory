@@ -165,6 +165,8 @@ trajectory update converge --dry-run # Preview managed desired-version convergen
 trajectory update converge --yes     # Apply a managed generation and activate its binary
 trajectory update reconcile          # Dry-run old-version serve process refresh
 trajectory update reconcile --yes    # Retire the adopted old owner, then start the target version
+trajectory update reconcile --yes --reload-config
+                                     # Also reload managed config/credentials and verify required destinations
 trajectory config set-secret <name>  # Store a secret in the OS keychain
 trajectory config get <key>          # Read a single value
 trajectory config features enable <name>  # Persist a user feature-flag override
@@ -223,10 +225,16 @@ handoff first yield their listeners to a proven target-version owner and remain
 available as failback if that replacement exits.
 
 Run `trajectory update reconcile` to inspect the decision or `trajectory update
-reconcile --yes` to retry a deferred handoff. Set
-`TRAJECTORY_UPDATE_RECONCILE_PROCESSES=false` only to disable automatic handoff,
-or disable the `seamless_update_handoff` feature through user, managed, or
-`TRAJECTORY_DISABLE_FEATURES` policy. Foreign, discovery-only, partially
+reconcile --yes` to retry a deferred handoff. For a managed recovery that must
+also apply current org config and newly provisioned exact keychain credentials,
+run `trajectory update reconcile --yes --reload-config`. The combined command
+targets the exact ready owner and returns non-zero unless every in-scope managed
+required destination is active in its fresh health projection. The flag is
+manual-only; ordinary and automatic reconciliation keep their narrower binary
+handoff behavior. Set
+`TRAJECTORY_UPDATE_RECONCILE_PROCESSES=false` only to disable automatic
+handoff, or disable the `seamless_update_handoff` feature through user, managed,
+or `TRAJECTORY_DISABLE_FEATURES` policy. Foreign, discovery-only, partially
 inventoried, and ambiguous owners remain fail-closed. Users do not need to end
 active agent sessions for an update.
 
@@ -701,20 +709,23 @@ unchanged. If no config file exists yet, it creates a capture-only config so
 local session capture can start; run `trajectory setup` later to configure
 Datadog export.
 
-Claude Code is a stricter boundary: Trajectory never directly writes, merges, or deletes
-Claude user settings, including `~/.claude.json`,
-`~/.claude/settings.json`, and settings variants. The standard plugin uses one
-root `.mcp.json`; the manifest has no inline MCP block and no nested MCP file.
+Claude Code is a stricter boundary: Trajectory never adds, merges, or deletes
+Claude user settings itself, including `~/.claude.json`,
+`~/.claude/settings.json`, and settings variants. Its only write is an exact
+rollback after a destructive Claude plugin-manager result. The standard plugin
+uses one root `.mcp.json`; the manifest has no inline MCP block and no nested MCP file.
 If an older explicit user MCP entry exists, Trajectory leaves it byte-for-byte
 unchanged and stages a compatibility plugin generation with no MCP declaration,
 preventing double instrumentation. Explicit setup stages the marketplace and
 uses Claude's plugin manager to register, install, or repair
 `trajectory@trajectory` at user scope; Claude may update its own plugin
-registration fields while preserving unrelated settings. Setup then refreshes
-the owned cache after module-hook injection. For an existing owned user-scope
-installation, background repair also invokes Claude's plugin manager and then
-restores preserved `hook-dispatch` entries if Claude replaces the same-version
-cache. Project and local plugin scopes remain unchanged.
+registration fields while preserving unrelated settings. Trajectory verifies
+that operation is additive; if Claude drops or changes an existing value,
+setup restores the original settings files byte-for-byte and fails. Setup then
+refreshes the owned cache after module-hook injection. For an existing owned
+user-scope installation, background repair updates only Trajectory's plugin
+registry entry and cache subtree and never launches Claude. Project and local
+plugin scopes remain unchanged.
 A legacy OTLP block is reported and left unchanged.
 
 Claude Code and Codex already have native setup integrations, so transparent
@@ -1189,7 +1200,7 @@ series into mutually exclusive owner allocation.
 
 ## Privacy Controls
 
-Use `/incognito` when the current session should not publish trace-like content to ordinary Datadog observability destinations. Local JSONL capture continues, as does task segmentation; publish to non-exempt Datadog destinations is suppressed for trace-like content such as traces, logs, evaluations, records, and AI-usage events. Aggregate metrics continue without content-bearing user data. Active-session sensitivity scans are skipped, and the toggle resets when the session ends. Org-managed destinations configured with `incognito_exempt: true` may still receive events for approved security or audit use cases.
+Use `/incognito` when the current session should not publish trace-like content to ordinary Datadog observability destinations. Local JSONL capture continues, as does task segmentation; publish to non-exempt Datadog destinations is suppressed for trace and log outputs such as traces, logs, evaluations, records, and AI-usage events. Aggregate metrics continue without content-bearing user data and cannot be disabled through incognito. Active-session sensitivity scans are skipped, and the toggle resets when the session ends. Org-managed destinations configured with `incognito_exempt: true` may still receive events for approved security or audit use cases.
 
 Use `<sensitive>...</sensitive>` blocks as an explicit signal to the agent and to human readers:
 
@@ -1211,7 +1222,9 @@ trajectory user-guide privacy
 
 Use backfill for maintenance: importing historical sessions, refreshing the
 local UI cache, or auditing historical metric derivation locally. Historical
-token/cost attribution is not republished; corrections roll forward. Backfill is not required for
+token/cost attribution is not republished by ordinary backfill; an explicit
+user-driven Codex repair can publish an isolated additive cost namespace.
+Corrections roll forward. Backfill is not required for
 first-run metric onboarding; use `trajectory metrics session --latest` and
 `trajectory metrics verify` first.
 
@@ -1232,7 +1245,17 @@ trajectory backfill --from-opencode --session <id>     # SQLite or retained JSON
 trajectory features enable qwen_durable_history        # one-time Qwen history opt-in
 trajectory backfill --from-qwen-sessions --session <id> # active/archive Qwen chat JSONL
 trajectory repair metrics                              # Local-only historical metric repair preview
+trajectory backfill-my-metrics --since 2026-07-05 --until 2026-08-05 --yes # user-driven Codex cost repair
 ```
+
+The explicit user-driven Codex repair can cover up to the effective
+`capture.retention_days` age window (`0` keeps history forever), reads only the
+user's Codex/Codex.app rollout history, requires `--yes` for publication, and
+uses the resolved Datadog metric destinations. When no dates are supplied, the
+historical 30-day default is capped by the configured retention. It publishes only
+`trajectory.historical.turn.cost.usd.additive` and is idempotent for the same
+window. Use `--campaign <id>` only when an organization-managed replay is
+specifically required; ordinary user-driven repair does not need a campaign.
 
 Codex and local-cache backfills use `--limit` as a per-chunk size. The command
 reports the total file and chunk counts before starting, then runs every chunk

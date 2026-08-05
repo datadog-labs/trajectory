@@ -115,6 +115,11 @@ bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main
 
 The installer downloads the latest Trajectory release asset for your platform, installs it under `~/.trajectory/bin/trajectory`, stages the Claude wrapper intercept runtime, runs `trajectory setup`, and registers detected coding-agent integrations. Agent command shims are opt-in and can be installed with `--install-client-shims` where supported.
 
+Add `--security` to enable Datadog Security for detected Claude Code, Codex,
+and Cursor installations. Security defaults to enforce mode; use
+`--security-mode observe` for non-blocking recording. Pass `--app-key` or set
+`DD_APP_KEY` when enabling security so result readback can authenticate.
+
 To upgrade an install from this repository, rerun the installer.
 
 Release assets use this naming convention:

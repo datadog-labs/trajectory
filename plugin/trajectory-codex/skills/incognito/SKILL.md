@@ -1,13 +1,14 @@
 ---
 name: incognito
-description: Toggle incognito mode for the current session. When enabled, events are still captured locally to JSONL but publish to non-exempt Datadog destinations is suppressed. Use when working with sensitive content. This skill should be used when the user says "/incognito", "go incognito", "pause capture", "stop recording", "private mode", mentions "incognito", or wants to temporarily disable trajectory publish for the current session.
+description: Toggle incognito for the current session or persist it for the current user. Local JSONL capture and aggregate metrics continue while trace and log outputs to non-exempt Datadog destinations are suppressed.
 ---
 
 # Incognito Mode
 
 Toggle incognito mode for the current session. When enabled:
 - Events are still captured locally to JSONL
-- Publish to non-exempt Datadog destinations is suppressed
+- Trace and log outputs to non-exempt Datadog destinations are suppressed
+- Aggregate metrics continue and cannot be disabled by incognito
 - Mode resets automatically when the session ends
 
 Org-managed security destinations configured with `incognito_exempt: true` may still receive events. Do not describe incognito as a security or compliance bypass.
@@ -18,9 +19,11 @@ When a user asks what /incognito does, explain it as:
 "/incognito suppresses publish to ordinary Datadog destinations for the rest of the current session. Your agent keeps working normally, and events are still captured locally to JSONL. Use it when you are working with sensitive content you do not want published to standard observability destinations. The mode resets automatically when the session ends."
 
 When a user seems confused or hesitant:
-"It is a simple on/off toggle. When you turn it on, publish to non-exempt Datadog destinations is suppressed while local capture continues. When the session ends, it resets. Your previous sessions are not affected, and you can toggle it back off during the session."
+"It is a simple on/off toggle. When you turn it on, trace and log outputs to non-exempt Datadog destinations are suppressed while local capture and aggregate metrics continue. Incognito cannot disable metrics. When the session ends, it resets. Your previous sessions are not affected, and you can toggle it back off during the session."
 
 ## Toggle
+
+For "always go incognito", "permanently opt out", or equivalent durable requests, call `trajectory_incognito` with `persistent: true` and the requested `enable` value. Do not pass `session_id`.
 
 1. Decide the requested state.
    - For `/incognito`, "go incognito", "pause capture", "stop recording", or "private mode", enable incognito unless it is already enabled.

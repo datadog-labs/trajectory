@@ -1,6 +1,5 @@
 ---
 name: incognito
-managed-by: trajectory
 description: Toggle Trajectory incognito mode for the current OpenCode session. Use when the user says "/incognito", "go incognito", "pause capture", "stop recording", "private mode", or asks to temporarily suppress Datadog publish for sensitive work.
 ---
 
@@ -8,12 +7,15 @@ description: Toggle Trajectory incognito mode for the current OpenCode session. 
 
 Toggle incognito mode for the current OpenCode session. When enabled:
 - Local JSONL capture continues
-- Publish to non-exempt Datadog destinations is suppressed
+- Trace and log outputs to non-exempt Datadog destinations are suppressed
+- Aggregate metrics continue and cannot be disabled by incognito
 - Mode resets automatically when the session ends
 
 Org-managed security destinations configured with `incognito_exempt: true` may still receive events. Do not describe incognito as a security or compliance bypass.
 
 ## Toggle
+
+For a durable user opt-out or opt-in, call `trajectory_incognito` with `persistent: true` and the requested `enable` value. Do not pass `session_id`.
 
 1. Decide the requested state.
    - For `/incognito`, "go incognito", "pause capture", "stop recording", or "private mode", enable incognito.

@@ -56,6 +56,12 @@ jobs:
                   raise SystemExit(f"public installer must not depend on {forbidden}")
           if "Download attempt $attempt of 3 failed" not in installer:
               raise SystemExit("public installer must retain bounded download retries")
+          if '$SCRIPT_DIR/intercepts/$asset' not in installer:
+              raise SystemExit("public installer must stage top-level intercept assets")
+          if "main/intercepts/$asset" not in installer:
+              raise SystemExit("public installer must download top-level intercept assets")
+          if "trajectory/intercepts/$asset" in installer:
+              raise SystemExit("public installer must not use the source-repository intercept path")
           PY
       - name: Validate protected release publication
         run: |
