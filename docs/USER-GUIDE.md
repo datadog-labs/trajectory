@@ -180,6 +180,11 @@ watcher, and OTLP events are discarded without JSONL writes, including by
 already-running Trajectory servers. Use `trajectory config capture enable` to resume. For one
 process tree only, use `TRAJECTORY_DISABLED=1`; the environment override wins
 over the durable user state and must be unset before that process is relaunched.
+During compatibility reconciliation, Trajectory may write the same path with
+its selective-fence marker so released legacy clients fail closed while current
+clients continue through the per-client policy check. Current hooks recognize
+only that exact marker as selective; symlinks, malformed contents, and every
+other marker remain a global disable.
 
 Use `trajectory user-guide config` for the full config schema, settable key
 table, config layering rules, environment overrides, and transport values. Use
