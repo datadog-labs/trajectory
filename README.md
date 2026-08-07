@@ -104,8 +104,8 @@ agent behavior becomes something you can graph, alert on, compare, and improve.
 - **Workflow attribution** across repositories, commits, pull requests, and
   completed-session samples, including CODEOWNER-aware production analysis.
 - **Preview integrations** for CommandCode, Devin CLI, ForgeCode, gptme, Grok
-  Build, Kimi Code CLI, Oh My Pi, Qoder CLI, VS Code Copilot Chat, Warp,
-  Windsurf, ZCode, and Zed.
+  Build, Kimi Code CLI, Muse Code, Oh My Pi, Qoder CLI, VS Code Copilot Chat,
+  Warp, Windsurf, ZCode, and Zed.
 
 ## Install
 
@@ -113,7 +113,20 @@ agent behavior becomes something you can graph, alert on, compare, and improve.
 bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main/install.sh)
 ```
 
-The installer downloads the latest Trajectory release asset for your platform, installs it under `~/.trajectory/bin/trajectory`, stages the Claude wrapper intercept runtime, runs `trajectory setup`, and registers detected coding-agent integrations. Agent command shims are opt-in and can be installed with `--install-client-shims` where supported.
+The installer downloads the latest Trajectory release asset for your platform,
+installs it under `~/.trajectory/bin/trajectory`, stages the Claude wrapper
+intercept runtime, runs `trajectory setup`, and registers detected coding-agent
+integrations. Agent command shims are opt-in and can be installed with
+`--install-client-shims` where supported.
+
+For local capture without a Datadog API key, leave the API-key prompt blank or
+make the choice explicit:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main/install.sh) --local-only
+```
+
+Configure Datadog export later with `trajectory destination configure`.
 
 Add `--security` to enable Datadog Security for detected Claude Code, Codex,
 and Cursor installations. Security defaults to enforce mode; use
@@ -177,6 +190,7 @@ Trajectory supports:
 - gptme (preview)
 - Grok Build (preview)
 - Kimi Code CLI (preview)
+- Muse Code (preview)
 - Oh My Pi (preview)
 - Qoder CLI (preview)
 - VS Code Copilot Chat (preview)

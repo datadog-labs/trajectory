@@ -3,13 +3,18 @@
 #
 # Usage:
 #   bash install.sh                           # interactive
+#                                               # leave the API-key prompt blank for local-only capture
+#   bash install.sh --local-only              # interactive, no Datadog API key
+#   bash install.sh --local-only --non-interactive --clients codex
 #   bash install.sh --site datadoghq.com --ml-app my-agents --api-key $KEY \
 #                   --clients cc --non-interactive
 #   bash install.sh --security --app-key $DD_APP_KEY   # with Datadog Security
 #
-# Setup flags (--site, --ml-app, --api-key, --clients, --non-interactive) are
-# passed through to `trajectory setup`. Run `trajectory setup --help` for the
-# full flag reference.
+# Setup flags (--site, --ml-app, --api-key, --clients, --non-interactive, and
+# --local-only) are passed through to `trajectory setup`. Run `trajectory setup
+# --help` for the full flag reference. --local-only installs capture locally
+# without requiring an API key; Datadog export can be configured later with
+# `trajectory destination configure`.
 #
 # Install-only flags (not passed through to `trajectory setup`):
 #   --security   After baseline setup, enable the Datadog Security product
@@ -81,10 +86,12 @@ fail()  { echo "[trajectory]  ERROR: $1" >&2; exit 1; }
 # Collect args that pass through to `trajectory setup`. Recognized setup flags:
 # --site, --ml-app, --api-key, --clients (all take a value),
 # --install-client-shims, --no-client-shims, and --non-interactive.
+# --local-only skips API-key setup and keeps export disabled until configured.
 # The legacy install-only --add-to-path flag is accepted as a no-op for older
 # scripts. install.sh and `trajectory setup` do not edit shell rc files.
 SETUP_ARGS=()
 NON_INTERACTIVE=0
+LOCAL_ONLY=0
 ENABLE_SECURITY=0
 # --security activates Datadog Security in enforce mode, which can block agent
 # actions. --security-mode observe selects non-blocking recording instead.
@@ -109,6 +116,11 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --non-interactive)
             NON_INTERACTIVE=1
+            SETUP_ARGS+=("$1")
+            shift
+            ;;
+        --local-only|--capture-only|--skip-api-key)
+            LOCAL_ONLY=1
             SETUP_ARGS+=("$1")
             shift
             ;;
@@ -222,7 +234,7 @@ done
 # Both Datadog keys fall back to the standard environment variable names that
 # `trajectory` itself recognizes (trajectory/config/secrets.go). An explicit
 # flag always wins over the environment.
-if [ "$API_KEY_PROVIDED" = "0" ]; then
+if [ "$API_KEY_PROVIDED" = "0" ] && [ "$LOCAL_ONLY" = "0" ]; then
     _ENV_API_KEY="${DD_API_KEY:-${DATADOG_API_KEY:-}}"
     if [ -n "$_ENV_API_KEY" ]; then
         SETUP_ARGS+=("--api-key" "$_ENV_API_KEY")
@@ -615,14 +627,20 @@ install_intercept_assets
 install_uninstaller
 write_install_metadata
 
-if [ "$NON_INTERACTIVE" = "1" ]; then
+if [ "$NON_INTERACTIVE" = "1" ] && [ "$LOCAL_ONLY" = "1" ]; then
+    info "[4/5] Running setup (non-interactive local-only)..."
+    info "      No Datadog API key is required; capture stays local until you configure export."
+elif [ "$NON_INTERACTIVE" = "1" ]; then
     info "[4/5] Running setup (non-interactive)..."
+elif [ "$LOCAL_ONLY" = "1" ]; then
+    info "[4/5] Running setup in local-only mode..."
+    info "      No Datadog API key is required; capture stays local until you configure export."
 else
     info "[4/5] Running setup wizard..."
     info ""
     info "      The setup wizard will ask for:"
     info "        - Datadog site (e.g., datadoghq.com, us5.datadoghq.com)"
-    info "        - Datadog API key"
+    info "        - Datadog API key (leave blank for local-only capture)"
     info "        - Service name for your traces"
     info "        - Which AI coding agents to instrument"
     info ""
@@ -1051,6 +1069,11 @@ info ""
 info "  To check status:"
 info "    $BINARY doctor"
 info ""
+if [ "$LOCAL_ONLY" = "1" ]; then
+    info "  To configure Datadog export later:"
+    info "    $BINARY destination configure"
+    info ""
+fi
 if [ "$ENABLE_SECURITY" = "1" ]; then
     info "  To check Datadog Security status:"
     info "    $BINARY security status"

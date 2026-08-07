@@ -645,7 +645,9 @@ trajectory user-guide mcp
 ## Setup and client registration
 
 ```bash
-trajectory setup                     # Interactive setup (site, API key, agents)
+trajectory setup                     # Interactive setup; leave API key blank for local-only capture
+trajectory setup --local-only        # Local capture-first setup without an API key
+trajectory destination configure     # Configure the user-owned Datadog destination later
 trajectory setup --clients codex     # Add or refresh one client integration
 trajectory setup --clients cc,codex --install-client-shims # Make ordinary claude/codex launches use built-in wrappers
 trajectory setup --clients copilot   # Add or refresh GitHub Copilot CLI beta live capture
@@ -684,6 +686,8 @@ trajectory setup --clients zcode     # Add or refresh ZCode SQLite-backed previe
 trajectory backfill --from-zcode      # Repair existing ZCode durable history
 trajectory features enable commandcode_instrumentation
 trajectory setup --clients commandcode # Add or refresh CommandCode preview capture
+trajectory features enable muse_code_instrumentation
+trajectory setup --clients muse      # Add or refresh Muse Code preview capture
 trajectory features enable kimi_cli_instrumentation
 trajectory setup --clients kimi      # Add or refresh Kimi Code CLI preview capture
 trajectory features enable gptme_instrumentation
@@ -711,8 +715,8 @@ trajectory uninstrument all          # Remove every client integration
 `trajectory setup --clients ...` updates only client wiring. It skips Datadog
 site, service name, and API key prompts, and leaves existing export config
 unchanged. If no config file exists yet, it creates a capture-only config so
-local session capture can start; run `trajectory setup` later to configure
-Datadog export.
+local session capture can start; run `trajectory destination configure` later
+to configure Datadog export.
 
 Claude Code is a stricter boundary: Trajectory never adds, merges, or deletes
 Claude user settings itself, including `~/.claude.json`,
