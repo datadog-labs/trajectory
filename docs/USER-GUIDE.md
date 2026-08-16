@@ -1257,6 +1257,12 @@ trajectory repair metrics                              # Local-only historical m
 trajectory backfill-my-metrics --since 2026-07-05 --until 2026-08-05 --yes # user-driven Codex cost repair
 ```
 
+`--my-usage` and `--task-metrics` only shape the dry-run preview; they do not
+change what `--yes` executes. `--yes` alone always runs either the Codex-source
+cost repair described below or a `--campaign`-gated managed replay. There is
+currently no self-service `--yes` path that publishes non-Codex historical
+data (e.g. Claude Code) without a managed campaign.
+
 The explicit user-driven Codex repair can cover up to the effective
 `capture.retention_days` age window (`0` keeps history forever), reads only the
 user's Codex/Codex.app rollout history, requires `--yes` for publication, and
