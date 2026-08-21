@@ -67,6 +67,8 @@ jobs:
         run: |
           python3 -m py_compile \
             .github/scripts/public_release_mirror.py \
+            .github/scripts/public_release_from_source.py \
+            tests/test_public_release_from_source.py \
             tests/test_public_release_mirror.py
           python3 .github/scripts/public_release_mirror.py validate-contract \
             --contract contracts/public-release-mirror-v1.json
