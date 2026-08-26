@@ -1,12 +1,12 @@
 {
   "stable": {
-    "version": "0.5.37",
-    "tag": "v0.5.37",
-    "released_at": "2026-08-20T23:31:54Z"
+    "version": "0.5.38",
+    "tag": "v0.5.38",
+    "released_at": "2026-08-26T05:06:39Z"
   },
   "beta": {
-    "version": "0.5.37",
-    "tag": "v0.5.37",
-    "released_at": "2026-08-20T23:31:54Z"
+    "version": "0.5.38",
+    "tag": "v0.5.38",
+    "released_at": "2026-08-26T05:06:39Z"
   }
 }
