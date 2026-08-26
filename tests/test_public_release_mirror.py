@@ -1125,11 +1125,13 @@ class PublicReleaseMirrorTests(unittest.TestCase):
         self.assertEqual(calls[0][1]["Authorization"], "Bearer runner-token")
         self.assertTrue(
             calls[1][0].startswith(
-                "https://webhooks.build.datadoghq.com/sts/exchange?"
+                "https://webhooks.build.datadoghq.com/sts/pool/exchange?"
             )
         )
-        self.assertIn("scope=DataDog%2Ftrajectory", calls[1][0])
-        self.assertIn("identity=trajectory-labs.public-release-read", calls[1][0])
+        self.assertIn("policy=trajectory-labs.public-release-read", calls[1][0])
+        self.assertIn("pool_name=dd-octo-sts", calls[1][0])
+        self.assertIn("scope_repository.organization=DataDog", calls[1][0])
+        self.assertIn("scope_repository.repository=trajectory", calls[1][0])
         self.assertEqual(calls[1][1]["Authorization"], "Bearer oidc-token")
 
     def test_source_token_exchange_failure_reports_only_safe_identity_claims(self) -> None:

@@ -30,6 +30,7 @@ SOURCE_REQUEST_FILENAME = "public-release-request.json"
 SOURCE_RECEIPT_FILENAME = "public-release-publication-receipt.json"
 OCTO_STS_DOMAIN = "webhooks.build.datadoghq.com"
 OCTO_STS_AUDIENCE = "dd-octo-sts"
+OCTO_STS_POOL_NAME = "dd-octo-sts"
 VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SOURCE_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -1040,12 +1041,21 @@ def exchange_source_token(contract: dict[str, Any]) -> str:
         {"Authorization": f"Bearer {oidc_request_token}"},
     )
     oidc_token = require_string(oidc.get("value"), "GitHub OIDC token")
+    source_repository = require_string(
+        contract["source_identity"]["repository"], "source repository"
+    )
+    source_parts = source_repository.split("/")
+    if len(source_parts) != 2 or not all(source_parts):
+        raise MirrorError("source repository must be an owner/repository pair")
+    source_owner, source_name = source_parts
     exchange_url = (
-        f"https://{OCTO_STS_DOMAIN}/sts/exchange?"
+        f"https://{OCTO_STS_DOMAIN}/sts/pool/exchange?"
         + urllib.parse.urlencode(
             {
-                "scope": contract["source_identity"]["repository"],
-                "identity": contract["source_identity"]["read_policy"],
+                "policy": contract["source_identity"]["read_policy"],
+                "pool_name": OCTO_STS_POOL_NAME,
+                "scope_repository.organization": source_owner,
+                "scope_repository.repository": source_name,
             }
         )
     )
