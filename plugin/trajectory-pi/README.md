@@ -44,4 +44,4 @@ extension is not an OhMyPi live-capture package.
 
 ## Tools
 
-The extension registers `trajectory_status`, `trajectory_flush`, and `trajectory_incognito`. `trajectory_incognito` toggles publish suppression for the current Pi session while local JSONL capture continues.
+The extension does not register native Pi tools, keeping Trajectory tool schemas out of the model context by default. Tool access remains available through the setup-managed MCP configuration when explicitly used.
