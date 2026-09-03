@@ -17,14 +17,19 @@ SPEC.loader.exec_module(SOURCE_MIRROR)
 
 
 class FakeSourceClient:
-    def __init__(self, release: dict[str, object]) -> None:
+    def __init__(
+        self,
+        release: dict[str, object],
+        latest: dict[str, object] | None = None,
+    ) -> None:
         self.release = release
+        self.latest = latest or release
 
     def get_release_by_tag(self, tag: str) -> dict[str, object] | None:
         return self.release if self.release["tag_name"] == tag else None
 
     def get_latest_release(self) -> dict[str, object]:
-        return self.release
+        return self.latest
 
 
 def release_fixture() -> dict[str, object]:
@@ -48,6 +53,19 @@ def release_fixture() -> dict[str, object]:
         "prerelease": False,
         "assets": assets,
     }
+
+
+def beta_release_fixture() -> dict[str, object]:
+    release = release_fixture()
+    release.update(
+        {
+            "tag_name": "v0.6.0-beta",
+            "name": "Trajectory 0.6.0-beta",
+            "published_at": "2026-09-03T12:34:56Z",
+            "prerelease": True,
+        }
+    )
+    return release
 
 
 class PublicReleaseFromSourceTests(unittest.TestCase):
@@ -91,8 +109,30 @@ class PublicReleaseFromSourceTests(unittest.TestCase):
                 target_sha="a" * 40,
             )
 
+    def test_build_request_accepts_beta_prerelease_only_when_nonlatest(self) -> None:
+        release = beta_release_fixture()
+        request, _ = SOURCE_MIRROR.build_request(
+            FakeSourceClient(
+                release,
+                latest={"id": 9999, "tag_name": "v0.5.37"},
+            ),
+            version="0.6.0-beta",
+            target_sha="a" * 40,
+        )
+
+        self.assertEqual(request["release_mode"], "beta")
+        self.assertTrue(request["release"]["prerelease"])
+        self.assertFalse(request["release"]["make_latest"])
+        with self.assertRaisesRegex(SOURCE_MIRROR.mirror.MirrorError, "non-latest"):
+            SOURCE_MIRROR.build_request(
+                FakeSourceClient(release),
+                version="0.6.0-beta",
+                target_sha="a" * 40,
+            )
+
     def test_metadata_must_advance_stable_and_beta_together(self) -> None:
         request = {
+            "release_mode": "full",
             "version": "0.5.37",
             "tag": "v0.5.37",
             "published_at": "2026-08-20T23:31:54Z",
@@ -108,6 +148,31 @@ class PublicReleaseFromSourceTests(unittest.TestCase):
         with self.assertRaisesRegex(SOURCE_MIRROR.mirror.MirrorError, "RELEASES.json"):
             SOURCE_MIRROR.validate_metadata(
                 {"stable": expected, "beta": {**expected, "version": "0.5.36"}},
+                request,
+            )
+
+    def test_beta_metadata_advances_only_beta_ring(self) -> None:
+        request = {
+            "release_mode": "beta",
+            "version": "0.6.0-beta",
+            "tag": "v0.6.0-beta",
+            "published_at": "2026-09-03T12:34:56Z",
+        }
+        stable = {
+            "version": "0.5.37",
+            "tag": "v0.5.37",
+            "released_at": "2026-08-20T23:31:54Z",
+        }
+        beta = {
+            "version": "0.6.0-beta",
+            "tag": "v0.6.0-beta",
+            "released_at": "2026-09-03T12:34:56Z",
+        }
+
+        SOURCE_MIRROR.validate_metadata({"stable": stable, "beta": beta}, request)
+        with self.assertRaisesRegex(SOURCE_MIRROR.mirror.MirrorError, "beta metadata"):
+            SOURCE_MIRROR.validate_metadata(
+                {"stable": stable, "beta": {**beta, "version": "0.5.37"}},
                 request,
             )
 
