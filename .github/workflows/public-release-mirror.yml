@@ -15,7 +15,7 @@ on:
         default: ''
         type: string
       version:
-        description: Canonical stable version for an approved source-release mirror
+        description: Canonical X.Y.Z or X.Y.Z-beta version for an approved source-release mirror
         required: false
         default: ''
         type: string

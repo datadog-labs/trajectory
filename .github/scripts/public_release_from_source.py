@@ -53,16 +53,24 @@ def build_request(
     target_sha: str,
 ) -> tuple[dict[str, object], dict[str, object]]:
     if not mirror.VERSION_RE.fullmatch(version):
-        raise mirror.MirrorError("version must be canonical X.Y.Z")
+        raise mirror.MirrorError("version must be canonical X.Y.Z or X.Y.Z-beta")
+    release_mode = mirror.release_mode_for_version(version)
+    prerelease = release_mode == "beta"
+    make_latest = release_mode == "full"
     tag = f"v{version}"
     release = source_client.get_release_by_tag(tag)
     if release is None:
         raise mirror.MirrorError("source release does not exist")
-    if release.get("draft") is not False or release.get("prerelease") is not False:
-        raise mirror.MirrorError("source release must be published and stable")
+    if (
+        release.get("draft") is not False
+        or release.get("prerelease") is not prerelease
+    ):
+        raise mirror.MirrorError("source release state does not match its version channel")
     latest = source_client.get_latest_release()
-    if latest.get("id") != release.get("id") or latest.get("tag_name") != tag:
-        raise mirror.MirrorError("source release must be GitHub latest")
+    is_latest = latest.get("id") == release.get("id") and latest.get("tag_name") == tag
+    if is_latest is not make_latest:
+        state = "latest" if make_latest else "non-latest"
+        raise mirror.MirrorError(f"source release must be GitHub {state}")
 
     name = mirror.require_string(release.get("name"), "source release name")
     body = mirror.require_string(release.get("body"), "source release body", nonempty=False)
@@ -91,6 +99,7 @@ def build_request(
         raise mirror.MirrorError("source release exceeds the bounded mirror size")
 
     request: dict[str, object] = {
+        "release_mode": release_mode,
         "version": version,
         "tag": tag,
         "release": {
@@ -100,6 +109,8 @@ def build_request(
             "name": name,
             "body": body,
             "target_commitish": target_sha,
+            "prerelease": prerelease,
+            "make_latest": make_latest,
         },
         "asset_manifest": {"assets": assets},
         "published_at": published_at,
@@ -113,8 +124,24 @@ def validate_metadata(metadata: dict[str, object], request: dict[str, object]) -
         "tag": request["tag"],
         "released_at": request["published_at"],
     }
-    if metadata.get("stable") != expected or metadata.get("beta") != expected:
-        raise mirror.MirrorError("RELEASES.json must match the mirrored stable release")
+    if request["release_mode"] == "full":
+        if metadata.get("stable") != expected or metadata.get("beta") != expected:
+            raise mirror.MirrorError(
+                "RELEASES.json stable and beta rings must match the stable release"
+            )
+        return
+    stable = metadata.get("stable")
+    if not isinstance(stable, dict):
+        raise mirror.MirrorError("RELEASES.json must preserve stable metadata")
+    stable_version = stable.get("version")
+    if (
+        not isinstance(stable_version, str)
+        or mirror.release_mode_for_version(stable_version) != "full"
+        or stable.get("tag") != f"v{stable_version}"
+    ):
+        raise mirror.MirrorError("RELEASES.json stable metadata must remain stable")
+    if metadata.get("beta") != expected:
+        raise mirror.MirrorError("RELEASES.json beta metadata must match the beta release")
 
 
 def apply_release(args: argparse.Namespace) -> dict[str, object]:
@@ -152,7 +179,7 @@ def apply_release(args: argparse.Namespace) -> dict[str, object]:
         "target_sha": args.expected_target_sha,
         "workflow_run_id": args.workflow_run_id,
         "assets": request["asset_manifest"]["assets"],
-        "latest": True,
+        "latest": request["release"]["make_latest"],
     }
     args.receipt_out.parent.mkdir(parents=True, exist_ok=True)
     args.receipt_out.write_bytes(mirror.canonical_json(receipt) + b"\n")

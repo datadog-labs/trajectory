@@ -24,8 +24,8 @@ assert SPEC and SPEC.loader
 MIRROR = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MIRROR)
 
-SOURCE_WORKFLOW_SHA = "a" * 40
 CANDIDATE_SOURCE_SHA = "c" * 40
+SOURCE_WORKFLOW_SHA = CANDIDATE_SOURCE_SHA
 TARGET_SHA = "b" * 40
 SOURCE_RUN_ID = 9001
 SOURCE_RUN_ATTEMPT = 3
@@ -60,7 +60,8 @@ def refresh_request(request: dict[str, Any]) -> bytes:
 def build_fixture(
     *,
     release_mode: str = "full",
-    prerelease: bool = False,
+    prerelease: bool | None = None,
+    make_latest: bool | None = None,
     valid_checksum_manifest: bool = True,
 ) -> tuple[dict[str, Any], dict[int, bytes], bytes]:
     contract = json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
@@ -77,22 +78,27 @@ def build_fixture(
         {"name": name, "size": len(contents[name]), "sha256": digest(contents[name])}
         for name in contract["required_assets"]
     ]
+    version = "0.5.28-beta" if release_mode == "beta" else "0.5.28"
+    if prerelease is None:
+        prerelease = release_mode == "beta"
+    if make_latest is None:
+        make_latest = release_mode == "full"
     manifest = {
         "schema_version": 1,
         "kind": "trajectory-release-asset-manifest",
-        "version": "0.5.28",
-        "tag": "v0.5.28",
+        "version": version,
+        "tag": f"v{version}",
         "source_sha": CANDIDATE_SOURCE_SHA,
         "assets": assets,
     }
     manifest_sha = canonical_digest(manifest)
     release = {
         "source_release_id": 6001,
-        "name": "Trajectory 0.5.28",
-        "body": "Trajectory 0.5.28 public binary release.",
+        "name": f"Trajectory {version}",
+        "body": f"Trajectory {version} public binary release.",
         "target_commitish": TARGET_SHA,
         "prerelease": prerelease,
-        "make_latest": True,
+        "make_latest": make_latest,
     }
     pilot = pilot_fixture()
     publication_receipt = {
@@ -100,8 +106,8 @@ def build_fixture(
         "kind": "trajectory-publication-receipt",
         "status": "published",
         "release_mode": release_mode,
-        "version": "0.5.28",
-        "tag": "v0.5.28",
+        "version": version,
+        "tag": f"v{version}",
         "source_sha": CANDIDATE_SOURCE_SHA,
         "source_run_id": SOURCE_RUN_ID,
         "published_at": "2026-07-25T12:34:56Z",
@@ -117,17 +123,20 @@ def build_fixture(
         "schema_version": 1,
         "kind": "trajectory-public-release-mirror-request",
         "release_mode": release_mode,
-        "version": "0.5.28",
-        "tag": "v0.5.28",
+        "version": version,
+        "tag": f"v{version}",
         "source": {
             "repository": "DataDog/trajectory",
             "workflow_ref": (
                 "DataDog/trajectory/.github/workflows/"
-                "public-release-publication.yml@refs/heads/main"
+                f"public-release-publication.yml@refs/tags/release-ci-v{version}-"
+                f"{CANDIDATE_SOURCE_SHA[:9]}"
             ),
             "environment": "public-release-publication",
             "event_name": "workflow_dispatch",
-            "ref": "refs/heads/main",
+            "ref": (
+                f"refs/tags/release-ci-v{version}-{CANDIDATE_SOURCE_SHA[:9]}"
+            ),
             "sha": SOURCE_WORKFLOW_SHA,
             "candidate_sha": CANDIDATE_SOURCE_SHA,
             "run_id": SOURCE_RUN_ID,
@@ -150,11 +159,11 @@ def build_fixture(
 
 
 def metadata_for(request: dict[str, Any]) -> dict[str, Any]:
-    return {
+    metadata = {
         "stable": {
-            "version": request["version"],
-            "tag": request["tag"],
-            "released_at": request["publication_receipt"]["published_at"],
+            "version": "0.5.27",
+            "tag": "v0.5.27",
+            "released_at": "2026-07-24T19:23:32Z",
         },
         "beta": {
             "version": "0.5.27",
@@ -162,6 +171,13 @@ def metadata_for(request: dict[str, Any]) -> dict[str, Any]:
             "released_at": "2026-07-24T19:23:32Z",
         },
     }
+    ring = "beta" if request["release_mode"] == "beta" else "stable"
+    metadata[ring] = {
+        "version": request["version"],
+        "tag": request["tag"],
+        "released_at": request["publication_receipt"]["published_at"],
+    }
+    return metadata
 
 
 def release_assets(request: dict[str, Any]) -> list[dict[str, Any]]:
@@ -179,11 +195,12 @@ def release_assets(request: dict[str, Any]) -> list[dict[str, Any]]:
 
 def source_publication_receipt(request: dict[str, Any]) -> dict[str, Any]:
     publication_receipt = request["publication_receipt"]
-    return {
+    mode = request["release_mode"]
+    receipt = {
         "schema_version": 1,
         "kind": "trajectory.public_release_publication.receipt",
         "terminal_status": "success",
-        "mode": "full",
+        "mode": mode,
         "binding": {
             "repository": request["source"]["repository"],
             "source_sha": request["source"]["candidate_sha"],
@@ -202,13 +219,17 @@ def source_publication_receipt(request: dict[str, Any]) -> dict[str, Any]:
                 "run_id": "7001",
                 "run_attempt": "1",
                 "receipt_sha256": "sha256:" + "1" * 64,
-                "validation_tag": "release-ci-v0.5.28-ccccccccc",
+                "validation_tag": f"release-ci-v{request['version']}-ccccccccc",
             },
             "candidate_build": {
                 "run_id": 7000,
                 "run_attempt": 1,
                 "receipt_sha256": "sha256:" + "2" * 64,
-                "validation_tag": "release-ci-v0.5.28-ccccccccc",
+                "validation_tag": f"release-ci-v{request['version']}-ccccccccc",
+            },
+            "public_mirror": {
+                "repository": request["target"]["repository"],
+                "target_sha": request["target"]["sha"],
             },
             "pilot": {
                 "status": request["pilot"]["status"],
@@ -233,11 +254,15 @@ def source_publication_receipt(request: dict[str, Any]) -> dict[str, Any]:
                 "signer_identity": "release-signer",
                 "trust_sha256": "sha256:" + "6" * 64,
             },
-            "candidate_publication": {
-                "run_id": 8001,
-                "run_attempt": 1,
-                "receipt_sha256": "sha256:" + "7" * 64,
-            },
+            "candidate_publication": (
+                {
+                    "run_id": 8001,
+                    "run_attempt": 1,
+                    "receipt_sha256": "sha256:" + "7" * 64,
+                }
+                if mode == "full"
+                else None
+            ),
         },
         "publication": {
             "tag": request["tag"],
@@ -252,9 +277,9 @@ def source_publication_receipt(request: dict[str, Any]) -> dict[str, Any]:
             "title": request["release"]["name"],
             "body": request["release"]["body"],
             "body_sha256": "sha256:" + digest(request["release"]["body"].encode()),
-            "changelog_path": "docs/changelog/v0.5.28.md",
-            "prerelease": False,
-            "latest": True,
+            "changelog_path": f"docs/release-notes/v{request['version']}.md",
+            "prerelease": request["release"]["prerelease"],
+            "latest": request["release"]["make_latest"],
             "assets": sorted(
                 [
                     {
@@ -266,23 +291,38 @@ def source_publication_receipt(request: dict[str, Any]) -> dict[str, Any]:
                 ],
                 key=lambda asset: asset["name"],
             ),
-            "url": "https://github.com/DataDog/trajectory/releases/tag/v0.5.28",
+            "url": f"https://github.com/DataDog/trajectory/releases/tag/{request['tag']}",
+            "release_branch": {
+                "final": f"release/v{request['version']}",
+                "final_target": request["source"]["candidate_sha"],
+                "prep": f"release/v{request['version']}-prep",
+                "prep_removed": True,
+            },
         },
         "guarantees": {
             "rebuild_performed": False,
-            "asset_uploads": [],
+            "asset_uploads": (
+                []
+                if mode == "full"
+                else [asset["name"] for asset in request["asset_manifest"]["assets"]]
+            ),
             "asset_reuploads": [],
-            "metadata_only_promotion": True,
+            "metadata_only_promotion": mode == "full",
         },
         "lifecycle": {
             "issued_at": publication_receipt["published_at"],
             "expires_at": "2026-07-26T12:34:56Z",
         },
         "blockers": [],
-        "outcome": "promoted",
-        "candidate_publication_receipt_sha256": "sha256:" + "7" * 64,
-        "mutation_summary": {"count": 1, "metadata_updates": 1},
+        "outcome": "promoted" if mode == "full" else "published",
+        "mutation_summary": {
+            "count": 1,
+            "metadata_updates": 1 if mode == "full" else 0,
+        },
     }
+    if mode == "full":
+        receipt["candidate_publication_receipt_sha256"] = "sha256:" + "7" * 64
+    return receipt
 
 
 class FakeSource:
@@ -304,7 +344,9 @@ class FakeSource:
             "event": "workflow_dispatch",
             "name": "Public Release Publication",
             "path": ".github/workflows/public-release-publication.yml",
-            "head_branch": "main",
+            "head_branch": (
+                f"release-ci-v{request['version']}-{CANDIDATE_SOURCE_SHA[:9]}"
+            ),
             "head_sha": SOURCE_WORKFLOW_SHA,
             "run_attempt": SOURCE_RUN_ATTEMPT,
             "status": "completed",
@@ -317,7 +359,7 @@ class FakeSource:
             "body": request["release"]["body"],
             "target_commitish": CANDIDATE_SOURCE_SHA,
             "draft": False,
-            "prerelease": False,
+            "prerelease": request["release"]["prerelease"],
             "assets": release_assets(request),
         }
         self.artifact_name = (
@@ -395,7 +437,7 @@ class FakeTarget:
             "body": self.request["release"]["body"],
             "target_commitish": TARGET_SHA,
             "draft": draft,
-            "prerelease": False,
+            "prerelease": self.request["release"]["prerelease"],
             "assets": [
                 {
                     **asset,
@@ -419,7 +461,7 @@ class FakeTarget:
             "body": request["release"]["body"],
             "target_commitish": request["release"]["target_commitish"],
             "draft": True,
-            "prerelease": False,
+            "prerelease": request["release"]["prerelease"],
             "assets": [],
         }
         return copy.deepcopy(self.release)
@@ -448,16 +490,19 @@ class FakeTarget:
         assert self.release is not None and release_id == self.release["id"]
         return copy.deepcopy(self.release)
 
-    def publish_release(self, release_id: int) -> dict[str, Any]:
+    def publish_release(
+        self, release_id: int, *, prerelease: bool, make_latest: bool
+    ) -> dict[str, Any]:
         assert self.release is not None and release_id == self.release["id"]
         self.publish_calls += 1
         self.release["draft"] = False
-        self.release["prerelease"] = False
+        self.release["prerelease"] = prerelease
         if self.mutate_after_publish == "asset":
             self.release["assets"][0]["id"] += 1000
         elif self.mutate_after_publish == "metadata":
             self.release["body"] = "changed after validation"
-        self.latest = copy.deepcopy(self.release)
+        if make_latest:
+            self.latest = copy.deepcopy(self.release)
         return copy.deepcopy(self.release)
 
     def get_latest_release(self) -> dict[str, Any]:
@@ -500,9 +545,16 @@ class PublicReleaseMirrorTests(unittest.TestCase):
                 receipt_out=Path(directory) / "receipt.json",
             )
 
-    def test_contract_accepts_only_full_and_exact_canonical_assets(self) -> None:
+    def test_contract_accepts_full_beta_and_exact_canonical_assets(self) -> None:
         MIRROR.validate_contract(self.contract)
-        self.assertEqual(self.contract["accepted_release_modes"], ["full"])
+        self.assertEqual(self.contract["accepted_release_modes"], ["full", "beta"])
+        self.assertEqual(
+            self.contract["release_modes"],
+            {
+                "full": {"prerelease": False, "make_latest": True},
+                "beta": {"prerelease": True, "make_latest": False},
+            },
+        )
         self.assertEqual(
             self.contract["required_assets"],
             [
@@ -531,6 +583,11 @@ class PublicReleaseMirrorTests(unittest.TestCase):
             self.contract["source_identity"]["publication_artifact_prefix"],
             "public-release-publication-",
         )
+        self.assertEqual(
+            self.contract["source_identity"]["workflow_path"],
+            ".github/workflows/public-release-publication.yml",
+        )
+        self.assertEqual(self.contract["source_identity"]["default_branch"], "main")
 
     def test_pass_and_waived_pilot_contracts_publish(self) -> None:
         for status in ("pass", "waived"):
@@ -653,10 +710,11 @@ class PublicReleaseMirrorTests(unittest.TestCase):
         self.assertEqual(target.create_calls, 0)
         self.assertEqual(target.publish_calls, 0)
 
-    def test_candidate_and_prerelease_requests_fail_before_target_mutation(self) -> None:
+    def test_candidate_and_mismatched_channel_requests_fail_before_target_mutation(self) -> None:
         cases = (
             build_fixture(release_mode="candidate"),
             build_fixture(prerelease=True),
+            build_fixture(release_mode="beta", make_latest=True),
         )
         for request, payloads, raw in cases:
             with self.subTest(mode=request["release_mode"], prerelease=request["release"]["prerelease"]):
@@ -747,6 +805,7 @@ class PublicReleaseMirrorTests(unittest.TestCase):
             "workflow_sha",
             "workflow_run_id",
             "workflow_run_attempt",
+            "public_mirror_target",
             "candidate_sha",
             "version",
             "tag",
@@ -775,6 +834,8 @@ class PublicReleaseMirrorTests(unittest.TestCase):
                 receipt["binding"]["workflow"]["run_id"] = SOURCE_RUN_ID + 1
             elif case == "workflow_run_attempt":
                 receipt["binding"]["workflow"]["run_attempt"] = SOURCE_RUN_ATTEMPT + 1
+            elif case == "public_mirror_target":
+                receipt["binding"]["public_mirror"]["target_sha"] = "f" * 40
             elif case == "candidate_sha":
                 receipt["binding"]["source_sha"] = "f" * 40
             elif case == "version":
@@ -907,7 +968,15 @@ class PublicReleaseMirrorTests(unittest.TestCase):
         }
         for record, error in cases.items():
             request, payloads, _ = build_fixture()
-            request["source"]["candidate_sha"] = "f" * 40
+            changed_sha = "f" * 40
+            validation_tag = f"release-ci-v{request['version']}-{changed_sha[:9]}"
+            request["source"]["sha"] = changed_sha
+            request["source"]["candidate_sha"] = changed_sha
+            request["source"]["ref"] = f"refs/tags/{validation_tag}"
+            request["source"]["workflow_ref"] = (
+                "DataDog/trajectory/.github/workflows/"
+                f"public-release-publication.yml@refs/tags/{validation_tag}"
+            )
             request["asset_manifest"]["source_sha"] = "f" * 40
             request["publication_receipt"]["source_sha"] = "f" * 40
             if record == "publication_receipt":
@@ -919,11 +988,14 @@ class PublicReleaseMirrorTests(unittest.TestCase):
                 ]
             raw = json.dumps(request, sort_keys=True, separators=(",", ":")).encode()
             target = FakeTarget(request, payloads, state="absent")
+            source = FakeSource(request, payloads, raw)
+            source.run["head_sha"] = changed_sha
+            source.run["head_branch"] = validation_tag
             with self.subTest(record=record), self.assertRaisesRegex(
                 MIRROR.MirrorError,
                 error,
             ):
-                self.apply(request, payloads, raw, target)
+                self.apply(request, payloads, raw, target, source=source)
             self.assertEqual(target.create_calls, 0)
 
     def test_absent_target_release_is_created_uploaded_and_published(self) -> None:
@@ -959,6 +1031,22 @@ class PublicReleaseMirrorTests(unittest.TestCase):
         self.assertEqual(target.create_calls, 1)
         self.assertEqual(target.upload_calls, self.contract["required_assets"])
         self.assertEqual(target.publish_calls, 1)
+
+    def test_beta_release_is_prerelease_nonlatest_and_preserves_stable_metadata(self) -> None:
+        request, payloads, raw = build_fixture(release_mode="beta")
+        target = FakeTarget(request, payloads, state="absent")
+        metadata = metadata_for(request)
+        stable_before = copy.deepcopy(metadata["stable"])
+
+        receipt = self.apply(request, payloads, raw, target, metadata=metadata)
+
+        self.assertEqual(receipt["status"], "published")
+        self.assertFalse(receipt["latest"])
+        self.assertEqual(metadata["stable"], stable_before)
+        self.assertEqual(metadata["beta"]["version"], "0.5.28-beta")
+        assert target.release is not None
+        self.assertTrue(target.release["prerelease"])
+        self.assertEqual(target.latest["tag_name"], "v0.5.27")
 
     def test_target_receipt_binds_exact_correlated_workflow_run(self) -> None:
         request, payloads, raw = build_fixture()
@@ -1061,6 +1149,15 @@ class PublicReleaseMirrorTests(unittest.TestCase):
         metadata = metadata_for(request)
         metadata["stable"]["version"] = "0.5.27"
         with self.assertRaisesRegex(MIRROR.MirrorError, "stable metadata"):
+            self.apply(request, payloads, raw, target, metadata=metadata)
+        self.assertEqual(target.create_calls, 0)
+
+    def test_repository_metadata_must_match_beta_receipt_without_changing_stable(self) -> None:
+        request, payloads, raw = build_fixture(release_mode="beta")
+        target = FakeTarget(request, payloads, state="absent")
+        metadata = metadata_for(request)
+        metadata["beta"]["version"] = "0.5.27"
+        with self.assertRaisesRegex(MIRROR.MirrorError, "beta metadata"):
             self.apply(request, payloads, raw, target, metadata=metadata)
         self.assertEqual(target.create_calls, 0)
 
@@ -1184,7 +1281,7 @@ class PublicReleaseMirrorTests(unittest.TestCase):
 
         with mock.patch.object(client, "_json", side_effect=fake_json):
             client.create_draft_release(request)
-            client.publish_release(7001)
+            client.publish_release(7001, prerelease=False, make_latest=True)
 
         self.assertEqual(calls[0][0:2], ("POST", "/repos/datadog-labs/trajectory/releases"))
         self.assertEqual(
@@ -1297,11 +1394,16 @@ class PublicReleaseMirrorTests(unittest.TestCase):
             dispatch_policy,
         )
         self.assertIn("event_name: workflow_dispatch", dispatch_policy)
-        self.assertIn("ref: refs/heads/main", dispatch_policy)
+        self.assertIn(
+            r"ref: refs/tags/release-ci-v[0-9]+\.[0-9]+\.[0-9]+"
+            r"(-beta)?-[0-9a-f]{9,40}",
+            dispatch_policy,
+        )
         self.assertIn("repository: DataDog/trajectory", dispatch_policy)
         self.assertIn(
             r"job_workflow_ref: DataDog/trajectory/\.github/workflows/"
-            r"public-release-publication\.yml@refs/heads/main",
+            r"public-release-publication\.yml@refs/tags/release-ci-v[0-9]+\."
+            r"[0-9]+\.[0-9]+(-beta)?-[0-9a-f]{9,40}",
             dispatch_policy,
         )
         dispatch_permissions = dispatch_policy.split("permissions:", 1)[1]

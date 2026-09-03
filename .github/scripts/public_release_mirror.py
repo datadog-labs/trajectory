@@ -31,7 +31,9 @@ SOURCE_RECEIPT_FILENAME = "public-release-publication-receipt.json"
 OCTO_STS_DOMAIN = "webhooks.build.datadoghq.com"
 OCTO_STS_AUDIENCE = "dd-octo-sts"
 OCTO_STS_POOL_NAME = "dd-octo-sts"
-VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
+VERSION_RE = re.compile(
+    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-beta)?$"
+)
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SOURCE_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 TIMESTAMP_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
@@ -149,6 +151,19 @@ def require_nonnegative_int(value: Any, label: str) -> int:
     return value
 
 
+def release_mode_for_version(version: str) -> str:
+    if not VERSION_RE.fullmatch(version):
+        raise MirrorError("version must be canonical X.Y.Z or X.Y.Z-beta")
+    return "beta" if version.endswith("-beta") else "full"
+
+
+def release_policy(contract: dict[str, Any], mode: str) -> dict[str, bool]:
+    modes = contract.get("release_modes")
+    if not isinstance(modes, dict) or mode not in modes:
+        raise MirrorError(f"contract has no release policy for mode {mode}")
+    return modes[mode]
+
+
 def validate_contract(contract: dict[str, Any]) -> None:
     exact_keys(
         contract,
@@ -159,7 +174,7 @@ def validate_contract(contract: dict[str, Any]) -> None:
             "target",
             "accepted_release_modes",
             "required_assets",
-            "release",
+            "release_modes",
             "limits",
         },
         "contract",
@@ -173,10 +188,10 @@ def validate_contract(contract: dict[str, Any]) -> None:
         contract["source_identity"],
         {
             "repository",
-            "workflow_ref",
+            "workflow_path",
+            "default_branch",
             "environment",
             "event_name",
-            "ref",
             "read_policy",
             "publication_artifact_prefix",
         },
@@ -184,13 +199,17 @@ def validate_contract(contract: dict[str, Any]) -> None:
     )
     for field in source:
         require_string(source[field], f"contract.source_identity.{field}")
+    if source["workflow_path"] != ".github/workflows/public-release-publication.yml":
+        raise MirrorError("contract.source_identity.workflow_path is not supported")
+    if source["default_branch"] != "main":
+        raise MirrorError("contract.source_identity.default_branch must be main")
 
     target = exact_keys(contract["target"], {"repository", "environment", "ref"}, "contract.target")
     for field in target:
         require_string(target[field], f"contract.target.{field}")
 
-    if contract["accepted_release_modes"] != ["full"]:
-        raise MirrorError("contract must accept only full releases")
+    if contract["accepted_release_modes"] != ["full", "beta"]:
+        raise MirrorError("contract must accept full and beta releases")
     assets = contract["required_assets"]
     if not isinstance(assets, list) or len(assets) < 2 or len(set(assets)) != len(assets):
         raise MirrorError("contract.required_assets must contain unique binary names and a checksum")
@@ -201,9 +220,21 @@ def validate_contract(contract: dict[str, Any]) -> None:
     if assets[-1] != "checksums.sha256":
         raise MirrorError("checksums.sha256 must be the final required asset")
 
-    release = exact_keys(contract["release"], {"prerelease", "make_latest"}, "contract.release")
-    if release != {"prerelease": False, "make_latest": True}:
-        raise MirrorError("contract.release must require non-prerelease and latest")
+    release_modes = exact_keys(
+        contract["release_modes"], {"full", "beta"}, "contract.release_modes"
+    )
+    expected_release_modes = {
+        "full": {"prerelease": False, "make_latest": True},
+        "beta": {"prerelease": True, "make_latest": False},
+    }
+    for mode, expected in expected_release_modes.items():
+        release = exact_keys(
+            release_modes[mode],
+            {"prerelease", "make_latest"},
+            f"contract.release_modes.{mode}",
+        )
+        if release != expected:
+            raise MirrorError(f"contract.release_modes.{mode} is invalid")
 
     limits = exact_keys(
         contract["limits"],
@@ -349,12 +380,15 @@ def validate_request(
     )
     if request["schema_version"] != 1 or request["kind"] != REQUEST_KIND:
         raise MirrorError("request schema or kind is not supported")
-    if request["release_mode"] not in contract["accepted_release_modes"]:
-        raise MirrorError("only full releases may be published publicly")
+    mode = require_string(request["release_mode"], "request.release_mode")
+    if mode not in contract["accepted_release_modes"]:
+        raise MirrorError("only full and beta releases may be published publicly")
 
     version = require_string(request["version"], "request.version")
     if not VERSION_RE.fullmatch(version):
-        raise MirrorError("request.version must be X.Y.Z without a prerelease suffix")
+        raise MirrorError("request.version must be canonical X.Y.Z or X.Y.Z-beta")
+    if release_mode_for_version(version) != mode:
+        raise MirrorError("request.release_mode does not match request.version")
     tag = require_string(request["tag"], "request.tag")
     if tag != f"v{version}":
         raise MirrorError("request.tag must be v followed by request.version")
@@ -373,7 +407,7 @@ def validate_request(
         },
         "request.source",
     )
-    for field in ("repository", "workflow_ref", "environment", "event_name", "ref"):
+    for field in ("repository", "environment", "event_name"):
         if source[field] != contract["source_identity"][field]:
             raise MirrorError(f"request.source.{field} does not match the trusted source")
     source_workflow_sha = require_string(source["sha"], "request.source.sha")
@@ -388,6 +422,20 @@ def validate_request(
     if not SOURCE_SHA_RE.fullmatch(candidate_source_sha):
         raise MirrorError(
             "request.source.candidate_sha must be a lowercase 40-character Git SHA"
+        )
+    validation_tag = f"release-ci-v{version}-{candidate_source_sha[:9]}"
+    expected_ref = f"refs/tags/{validation_tag}"
+    expected_workflow_ref = (
+        f"{contract['source_identity']['repository']}/"
+        f"{contract['source_identity']['workflow_path']}@{expected_ref}"
+    )
+    if (
+        source_workflow_sha != candidate_source_sha
+        or source["ref"] != expected_ref
+        or source["workflow_ref"] != expected_workflow_ref
+    ):
+        raise MirrorError(
+            "request source must be the exact immutable release validation tag"
         )
     if require_positive_int(source["run_id"], "request.source.run_id") != source_run_id:
         raise MirrorError("request.source.run_id does not match the authenticated source run")
@@ -417,10 +465,12 @@ def validate_request(
     require_string(release["body"], "request.release.body", nonempty=False)
     if release["target_commitish"] != expected_target_sha:
         raise MirrorError("request.release.target_commitish must match the workflow checkout")
-    if release["prerelease"] is not False:
-        raise MirrorError("prerelease requests must not publish publicly")
-    if release["make_latest"] is not True:
-        raise MirrorError("full public releases must set latest")
+    policy = release_policy(contract, mode)
+    if {
+        "prerelease": release["prerelease"],
+        "make_latest": release["make_latest"],
+    } != policy:
+        raise MirrorError("request release metadata does not match its release mode")
 
     pilot = validate_pilot_binding(request["pilot"], "request.pilot")
 
@@ -468,8 +518,10 @@ def validate_request(
     )
     if receipt["schema_version"] != 1 or receipt["kind"] != PUBLICATION_RECEIPT_KIND:
         raise MirrorError("request.publication_receipt schema or kind is not supported")
-    if receipt["status"] != "published" or receipt["release_mode"] != "full":
-        raise MirrorError("request.publication_receipt must prove a completed full publication")
+    if receipt["status"] != "published" or receipt["release_mode"] != mode:
+        raise MirrorError(
+            "request.publication_receipt must prove the requested publication mode"
+        )
     expected_identity = (
         version,
         tag,
@@ -528,32 +580,37 @@ def validate_source_publication_receipt(
     contract: dict[str, Any],
     source_run: dict[str, Any],
 ) -> None:
+    mode = request["release_mode"]
+    receipt_keys = {
+        "schema_version",
+        "kind",
+        "terminal_status",
+        "mode",
+        "binding",
+        "publication",
+        "guarantees",
+        "lifecycle",
+        "blockers",
+        "outcome",
+        "mutation_summary",
+    }
+    if mode == "full":
+        receipt_keys.add("candidate_publication_receipt_sha256")
     exact_keys(
         receipt,
-        {
-            "schema_version",
-            "kind",
-            "terminal_status",
-            "mode",
-            "binding",
-            "publication",
-            "guarantees",
-            "lifecycle",
-            "blockers",
-            "outcome",
-            "candidate_publication_receipt_sha256",
-            "mutation_summary",
-        },
+        receipt_keys,
         "source publication receipt",
     )
     if (
         receipt["schema_version"] != 1
         or receipt["kind"] != SOURCE_PUBLICATION_RECEIPT_KIND
         or receipt["terminal_status"] != "success"
-        or receipt["mode"] != "full"
+        or receipt["mode"] != mode
         or receipt["blockers"] != []
     ):
-        raise MirrorError("source publication receipt must prove a successful full publication")
+        raise MirrorError(
+            "source publication receipt must prove the requested successful publication"
+        )
 
     binding = exact_keys(
         receipt["binding"],
@@ -564,21 +621,37 @@ def validate_source_publication_receipt(
             "workflow",
             "readiness",
             "candidate_build",
+            "public_mirror",
             "pilot",
             "signed_tag",
             "candidate_publication",
         },
         "source publication receipt.binding",
     )
-    for field in (
-        "readiness",
-        "candidate_build",
-        "pilot",
-        "signed_tag",
-        "candidate_publication",
-    ):
+    for field in ("readiness", "candidate_build", "pilot", "signed_tag"):
         if not isinstance(binding[field], dict):
             raise MirrorError(f"source publication receipt.binding.{field} must be an object")
+    candidate_publication = binding["candidate_publication"]
+    if mode == "full" and not isinstance(candidate_publication, dict):
+        raise MirrorError(
+            "source publication receipt.binding.candidate_publication must be an object"
+        )
+    if mode == "beta" and candidate_publication is not None:
+        raise MirrorError(
+            "beta publication must not claim an intermediate candidate publication"
+        )
+    public_mirror = exact_keys(
+        binding["public_mirror"],
+        {"repository", "target_sha"},
+        "source publication receipt.binding.public_mirror",
+    )
+    if public_mirror != {
+        "repository": request["target"]["repository"],
+        "target_sha": request["target"]["sha"],
+    }:
+        raise MirrorError(
+            "source publication receipt public mirror binding does not match"
+        )
     if (
         binding["repository"] != contract["source_identity"]["repository"]
         or binding["repository"] != request["source"]["repository"]
@@ -601,7 +674,7 @@ def validate_source_publication_receipt(
         },
         "source publication receipt.binding.workflow",
     )
-    expected_branch = contract["source_identity"]["ref"].removeprefix("refs/heads/")
+    expected_branch = contract["source_identity"]["default_branch"]
     expected_workflow = {
         "name": source_run["name"],
         "ref": request["source"]["workflow_ref"],
@@ -643,10 +716,12 @@ def validate_source_publication_receipt(
             "latest",
             "assets",
             "url",
+            "release_branch",
         },
         "source publication receipt.publication",
     )
     release = request["release"]
+    policy = release_policy(contract, mode)
     if (
         publication["tag"] != request["tag"]
         or publication["tag_target"] != request["source"]["candidate_sha"]
@@ -655,11 +730,11 @@ def validate_source_publication_receipt(
         or publication["body"] != release["body"]
         or publication["body_sha256"]
         != f"sha256:{sha256_bytes(release['body'].encode())}"
-        or publication["prerelease"] is not False
-        or publication["latest"] is not True
+        or publication["prerelease"] is not policy["prerelease"]
+        or publication["latest"] is not policy["make_latest"]
         or publication["tag_signature_verified"] is not True
     ):
-        raise MirrorError("source publication receipt stable release metadata does not match")
+        raise MirrorError("source publication receipt release metadata does not match")
     for field in (
         "tag_object_sha",
         "tag_object_sha256",
@@ -671,6 +746,19 @@ def validate_source_publication_receipt(
     ):
         require_string(publication[field], f"source publication receipt.publication.{field}")
     require_positive_int(publication["release_id"], "source publication receipt.publication.release_id")
+    release_branch = exact_keys(
+        publication["release_branch"],
+        {"final", "final_target", "prep", "prep_removed"},
+        "source publication receipt.publication.release_branch",
+    )
+    expected_branch = {
+        "final": f"release/v{request['version']}",
+        "final_target": request["source"]["candidate_sha"],
+        "prep": f"release/v{request['version']}-prep",
+        "prep_removed": True,
+    }
+    if release_branch != expected_branch:
+        raise MirrorError("source publication receipt release branch does not match")
 
     raw_assets = publication["assets"]
     required_names = contract["required_assets"]
@@ -719,13 +807,22 @@ def validate_source_publication_receipt(
         },
         "source publication receipt.guarantees",
     )
-    if guarantees != {
-        "rebuild_performed": False,
-        "asset_uploads": [],
-        "asset_reuploads": [],
-        "metadata_only_promotion": True,
-    }:
-        raise MirrorError("source publication receipt does not prove metadata-only full promotion")
+    if guarantees["rebuild_performed"] is not False:
+        raise MirrorError("source publication receipt must prove no rebuild")
+    if guarantees["asset_reuploads"] != []:
+        raise MirrorError("source publication receipt must prove no asset reuploads")
+    uploads = guarantees["asset_uploads"]
+    if not isinstance(uploads, list) or len(set(uploads)) != len(uploads):
+        raise MirrorError("source publication receipt asset uploads are malformed")
+    if not set(uploads).issubset(set(contract["required_assets"])):
+        raise MirrorError("source publication receipt contains an unexpected asset upload")
+    if mode == "full":
+        if uploads or guarantees["metadata_only_promotion"] is not True:
+            raise MirrorError(
+                "source publication receipt does not prove metadata-only full promotion"
+            )
+    elif guarantees["metadata_only_promotion"] is not False:
+        raise MirrorError("beta publication cannot claim metadata-only promotion")
 
     lifecycle = exact_keys(
         receipt["lifecycle"],
@@ -738,14 +835,19 @@ def validate_source_publication_receipt(
     if lifecycle["issued_at"] != request["publication_receipt"]["published_at"]:
         raise MirrorError("source publication receipt timestamp does not match the request")
 
-    candidate_receipt_sha = require_string(
-        receipt["candidate_publication_receipt_sha256"],
-        "source publication receipt.candidate_publication_receipt_sha256",
-    )
-    if not re.fullmatch(r"sha256:[0-9a-f]{64}", candidate_receipt_sha):
-        raise MirrorError("source publication receipt candidate digest is not canonical")
-    if receipt["outcome"] not in ("promoted", "idempotent"):
-        raise MirrorError("source publication receipt outcome is not a successful full outcome")
+    if mode == "full":
+        candidate_receipt_sha = require_string(
+            receipt["candidate_publication_receipt_sha256"],
+            "source publication receipt.candidate_publication_receipt_sha256",
+        )
+        if not re.fullmatch(r"sha256:[0-9a-f]{64}", candidate_receipt_sha):
+            raise MirrorError("source publication receipt candidate digest is not canonical")
+        if receipt["outcome"] not in ("promoted", "idempotent"):
+            raise MirrorError(
+                "source publication receipt outcome is not a successful full outcome"
+            )
+    elif receipt["outcome"] not in ("published", "idempotent"):
+        raise MirrorError("source publication receipt outcome is not a successful beta outcome")
     mutation = exact_keys(
         receipt["mutation_summary"],
         {"count", "metadata_updates"},
@@ -759,16 +861,20 @@ def validate_source_publication_receipt(
 
 
 def validate_repository_metadata(metadata: dict[str, Any], request: dict[str, Any]) -> None:
-    stable = metadata.get("stable")
-    if not isinstance(stable, dict):
-        raise MirrorError("RELEASES.json must contain stable metadata")
+    mode = request["release_mode"]
+    ring = "beta" if mode == "beta" else "stable"
+    record = metadata.get(ring)
+    if not isinstance(record, dict):
+        raise MirrorError(f"RELEASES.json must contain {ring} metadata")
     expected = {
         "version": request["version"],
         "tag": request["tag"],
         "released_at": request["publication_receipt"]["published_at"],
     }
-    if stable != expected:
-        raise MirrorError("RELEASES.json stable metadata does not match the publication receipt")
+    if record != expected:
+        raise MirrorError(
+            f"RELEASES.json {ring} metadata does not match the publication receipt"
+        )
 
 
 def validate_public_download_url(url: str) -> None:
@@ -934,7 +1040,7 @@ class GitHubClient:
                 "name": request["release"]["name"],
                 "body": request["release"]["body"],
                 "draft": True,
-                "prerelease": False,
+                "prerelease": request["release"]["prerelease"],
                 "generate_release_notes": False,
             },
         )
@@ -977,11 +1083,17 @@ class GitHubClient:
             raise MirrorError("GitHub asset upload returned a non-object")
         return value
 
-    def publish_release(self, release_id: int) -> dict[str, Any]:
+    def publish_release(
+        self, release_id: int, *, prerelease: bool, make_latest: bool
+    ) -> dict[str, Any]:
         return self._json(
             "PATCH",
             f"/repos/{self.repository}/releases/{release_id}",
-            payload={"draft": False, "prerelease": False, "make_latest": "true"},
+            payload={
+                "draft": False,
+                "prerelease": prerelease,
+                "make_latest": "true" if make_latest else "false",
+            },
         )
 
 
@@ -1089,13 +1201,11 @@ def validate_source_run(
     repository = run.get("repository")
     if not isinstance(repository, dict) or repository.get("full_name") != source["repository"]:
         raise MirrorError("source workflow run repository does not match the trusted source")
-    expected_path = source["workflow_ref"].split("@", 1)[0].split(source["repository"] + "/", 1)[1]
-    expected_branch = source["ref"].removeprefix("refs/heads/")
+    expected_path = source["workflow_path"]
     expected = {
         "id": source_run_id,
         "event": source["event_name"],
         "path": expected_path,
-        "head_branch": expected_branch,
         "status": "completed",
         "conclusion": "success",
     }
@@ -1105,6 +1215,16 @@ def validate_source_run(
     head_sha = run.get("head_sha")
     if not isinstance(head_sha, str) or not SOURCE_SHA_RE.fullmatch(head_sha):
         raise MirrorError("source workflow run head SHA is invalid")
+    head_branch = run.get("head_branch")
+    branch_match = re.fullmatch(
+        r"release-ci-v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\."
+        r"(?:0|[1-9][0-9]*)(?:-beta)?-([0-9a-f]{9})",
+        str(head_branch or ""),
+    )
+    if branch_match is None or branch_match.group(1) != head_sha[:9]:
+        raise MirrorError(
+            "source workflow run must use its exact immutable release validation tag"
+        )
     require_string(run.get("name"), "source workflow run name")
     require_positive_int(run.get("run_attempt"), "source workflow run attempt")
     return run
@@ -1198,7 +1318,7 @@ def validate_release_metadata(
         "tag_name": request["tag"],
         "name": request["release"]["name"],
         "body": request["release"]["body"],
-        "prerelease": False,
+        "prerelease": request["release"]["prerelease"],
         "target_commitish": request["release"]["target_commitish"],
     }
     for field, value in expected.items():
@@ -1255,8 +1375,11 @@ def materialize_source_assets(
         raise MirrorError("source release ID does not match the request")
     if release.get("tag_name") != request["tag"]:
         raise MirrorError("source release tag does not match the request")
-    if release.get("draft") is not False or release.get("prerelease") is not False:
-        raise MirrorError("source release must already be a published full release")
+    if (
+        release.get("draft") is not False
+        or release.get("prerelease") is not request["release"]["prerelease"]
+    ):
+        raise MirrorError("source release state does not match the requested release mode")
     by_name = release_assets_by_name(release)
     required_names = contract["required_assets"]
     if set(by_name) != set(required_names):
@@ -1341,19 +1464,35 @@ def publish_target_release(
         scratch,
     )
     if release["draft"]:
-        target_client.publish_release(release["id"])
+        target_client.publish_release(
+            release["id"],
+            prerelease=request["release"]["prerelease"],
+            make_latest=request["release"]["make_latest"],
+        )
         action = "published"
     latest = target_client.get_latest_release()
-    if latest.get("id") != release["id"] or latest.get("tag_name") != request["tag"]:
-        target_client.publish_release(release["id"])
+    expects_latest = request["release"]["make_latest"]
+    is_latest = latest.get("id") == release["id"] and latest.get("tag_name") == request["tag"]
+    if expects_latest and not is_latest:
+        target_client.publish_release(
+            release["id"], prerelease=False, make_latest=True
+        )
         latest = target_client.get_latest_release()
-    if latest.get("id") != release["id"] or latest.get("tag_name") != request["tag"]:
-        raise MirrorError("published release is not GitHub latest")
+        is_latest = (
+            latest.get("id") == release["id"]
+            and latest.get("tag_name") == request["tag"]
+        )
+    if is_latest is not expects_latest:
+        state = "latest" if expects_latest else "non-latest"
+        raise MirrorError(f"published release is not GitHub {state}")
 
     final = target_client.get_release(release["id"])
     validate_release_metadata(final, request)
-    if final.get("draft") is not False or final.get("prerelease") is not False:
-        raise MirrorError("published release state is not a full public release")
+    if (
+        final.get("draft") is not False
+        or final.get("prerelease") is not request["release"]["prerelease"]
+    ):
+        raise MirrorError("published release state does not match its release mode")
     final_assets = release_assets_by_name(final)
     if set(final_assets) != set(contract["required_assets"]):
         raise MirrorError("published release asset set changed during publication")
@@ -1435,7 +1574,7 @@ def apply_release(
         "asset_manifest_sha256": request["asset_manifest_sha256"],
         "publication_receipt_sha256": request["publication_receipt_sha256"],
         "assets": request["asset_manifest"]["assets"],
-        "latest": True,
+        "latest": request["release"]["make_latest"],
     }
     receipt_out.parent.mkdir(parents=True, exist_ok=True)
     receipt_out.write_bytes(canonical_json(receipt) + b"\n")

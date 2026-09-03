@@ -6,9 +6,9 @@ subject: repo:DataDog/trajectory:environment:public-release-publication
 
 claim_pattern:
   event_name: workflow_dispatch
-  ref: refs/heads/main
+  ref: refs/tags/release-ci-v[0-9]+\.[0-9]+\.[0-9]+(-beta)?-[0-9a-f]{9,40}
   repository: DataDog/trajectory
-  job_workflow_ref: DataDog/trajectory/\.github/workflows/public-release-publication\.yml@refs/heads/main
+  job_workflow_ref: DataDog/trajectory/\.github/workflows/public-release-publication\.yml@refs/tags/release-ci-v[0-9]+\.[0-9]+\.[0-9]+(-beta)?-[0-9a-f]{9,40}
 
 permissions:
   actions: write

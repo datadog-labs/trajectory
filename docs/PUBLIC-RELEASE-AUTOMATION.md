@@ -1,9 +1,9 @@
 # Protected Public Release Publication
 
 Public GitHub Releases are published by
-`.github/workflows/public-release-mirror.yml`. The workflow is a protected,
-full-release-only gate. It does not build, sign, transform, or rename release
-artifacts.
+`.github/workflows/public-release-mirror.yml`. The workflow is a protected gate
+for stable and beta releases. It does not build, sign, transform, or rename
+release artifacts.
 
 The machine-readable interface is
 [`contracts/public-release-mirror-v1.json`](../contracts/public-release-mirror-v1.json).
@@ -12,8 +12,9 @@ release mode, and canonical asset set.
 
 ## Publication Sequence
 
-1. The stable entry in `RELEASES.json` lands on `main` with the exact version,
-   tag, and source publication timestamp.
+1. A release PR lands the exact version, tag, and source publication timestamp
+   in `RELEASES.json`. Stable releases advance both `stable` and `beta`; beta
+   releases advance only `beta` and preserve `stable`.
 2. The trusted source workflow exchanges its protected GitHub OIDC identity
    for a short-lived `actions:write` token under the checked-in Octo STS
    policy. That token can dispatch this workflow but cannot mutate repository
@@ -36,9 +37,10 @@ release mode, and canonical asset set.
    sizes, and checksum contents.
 6. Using only its target-scoped job token, the target job creates or resumes a
    draft release, uploads missing exact assets without overwriting existing
-   ones, publishes the normal GitHub Release, marks it latest, and revalidates
-   the final metadata and asset identities. Replaying the same request verifies
-   the existing release idempotently.
+   ones, publishes the GitHub Release, and revalidates the final metadata and
+   asset identities. Stable releases are normal/latest; `vX.Y.Z-beta` releases
+   are prerelease/non-latest. Replaying the same request verifies the existing
+   release idempotently.
 
 The target environment must allow deployments only from `main`, require
 maintainer approval, and provide the Octo STS domain and audience as protected
@@ -73,6 +75,11 @@ object:
   Both `asset_manifest.source_sha` and `publication_receipt.source_sha` must
   equal this value.
 
+Protected publication runs from
+`release-ci-vX.Y.Z[-beta]-<candidate_sha9>`, so the authenticated workflow SHA
+and candidate SHA must be equal even though both fields remain explicit in the
+receipt. A `main`-ref source run is rejected before target mutation.
+
 The manifest and publication receipt SHA256 fields cover their canonical JSON
 objects after these candidate bindings are populated. The request artifact
 SHA256 covers the exact request, including both source identities. The retained
@@ -80,16 +87,19 @@ target receipt reports these values separately as `source_workflow_sha` and
 `candidate_source_sha`, along with the authenticated source run attempt; it
 does not emit an ambiguous `source_sha` field.
 
-The separate terminal source receipt must use the successful `full` schema and
-bind the same authenticated run ID, run attempt, workflow SHA, candidate source
-SHA, version, tag, publication timestamp, stable release ID/title/body, and
-the same manifest assets as the request. It must also prove a metadata-only full
-promotion with no rebuild or asset upload.
+The separate terminal source receipt must use the successful `full` or `beta`
+schema and bind the same authenticated run ID, run attempt, workflow SHA,
+candidate source SHA, version, tag, publication timestamp, release
+ID/title/body, and the same manifest assets as the request. A full receipt must
+also prove metadata-only promotion with no rebuild or asset upload. A beta
+receipt proves direct publication of the exact qualified assets without
+reuploading an existing asset.
 
 ## Fail-Closed Rules
 
-- Only `full` release requests are accepted. Candidate, prerelease, or
-  suffixed-version requests stop before any target repository mutation.
+- Only coherent `full` `X.Y.Z` and `beta` `X.Y.Z-beta` requests are accepted.
+  Candidate, mismatched mode/version, and other suffixed versions stop before
+  any target repository mutation.
 - The release must contain exactly the contract-defined assets. Missing, extra,
   duplicate, incomplete, renamed, or reordered assets are rejected.
 - Source evidence must come from exactly one non-expired artifact named from
@@ -108,8 +118,9 @@ promotion with no rebuild or asset upload.
   GitHub API authorization header.
 - Final release metadata and asset identities are checked again after
   publication before a success receipt is written.
-- `RELEASES.json` must already contain matching stable metadata. The workflow
-  does not commit repository metadata.
+- `RELEASES.json` must already contain matching channel metadata. The workflow
+  does not commit repository metadata; the reviewed release PR is the metadata
+  authority.
 
 Successful runs retain a content-bound publication receipt as a GitHub Actions
 artifact for 90 days.
