@@ -53,7 +53,9 @@ def build_request(
     target_sha: str,
 ) -> tuple[dict[str, object], dict[str, object]]:
     if not mirror.VERSION_RE.fullmatch(version):
-        raise mirror.MirrorError("version must be canonical X.Y.Z or X.Y.Z-beta")
+        raise mirror.MirrorError(
+            f"version must be canonical {mirror.VERSION_DESCRIPTION}"
+        )
     release_mode = mirror.release_mode_for_version(version)
     prerelease = release_mode == "beta"
     make_latest = release_mode == "full"
@@ -142,6 +144,10 @@ def validate_metadata(metadata: dict[str, object], request: dict[str, object]) -
         raise mirror.MirrorError("RELEASES.json stable metadata must remain stable")
     if metadata.get("beta") != expected:
         raise mirror.MirrorError("RELEASES.json beta metadata must match the beta release")
+    if mirror.release_version_key(str(request["version"])) <= mirror.release_version_key(
+        stable_version
+    ):
+        raise mirror.MirrorError("RELEASES.json beta ring must advance beyond stable")
 
 
 def apply_release(args: argparse.Namespace) -> dict[str, object]:

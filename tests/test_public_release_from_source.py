@@ -176,6 +176,42 @@ class PublicReleaseFromSourceTests(unittest.TestCase):
                 request,
             )
 
+    def test_numbered_beta_metadata_is_monotonic_from_stable(self) -> None:
+        request = {
+            "release_mode": "beta",
+            "version": "0.5.39-beta.2",
+            "tag": "v0.5.39-beta.2",
+            "published_at": "2026-09-10T12:34:56Z",
+        }
+        stable = {
+            "version": "0.5.38",
+            "tag": "v0.5.38",
+            "released_at": "2026-08-26T05:06:39Z",
+        }
+        beta = {
+            "version": "0.5.39-beta.2",
+            "tag": "v0.5.39-beta.2",
+            "released_at": "2026-09-10T12:34:56Z",
+        }
+        SOURCE_MIRROR.validate_metadata({"stable": stable, "beta": beta}, request)
+
+        stale_request = {
+            **request,
+            "version": "0.5.37-beta.10",
+            "tag": "v0.5.37-beta.10",
+        }
+        stale_beta = {
+            **beta,
+            "version": "0.5.37-beta.10",
+            "tag": "v0.5.37-beta.10",
+        }
+        with self.assertRaisesRegex(
+            SOURCE_MIRROR.mirror.MirrorError, "advance beyond stable"
+        ):
+            SOURCE_MIRROR.validate_metadata(
+                {"stable": stable, "beta": stale_beta}, stale_request
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

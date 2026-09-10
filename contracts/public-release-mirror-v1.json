@@ -15,6 +15,15 @@
     "environment": "public-release-mirror",
     "ref": "refs/heads/main"
   },
+  "version_identity": {
+    "accepted": [
+      "X.Y.Z",
+      "X.Y.Z-beta",
+      "X.Y.Z-beta.N"
+    ],
+    "ordering": "legacy_beta_then_numeric_numbered_betas_then_stable",
+    "complete_string_is_immutable_identity": true
+  },
   "accepted_release_modes": [
     "full",
     "beta"
