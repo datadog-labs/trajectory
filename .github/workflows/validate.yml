@@ -20,16 +20,12 @@ jobs:
           import json
           import pathlib
           import re
-          import sys
 
           root = pathlib.Path(".")
-          sys.path.insert(0, str(root / ".github" / "scripts"))
-          import public_release_mirror as mirror
           json_paths = [
               ".agents/plugins/marketplace.json",
               ".claude-plugin/marketplace.json",
               "RELEASES.json",
-              "contracts/public-release-mirror-v1.json",
               "gemini-extension.json",
               "plugin/trajectory/.claude-plugin/plugin.json",
               "plugin/trajectory/.mcp.json",
@@ -52,6 +48,25 @@ jobs:
               raise SystemExit(f"unexpected release channels: {sorted(unexpected)}")
           if set(releases) != {"stable", "beta"}:
               raise SystemExit("RELEASES.json must define stable and beta channels")
+          version_pattern = re.compile(
+              r"^(?P<major>0|[1-9][0-9]*)\."
+              r"(?P<minor>0|[1-9][0-9]*)\."
+              r"(?P<patch>0|[1-9][0-9]*)"
+              r"(?P<beta>-beta(?:\.(?P<sequence>[1-9][0-9]*))?)?$"
+          )
+
+          def version_key(version):
+              match = version_pattern.fullmatch(version)
+              if match is None:
+                  raise SystemExit(f"release version is not canonical: {version}")
+              return (
+                  int(match.group("major")),
+                  int(match.group("minor")),
+                  int(match.group("patch")),
+                  0 if match.group("beta") else 1,
+                  int(match.group("sequence") or 0),
+              )
+
           timestamp_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
           for channel in ("stable", "beta"):
               record = releases[channel]
@@ -60,7 +75,7 @@ jobs:
               }:
                   raise SystemExit(f"RELEASES.json {channel} metadata has unexpected fields")
               version = record["version"]
-              if not isinstance(version, str) or not mirror.VERSION_RE.fullmatch(version):
+              if not isinstance(version, str) or not version_pattern.fullmatch(version):
                   raise SystemExit(f"RELEASES.json {channel} version is not canonical")
               if record["tag"] != f"v{version}":
                   raise SystemExit(f"RELEASES.json {channel} tag/version mismatch")
@@ -68,11 +83,9 @@ jobs:
                   record["released_at"]
               ):
                   raise SystemExit(f"RELEASES.json {channel} release timestamp is not UTC")
-              if channel == "stable" and mirror.release_mode_for_version(version) != "full":
+              if channel == "stable" and "-beta" in version:
                   raise SystemExit("RELEASES.json stable channel cannot target a beta release")
-          if mirror.release_version_key(releases["beta"]["version"]) < mirror.release_version_key(
-              releases["stable"]["version"]
-          ):
+          if version_key(releases["beta"]["version"]) < version_key(releases["stable"]["version"]):
               raise SystemExit("RELEASES.json beta channel cannot trail stable")
 
           installer = (root / "install.sh").read_text(encoding="utf-8")
@@ -91,16 +104,69 @@ jobs:
           if "trajectory/intercepts/$asset" in installer:
               raise SystemExit("public installer must not use the source-repository intercept path")
           PY
-      - name: Validate protected release publication
+      - name: Validate passive release target
         run: |
-          python3 -m py_compile \
-            .github/scripts/public_release_mirror.py \
-            .github/scripts/public_release_from_source.py \
-            tests/test_public_release_from_source.py \
-            tests/test_public_release_mirror.py
-          python3 .github/scripts/public_release_mirror.py validate-contract \
-            --contract contracts/public-release-mirror-v1.json
-          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          test ! -e .github/workflows/public-release-mirror.yml
+          test ! -e .github/scripts/public_release_mirror.py
+          test ! -e .github/scripts/public_release_from_source.py
+          test ! -e contracts/public-release-mirror-v1.json
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          policy = Path(
+              ".github/chainguard/trajectory.public-release-publication.sts.yaml"
+          ).read_text(encoding="utf-8")
+          permissions = policy.split("permissions:", 1)[1]
+          if "contents: write" not in permissions or "actions: write" in permissions:
+              raise SystemExit("source workflow policy must grant only target contents write")
+          if "public-release-mirror-recovery" not in policy:
+              raise SystemExit("source-owned recovery workflow is not trusted")
+          if "repo:DataDog/trajectory:environment:public-release-publication" not in policy:
+              raise SystemExit("target write policy is not source-environment bound")
+
+          claim_patterns = {}
+          in_claims = False
+          for line in policy.splitlines():
+              if line == "claim_pattern:":
+                  in_claims = True
+                  continue
+              if in_claims and line and not line.startswith("  "):
+                  break
+              if in_claims and line.startswith("  ") and ": " in line:
+                  key, value = line.strip().split(": ", 1)
+                  claim_patterns[key] = value
+
+          release_ref = "refs/tags/release-ci-v0.5.39-beta.2-012345678"
+          release_workflow = (
+              "DataDog/trajectory/.github/workflows/"
+              "public-release-publication.yml@" + release_ref
+          )
+          recovery_workflow = (
+              "DataDog/trajectory/.github/workflows/"
+              "public-release-mirror-recovery.yml@refs/heads/main"
+          )
+          accepted = (
+              ("ref", release_ref),
+              ("ref", "refs/heads/main"),
+              ("job_workflow_ref", release_workflow),
+              ("job_workflow_ref", recovery_workflow),
+          )
+          for claim, value in accepted:
+              if re.fullmatch(claim_patterns[claim], value) is None:
+                  raise SystemExit(f"target write policy rejects intended {claim}: {value}")
+          rejected = (
+              ("ref", "refs/heads/feature"),
+              (
+                  "job_workflow_ref",
+                  "datadog-labs/trajectory/.github/workflows/"
+                  "public-release-mirror.yml@refs/heads/main",
+              ),
+          )
+          for claim, value in rejected:
+              if re.fullmatch(claim_patterns[claim], value) is not None:
+                  raise SystemExit(f"target write policy accepts forbidden {claim}: {value}")
+          PY
       - name: Parse workflow and policy YAML
         run: |
           ruby -e 'require "yaml"; ARGV.each { |path| YAML.parse_file(path) }' \
