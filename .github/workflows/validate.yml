@@ -20,8 +20,11 @@ jobs:
           import json
           import pathlib
           import re
+          import sys
 
           root = pathlib.Path(".")
+          sys.path.insert(0, str(root / ".github" / "scripts"))
+          import public_release_mirror as mirror
           json_paths = [
               ".agents/plugins/marketplace.json",
               ".claude-plugin/marketplace.json",
@@ -49,9 +52,6 @@ jobs:
               raise SystemExit(f"unexpected release channels: {sorted(unexpected)}")
           if set(releases) != {"stable", "beta"}:
               raise SystemExit("RELEASES.json must define stable and beta channels")
-          version_pattern = re.compile(
-              r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-beta)?$"
-          )
           timestamp_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
           for channel in ("stable", "beta"):
               record = releases[channel]
@@ -60,7 +60,7 @@ jobs:
               }:
                   raise SystemExit(f"RELEASES.json {channel} metadata has unexpected fields")
               version = record["version"]
-              if not isinstance(version, str) or not version_pattern.fullmatch(version):
+              if not isinstance(version, str) or not mirror.VERSION_RE.fullmatch(version):
                   raise SystemExit(f"RELEASES.json {channel} version is not canonical")
               if record["tag"] != f"v{version}":
                   raise SystemExit(f"RELEASES.json {channel} tag/version mismatch")
@@ -68,8 +68,12 @@ jobs:
                   record["released_at"]
               ):
                   raise SystemExit(f"RELEASES.json {channel} release timestamp is not UTC")
-              if channel == "stable" and version.endswith("-beta"):
+              if channel == "stable" and mirror.release_mode_for_version(version) != "full":
                   raise SystemExit("RELEASES.json stable channel cannot target a beta release")
+          if mirror.release_version_key(releases["beta"]["version"]) < mirror.release_version_key(
+              releases["stable"]["version"]
+          ):
+              raise SystemExit("RELEASES.json beta channel cannot trail stable")
 
           installer = (root / "install.sh").read_text(encoding="utf-8")
           latest_asset_url = "https://github.com/$REPO/releases/latest/download/$asset"

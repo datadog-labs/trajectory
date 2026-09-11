@@ -60,6 +60,7 @@ def refresh_request(request: dict[str, Any]) -> bytes:
 def build_fixture(
     *,
     release_mode: str = "full",
+    version: str | None = None,
     prerelease: bool | None = None,
     make_latest: bool | None = None,
     valid_checksum_manifest: bool = True,
@@ -78,7 +79,7 @@ def build_fixture(
         {"name": name, "size": len(contents[name]), "sha256": digest(contents[name])}
         for name in contract["required_assets"]
     ]
-    version = "0.5.28-beta" if release_mode == "beta" else "0.5.28"
+    version = version or ("0.5.28-beta" if release_mode == "beta" else "0.5.28")
     if prerelease is None:
         prerelease = release_mode == "beta"
     if make_latest is None:
@@ -548,6 +549,14 @@ class PublicReleaseMirrorTests(unittest.TestCase):
     def test_contract_accepts_full_beta_and_exact_canonical_assets(self) -> None:
         MIRROR.validate_contract(self.contract)
         self.assertEqual(self.contract["accepted_release_modes"], ["full", "beta"])
+        self.assertEqual(
+            self.contract["version_identity"],
+            {
+                "accepted": ["X.Y.Z", "X.Y.Z-beta", "X.Y.Z-beta.N"],
+                "ordering": "legacy_beta_then_numeric_numbered_betas_then_stable",
+                "complete_string_is_immutable_identity": True,
+            },
+        )
         self.assertEqual(
             self.contract["release_modes"],
             {
@@ -1048,6 +1057,45 @@ class PublicReleaseMirrorTests(unittest.TestCase):
         self.assertTrue(target.release["prerelease"])
         self.assertEqual(target.latest["tag_name"], "v0.5.27")
 
+    def test_numbered_beta_identity_is_canonical_and_orders_numerically(self) -> None:
+        self.assertEqual(MIRROR.release_mode_for_version("0.5.39-beta.2"), "beta")
+        self.assertLess(
+            MIRROR.release_version_key("0.5.39-beta"),
+            MIRROR.release_version_key("0.5.39-beta.2"),
+        )
+        self.assertLess(
+            MIRROR.release_version_key("0.5.39-beta.2"),
+            MIRROR.release_version_key("0.5.39-beta.10"),
+        )
+        self.assertLess(
+            MIRROR.release_version_key("0.5.39-beta.10"),
+            MIRROR.release_version_key("0.5.39"),
+        )
+        for invalid in (
+            "v0.5.39-beta.2",
+            "0.5.39-beta-2",
+            "0.5.39-beta.0",
+            "0.5.39-beta.01",
+            "0.5.39-rc.2",
+        ):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(MIRROR.MirrorError):
+                    MIRROR.release_mode_for_version(invalid)
+
+    def test_numbered_beta_release_publishes_without_advancing_latest(self) -> None:
+        request, payloads, raw = build_fixture(
+            release_mode="beta", version="0.5.39-beta.2"
+        )
+        target = FakeTarget(request, payloads, state="absent")
+
+        receipt = self.apply(request, payloads, raw, target)
+
+        self.assertEqual(receipt["version"], "0.5.39-beta.2")
+        self.assertFalse(receipt["latest"])
+        assert target.release is not None
+        self.assertEqual(target.release["tag_name"], "v0.5.39-beta.2")
+        self.assertTrue(target.release["prerelease"])
+
     def test_target_receipt_binds_exact_correlated_workflow_run(self) -> None:
         request, payloads, raw = build_fixture()
         target = FakeTarget(request, payloads, state="absent")
@@ -1396,14 +1444,14 @@ class PublicReleaseMirrorTests(unittest.TestCase):
         self.assertIn("event_name: workflow_dispatch", dispatch_policy)
         self.assertIn(
             r"ref: refs/tags/release-ci-v[0-9]+\.[0-9]+\.[0-9]+"
-            r"(-beta)?-[0-9a-f]{9,40}",
+            r"(-beta(\.[1-9][0-9]*)?)?-[0-9a-f]{9,40}",
             dispatch_policy,
         )
         self.assertIn("repository: DataDog/trajectory", dispatch_policy)
         self.assertIn(
             r"job_workflow_ref: DataDog/trajectory/\.github/workflows/"
             r"public-release-publication\.yml@refs/tags/release-ci-v[0-9]+\."
-            r"[0-9]+\.[0-9]+(-beta)?-[0-9a-f]{9,40}",
+            r"[0-9]+\.[0-9]+(-beta(\.[1-9][0-9]*)?)?-[0-9a-f]{9,40}",
             dispatch_policy,
         )
         dispatch_permissions = dispatch_policy.split("permissions:", 1)[1]

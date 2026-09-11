@@ -32,8 +32,12 @@ OCTO_STS_DOMAIN = "webhooks.build.datadoghq.com"
 OCTO_STS_AUDIENCE = "dd-octo-sts"
 OCTO_STS_POOL_NAME = "dd-octo-sts"
 VERSION_RE = re.compile(
-    r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-beta)?$"
+    r"^(?P<major>0|[1-9][0-9]*)\."
+    r"(?P<minor>0|[1-9][0-9]*)\."
+    r"(?P<patch>0|[1-9][0-9]*)"
+    r"(?P<beta>-beta(?:\.(?P<beta_sequence>[1-9][0-9]*))?)?$"
 )
+VERSION_DESCRIPTION = "X.Y.Z, X.Y.Z-beta, or X.Y.Z-beta.N"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 SOURCE_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 TIMESTAMP_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
@@ -153,8 +157,23 @@ def require_nonnegative_int(value: Any, label: str) -> int:
 
 def release_mode_for_version(version: str) -> str:
     if not VERSION_RE.fullmatch(version):
-        raise MirrorError("version must be canonical X.Y.Z or X.Y.Z-beta")
-    return "beta" if version.endswith("-beta") else "full"
+        raise MirrorError(f"version must be canonical {VERSION_DESCRIPTION}")
+    return "beta" if "-beta" in version else "full"
+
+
+def release_version_key(version: str) -> tuple[int, int, int, int, int]:
+    match = VERSION_RE.fullmatch(version)
+    if match is None:
+        raise MirrorError(f"version must be canonical {VERSION_DESCRIPTION}")
+    beta = match.group("beta") is not None
+    sequence = int(match.group("beta_sequence") or "0")
+    return (
+        int(match.group("major")),
+        int(match.group("minor")),
+        int(match.group("patch")),
+        0 if beta else 1,
+        sequence,
+    )
 
 
 def release_policy(contract: dict[str, Any], mode: str) -> dict[str, bool]:
@@ -172,6 +191,7 @@ def validate_contract(contract: dict[str, Any]) -> None:
             "kind",
             "source_identity",
             "target",
+            "version_identity",
             "accepted_release_modes",
             "required_assets",
             "release_modes",
@@ -183,6 +203,18 @@ def validate_contract(contract: dict[str, Any]) -> None:
         raise MirrorError("contract.schema_version must be 1")
     if contract["kind"] != "trajectory-public-release-mirror-contract":
         raise MirrorError("contract.kind is not supported")
+
+    version_identity = exact_keys(
+        contract["version_identity"],
+        {"accepted", "ordering", "complete_string_is_immutable_identity"},
+        "contract.version_identity",
+    )
+    if version_identity != {
+        "accepted": ["X.Y.Z", "X.Y.Z-beta", "X.Y.Z-beta.N"],
+        "ordering": "legacy_beta_then_numeric_numbered_betas_then_stable",
+        "complete_string_is_immutable_identity": True,
+    }:
+        raise MirrorError("contract.version_identity is invalid")
 
     source = exact_keys(
         contract["source_identity"],
@@ -386,7 +418,9 @@ def validate_request(
 
     version = require_string(request["version"], "request.version")
     if not VERSION_RE.fullmatch(version):
-        raise MirrorError("request.version must be canonical X.Y.Z or X.Y.Z-beta")
+        raise MirrorError(
+            f"request.version must be canonical {VERSION_DESCRIPTION}"
+        )
     if release_mode_for_version(version) != mode:
         raise MirrorError("request.release_mode does not match request.version")
     tag = require_string(request["tag"], "request.tag")
@@ -875,6 +909,17 @@ def validate_repository_metadata(metadata: dict[str, Any], request: dict[str, An
         raise MirrorError(
             f"RELEASES.json {ring} metadata does not match the publication receipt"
         )
+    if mode == "beta":
+        stable = metadata.get("stable")
+        if not isinstance(stable, dict) or not isinstance(stable.get("version"), str):
+            raise MirrorError("RELEASES.json must preserve stable metadata")
+        stable_version = str(stable["version"])
+        if release_mode_for_version(stable_version) != "full":
+            raise MirrorError("RELEASES.json stable metadata must remain stable")
+        if release_version_key(str(request["version"])) <= release_version_key(
+            stable_version
+        ):
+            raise MirrorError("RELEASES.json beta ring must advance beyond stable")
 
 
 def validate_public_download_url(url: str) -> None:
@@ -1218,7 +1263,7 @@ def validate_source_run(
     head_branch = run.get("head_branch")
     branch_match = re.fullmatch(
         r"release-ci-v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\."
-        r"(?:0|[1-9][0-9]*)(?:-beta)?-([0-9a-f]{9})",
+        r"(?:0|[1-9][0-9]*)(?:-beta(?:\.[1-9][0-9]*)?)?-([0-9a-f]{9})",
         str(head_branch or ""),
     )
     if branch_match is None or branch_match.group(1) != head_sha[:9]:

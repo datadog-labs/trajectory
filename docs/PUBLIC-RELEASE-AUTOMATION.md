@@ -38,7 +38,8 @@ release mode, and canonical asset set.
 6. Using only its target-scoped job token, the target job creates or resumes a
    draft release, uploads missing exact assets without overwriting existing
    ones, publishes the GitHub Release, and revalidates the final metadata and
-   asset identities. Stable releases are normal/latest; `vX.Y.Z-beta` releases
+   asset identities. Stable releases are normal/latest; `vX.Y.Z-beta` and
+   `vX.Y.Z-beta.N` releases
    are prerelease/non-latest. Replaying the same request verifies the existing
    release idempotently.
 
@@ -76,7 +77,7 @@ object:
   equal this value.
 
 Protected publication runs from
-`release-ci-vX.Y.Z[-beta]-<candidate_sha9>`, so the authenticated workflow SHA
+`release-ci-vX.Y.Z[-beta[.N]]-<candidate_sha9>`, so the authenticated workflow SHA
 and candidate SHA must be equal even though both fields remain explicit in the
 receipt. A `main`-ref source run is rejected before target mutation.
 
@@ -97,7 +98,10 @@ reuploading an existing asset.
 
 ## Fail-Closed Rules
 
-- Only coherent `full` `X.Y.Z` and `beta` `X.Y.Z-beta` requests are accepted.
+- Only coherent `full` `X.Y.Z` and `beta` `X.Y.Z-beta` or `X.Y.Z-beta.N`
+  requests are accepted. Numbered beta sequences compare numerically, and a
+  delayed request cannot move the beta ring behind stable or the reviewed
+  metadata target.
   Candidate, mismatched mode/version, and other suffixed versions stop before
   any target repository mutation.
 - The release must contain exactly the contract-defined assets. Missing, extra,
