@@ -104,6 +104,103 @@ jobs:
           if "trajectory/intercepts/$asset" in installer:
               raise SystemExit("public installer must not use the source-repository intercept path")
           PY
+      - name: Require releases before channel metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import re
+          import urllib.parse
+          import urllib.request
+          from pathlib import Path
+
+          repository = "datadog-labs/trajectory"
+          required_assets = {
+              "trajectory-darwin-amd64",
+              "trajectory-darwin-arm64",
+              "trajectory-darwin-universal",
+              "trajectory-linux-amd64",
+              "trajectory-linux-arm64",
+              "trajectory-windows-amd64.exe",
+              "trajectory-windows-amd64",
+              "trajectory-mdm-darwin-amd64",
+              "trajectory-mdm-darwin-arm64",
+              "trajectory-mdm-darwin-universal",
+              "trajectory-mdm-linux-amd64",
+              "trajectory-mdm-linux-arm64",
+              "trajectory-mdm-windows-amd64.exe",
+              "checksums.sha256",
+          }
+          digest_pattern = re.compile(r"^sha256:[0-9a-f]{64}$")
+          token = os.environ.get("GH_TOKEN")
+          if not token:
+              raise SystemExit("GH_TOKEN is required for public release readback")
+
+          def github(path):
+              request = urllib.request.Request(
+                  f"https://api.github.com/repos/{repository}/{path}",
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                      "User-Agent": "trajectory-release-metadata-validation",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      value = json.load(response)
+              except Exception as error:
+                  raise SystemExit(f"public release readback failed for {path}: {error}")
+              if not isinstance(value, dict):
+                  raise SystemExit(f"public release readback returned non-object: {path}")
+              return value
+
+          releases = json.loads(Path("RELEASES.json").read_text(encoding="utf-8"))
+          latest = github("releases/latest")
+          if latest.get("tag_name") != releases["stable"]["tag"]:
+              raise SystemExit("RELEASES.json stable channel must match GitHub latest")
+
+          observed = {}
+          for channel in ("stable", "beta"):
+              record = releases[channel]
+              tag = record["tag"]
+              release = observed.get(tag)
+              if release is None:
+                  release = github(
+                      "releases/tags/" + urllib.parse.quote(tag, safe="")
+                  )
+                  observed[tag] = release
+              expected_prerelease = "-beta" in record["version"]
+              if (
+                  release.get("tag_name") != tag
+                  or release.get("draft") is not False
+                  or release.get("prerelease") is not expected_prerelease
+              ):
+                  raise SystemExit(
+                      f"RELEASES.json {channel} channel does not match a published release"
+                  )
+              assets = release.get("assets")
+              if not isinstance(assets, list):
+                  raise SystemExit(f"public release {tag} has malformed assets")
+              names = {
+                  asset.get("name")
+                  for asset in assets
+                  if isinstance(asset, dict)
+                  and asset.get("state") == "uploaded"
+                  and isinstance(asset.get("size"), int)
+                  and asset.get("size") > 0
+                  and isinstance(asset.get("digest"), str)
+                  and digest_pattern.fullmatch(asset["digest"])
+              }
+              if names != required_assets:
+                  raise SystemExit(
+                      f"public release {tag} does not contain the exact published asset set"
+                  )
+              if expected_prerelease and latest.get("tag_name") == tag:
+                  raise SystemExit("beta channel release must remain non-latest")
+          PY
       - name: Validate passive release target
         run: |
           test ! -e .github/workflows/public-release-mirror.yml
@@ -120,8 +217,6 @@ jobs:
           permissions = policy.split("permissions:", 1)[1]
           if "contents: write" not in permissions or "actions: write" in permissions:
               raise SystemExit("source workflow policy must grant only target contents write")
-          if "public-release-mirror-recovery" in policy:
-              raise SystemExit("deleted target recovery workflow remains trusted")
           if "repo:DataDog/trajectory:environment:public-release-publication" not in policy:
               raise SystemExit("target write policy is not source-environment bound")
 
@@ -146,6 +241,10 @@ jobs:
               "DataDog/trajectory/.github/workflows/"
               "public-release-publication.yml@refs/heads/main"
           )
+          recovery_workflow = (
+              "DataDog/trajectory/.github/workflows/"
+              "public-release-mirror-recovery.yml@refs/heads/main"
+          )
           exact_claims = {
               "environment": "public-release-publication",
               "ref_protected": '"true"',
@@ -165,6 +264,7 @@ jobs:
               ("ref", "refs/heads/main"),
               ("job_workflow_ref", release_workflow),
               ("job_workflow_ref", main_workflow),
+              ("job_workflow_ref", recovery_workflow),
           )
           for claim, value in accepted:
               if re.fullmatch(claim_patterns[claim], value) is None:
@@ -179,7 +279,7 @@ jobs:
               (
                   "job_workflow_ref",
                   "DataDog/trajectory/.github/workflows/"
-                  "public-release-mirror-recovery.yml@refs/heads/main",
+                  "public-release-mirror-recovery.yml@refs/heads/feature",
               ),
           )
           for claim, value in rejected:
