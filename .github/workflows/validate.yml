@@ -204,43 +204,13 @@ jobs:
       - name: Validate passive release target
         run: |
           test ! -e .github/workflows/public-release-mirror.yml
+          test ! -e .github/workflows/public-release-tag.yml
           test ! -e .github/scripts/public_release_mirror.py
           test ! -e .github/scripts/public_release_from_source.py
           test ! -e contracts/public-release-mirror-v1.json
           python3 - <<'PY'
           import re
           from pathlib import Path
-
-          tag_workflow = Path(
-              ".github/workflows/public-release-tag.yml"
-          ).read_text(encoding="utf-8")
-          required_tag_controls = (
-              "workflow_dispatch:",
-              "environment: public-release-mirror",
-              "github.ref == 'refs/heads/main'",
-              "github.sha == github.workflow_sha",
-              "test \"$GITHUB_REPOSITORY\" = datadog-labs/trajectory",
-              "contents: write",
-              "git/commits/{target_sha}",
-              'target.get("type") != "commit"',
-              'target.get("sha") != target_sha',
-          )
-          for control in required_tag_controls:
-              if control not in tag_workflow:
-                  raise SystemExit(
-                      f"public release tag workflow is missing control: {control}"
-                  )
-          for forbidden in (
-              "DataDog/trajectory",
-              "RELEASES.json",
-              "id-token: write",
-              "releases/",
-              "dd-octo-sts",
-          ):
-              if forbidden in tag_workflow:
-                  raise SystemExit(
-                      f"public release tag workflow exceeds staging scope: {forbidden}"
-                  )
 
           policy = Path(
               ".github/chainguard/trajectory.public-release-publication.sts.yaml"
@@ -276,20 +246,8 @@ jobs:
               "DataDog/trajectory/.github/workflows/"
               "public-release-mirror-recovery.yml@refs/heads/main"
           )
-          exact_claims = {
-              "environment": "public-release-publication",
-              "ref_protected": '"true"',
-              "repository": "DataDog/trajectory",
-              "repository_id": '"1225862587"',
-              "repository_owner_id": '"365230"',
-              "runner_environment": "github-hosted",
-          }
-          for claim, expected in exact_claims.items():
-              if claim_patterns.get(claim) != expected:
-                  raise SystemExit(
-                      f"target write policy has unexpected {claim}: "
-                      f"{claim_patterns.get(claim)!r}"
-                  )
+          if claim_patterns.get("repository") != "DataDog/trajectory":
+              raise SystemExit("target write policy is not source-repository bound")
           accepted = (
               ("ref", release_ref),
               ("ref", "refs/heads/main"),

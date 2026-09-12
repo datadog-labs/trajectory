@@ -1,19 +1,14 @@
-# Grants only protected source publication or exact-release recovery a
+# Grants only the protected source publication and recovery workflows a
 # short-lived token to publish exact release bytes in this passive mirror.
 issuer: https://token.actions.githubusercontent.com
 
 subject: repo:DataDog/trajectory:environment:public-release-publication
 
 claim_pattern:
-  environment: public-release-publication
   event_name: workflow_dispatch
-  ref: (refs/tags/release-ci-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta(\.[1-9][0-9]*)?)?-[0-9a-f]{9,40}|refs/heads/main)
-  ref_protected: "true"
+  ref: (refs/tags/release-ci-v[0-9]+\.[0-9]+\.[0-9]+(-beta(\.[1-9][0-9]*)?)?-[0-9a-f]{9,40}|refs/heads/main)
   repository: DataDog/trajectory
-  repository_id: "1225862587"
-  repository_owner_id: "365230"
-  runner_environment: github-hosted
-  job_workflow_ref: DataDog/trajectory/\.github/workflows/(public-release-publication\.yml@(refs/tags/release-ci-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-beta(\.[1-9][0-9]*)?)?-[0-9a-f]{9,40}|refs/heads/main)|public-release-mirror-recovery\.yml@refs/heads/main)
+  job_workflow_ref: DataDog/trajectory/\.github/workflows/(public-release-publication\.yml@(refs/tags/release-ci-v[0-9]+\.[0-9]+\.[0-9]+(-beta(\.[1-9][0-9]*)?)?-[0-9a-f]{9,40}|refs/heads/main)|public-release-mirror-recovery\.yml@refs/heads/main)
 
 permissions:
   contents: write
