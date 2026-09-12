@@ -120,8 +120,8 @@ jobs:
           permissions = policy.split("permissions:", 1)[1]
           if "contents: write" not in permissions or "actions: write" in permissions:
               raise SystemExit("source workflow policy must grant only target contents write")
-          if "public-release-mirror-recovery" not in policy:
-              raise SystemExit("source-owned recovery workflow is not trusted")
+          if "public-release-mirror-recovery" in policy:
+              raise SystemExit("deleted target recovery workflow remains trusted")
           if "repo:DataDog/trajectory:environment:public-release-publication" not in policy:
               raise SystemExit("target write policy is not source-environment bound")
 
@@ -142,15 +142,29 @@ jobs:
               "DataDog/trajectory/.github/workflows/"
               "public-release-publication.yml@" + release_ref
           )
-          recovery_workflow = (
+          main_workflow = (
               "DataDog/trajectory/.github/workflows/"
-              "public-release-mirror-recovery.yml@refs/heads/main"
+              "public-release-publication.yml@refs/heads/main"
           )
+          exact_claims = {
+              "environment": "public-release-publication",
+              "ref_protected": '"true"',
+              "repository": "DataDog/trajectory",
+              "repository_id": '"1225862587"',
+              "repository_owner_id": '"365230"',
+              "runner_environment": "github-hosted",
+          }
+          for claim, expected in exact_claims.items():
+              if claim_patterns.get(claim) != expected:
+                  raise SystemExit(
+                      f"target write policy has unexpected {claim}: "
+                      f"{claim_patterns.get(claim)!r}"
+                  )
           accepted = (
               ("ref", release_ref),
               ("ref", "refs/heads/main"),
               ("job_workflow_ref", release_workflow),
-              ("job_workflow_ref", recovery_workflow),
+              ("job_workflow_ref", main_workflow),
           )
           for claim, value in accepted:
               if re.fullmatch(claim_patterns[claim], value) is None:
@@ -161,6 +175,11 @@ jobs:
                   "job_workflow_ref",
                   "datadog-labs/trajectory/.github/workflows/"
                   "public-release-mirror.yml@refs/heads/main",
+              ),
+              (
+                  "job_workflow_ref",
+                  "DataDog/trajectory/.github/workflows/"
+                  "public-release-mirror-recovery.yml@refs/heads/main",
               ),
           )
           for claim, value in rejected:
