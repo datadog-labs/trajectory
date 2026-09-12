@@ -211,6 +211,37 @@ jobs:
           import re
           from pathlib import Path
 
+          tag_workflow = Path(
+              ".github/workflows/public-release-tag.yml"
+          ).read_text(encoding="utf-8")
+          required_tag_controls = (
+              "workflow_dispatch:",
+              "environment: public-release-mirror",
+              "github.ref == 'refs/heads/main'",
+              "github.sha == github.workflow_sha",
+              "test \"$GITHUB_REPOSITORY\" = datadog-labs/trajectory",
+              "contents: write",
+              "git/commits/{target_sha}",
+              'target.get("type") != "commit"',
+              'target.get("sha") != target_sha',
+          )
+          for control in required_tag_controls:
+              if control not in tag_workflow:
+                  raise SystemExit(
+                      f"public release tag workflow is missing control: {control}"
+                  )
+          for forbidden in (
+              "DataDog/trajectory",
+              "RELEASES.json",
+              "id-token: write",
+              "releases/",
+              "dd-octo-sts",
+          ):
+              if forbidden in tag_workflow:
+                  raise SystemExit(
+                      f"public release tag workflow exceeds staging scope: {forbidden}"
+                  )
+
           policy = Path(
               ".github/chainguard/trajectory.public-release-publication.sts.yaml"
           ).read_text(encoding="utf-8")

@@ -1,0 +1,131 @@
+name: Public Release Tag Staging
+run-name: public-release-tag-v${{ inputs.version }}-${{ inputs.target_sha }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Canonical release version whose lightweight tag will be staged
+        required: true
+        type: string
+      target_sha:
+        description: Exact public-main commit the release tag must target
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-release-tag-v${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  stage:
+    name: Stage exact lightweight release tag
+    if: github.ref == 'refs/heads/main' && github.sha == github.workflow_sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: public-release-mirror
+    permissions:
+      contents: write
+    steps:
+      - name: Validate protected tag request
+        env:
+          VERSION: ${{ inputs.version }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = datadog-labs/trajectory
+          test "$GITHUB_REF" = refs/heads/main
+          test "$GITHUB_WORKFLOW_REF" = "datadog-labs/trajectory/.github/workflows/public-release-tag.yml@refs/heads/main"
+          test "$GITHUB_WORKFLOW_SHA" = "$GITHUB_SHA"
+          python3 - <<'PY'
+          import os
+          import re
+
+          version = os.environ["VERSION"]
+          target_sha = os.environ["TARGET_SHA"]
+          version_pattern = re.compile(
+              r"^(0|[1-9][0-9]*)\."
+              r"(0|[1-9][0-9]*)\."
+              r"(0|[1-9][0-9]*)"
+              r"(-beta(\.[1-9][0-9]*)?)?$"
+          )
+          if version_pattern.fullmatch(version) is None:
+              raise SystemExit("version is not canonical")
+          if re.fullmatch(r"[0-9a-f]{40}", target_sha) is None:
+              raise SystemExit("target_sha must be an exact lowercase commit SHA")
+          PY
+
+      - name: Create and read back exact tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          token = os.environ["GH_TOKEN"]
+          version = os.environ["VERSION"]
+          target_sha = os.environ["TARGET_SHA"]
+          tag = f"v{version}"
+          ref = f"refs/tags/{tag}"
+
+          def github(path, *, method="GET", payload=None, allow_not_found=False):
+              data = None
+              if payload is not None:
+                  data = json.dumps(payload, separators=(",", ":")).encode()
+              request = urllib.request.Request(
+                  f"https://api.github.com/repos/{repository}/{path}",
+                  data=data,
+                  method=method,
+                  headers={
+                      "Accept": "application/vnd.github+json",
+                      "Authorization": f"Bearer {token}",
+                      "Content-Type": "application/json",
+                      "User-Agent": "trajectory-public-release-tag-staging",
+                      "X-GitHub-Api-Version": "2022-11-28",
+                  },
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      value = json.load(response)
+              except urllib.error.HTTPError as error:
+                  if allow_not_found and error.code == 404:
+                      return None
+                  detail = error.read(2048).decode("utf-8", "replace")
+                  raise SystemExit(
+                      f"GitHub API {method} {path} failed: HTTP {error.code}: {detail}"
+                  ) from None
+              if not isinstance(value, dict):
+                  raise SystemExit(f"GitHub API {method} {path} returned non-object")
+              return value
+
+          commit = github(f"git/commits/{target_sha}")
+          if commit.get("sha") != target_sha:
+              raise SystemExit("target commit readback did not match target_sha")
+
+          encoded_tag = urllib.parse.quote(tag, safe="")
+          observed = github(f"git/ref/tags/{encoded_tag}", allow_not_found=True)
+          if observed is None:
+              github("git/refs", method="POST", payload={"ref": ref, "sha": target_sha})
+              observed = github(f"git/ref/tags/{encoded_tag}")
+
+          target = observed.get("object")
+          if (
+              observed.get("ref") != ref
+              or not isinstance(target, dict)
+              or target.get("type") != "commit"
+              or target.get("sha") != target_sha
+          ):
+              raise SystemExit("release tag exists but is not the exact lightweight target")
+
+          print(f"TAG_STAGED tag={tag} target_sha={target_sha}")
+          PY
