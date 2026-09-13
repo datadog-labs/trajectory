@@ -109,6 +109,15 @@ agent behavior becomes something you can graph, alert on, compare, and improve.
 
 ## Install
 
+Choose the installation path that matches who manages the endpoint:
+
+- **Managed fleets (MDM/UEM):** Endpoint administrators should start with the
+  [Managed Endpoint Deployment guide](docs/MANAGED-ENDPOINTS.md). It covers
+  package preparation, policy deployment, coding-agent selection, and
+  managed-endpoint verification.
+- **Individual developers:** Use the personal installer below. It installs
+  Trajectory for the current user and runs interactive setup.
+
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main/install.sh)
 ```
