@@ -238,10 +238,6 @@ jobs:
               "DataDog/trajectory/.github/workflows/"
               "public-release-publication.yml@" + release_ref
           )
-          main_workflow = (
-              "DataDog/trajectory/.github/workflows/"
-              "public-release-publication.yml@refs/heads/main"
-          )
           recovery_workflow = (
               "DataDog/trajectory/.github/workflows/"
               "public-release-mirror-recovery.yml@refs/heads/main"
@@ -252,7 +248,6 @@ jobs:
               ("ref", release_ref),
               ("ref", "refs/heads/main"),
               ("job_workflow_ref", release_workflow),
-              ("job_workflow_ref", main_workflow),
               ("job_workflow_ref", recovery_workflow),
           )
           for claim, value in accepted:
@@ -269,6 +264,11 @@ jobs:
                   "job_workflow_ref",
                   "DataDog/trajectory/.github/workflows/"
                   "public-release-mirror-recovery.yml@refs/heads/feature",
+              ),
+              (
+                  "job_workflow_ref",
+                  "DataDog/trajectory/.github/workflows/"
+                  "public-release-publication.yml@refs/heads/main",
               ),
           )
           for claim, value in rejected:
