@@ -10,18 +10,15 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { BoundedSerialQueue } from "./async-queue.js";
 import { aggregatePiAgentRun, PiAgentRunTracker } from "./agent-run.js";
-import { buildTrajectorySchema, runTrajectoryQuery } from "./query-tools.js";
 import { piSessionIdentityFields, readPiSessionHeaderId } from "./session-identity.js";
 import { ensureTrajectoryServe as requestTrajectoryServe } from "./serve-ensure.js";
 
 const DEFAULT_PORT = 19222;
-const POST_TIMEOUT_MS = 2000;
 const CAPTURE_HELPER_TIMEOUT_MS = 5000;
 const CAPTURE_QUEUE_CAPACITY = 256;
 const LIFECYCLE_QUEUE_CAPACITY = 64;
@@ -72,7 +69,6 @@ function withPluginProvenance(body: Record<string, unknown>): Record<string, unk
 
 export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: TrajectoryExtensionRuntime = {}) {
 	const port = parseInt(process.env.TRAJECTORY_PORT ?? String(DEFAULT_PORT), 10);
-	const baseUrl = `http://127.0.0.1:${port}`;
 	const captureQueue = runtime.captureQueue ?? new BoundedSerialQueue(CAPTURE_QUEUE_CAPACITY);
 	const lifecycleQueue = runtime.lifecycleQueue ?? new BoundedSerialQueue(LIFECYCLE_QUEUE_CAPACITY);
 
@@ -102,152 +98,6 @@ export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: Trajector
 	}
 
 	const ensureServeTask = runtime.ensureServe ?? ensureTrajectoryServe;
-
-	// -- Tool registration --------------------------------------------
-
-	pi.registerTool({
-		name: "trajectory_status",
-		label: "Trajectory Status",
-		description: "Shows the current trajectory capture status including active sessions and event counts",
-		parameters: Type.Object({}),
-		async execute(_toolCallId, _params, signal) {
-			try {
-				const res = await fetch(`${baseUrl}/health`, {
-					signal: signal ?? AbortSignal.timeout(POST_TIMEOUT_MS),
-				});
-				const data = await res.json();
-				return {
-					content: [{ type: "text", text: JSON.stringify(data, null, 2) }],
-					details: {},
-				};
-			} catch (err) {
-				return {
-					content: [{ type: "text", text: `Trajectory serve unreachable: ${err}` }],
-					details: {},
-					isError: true,
-				};
-			}
-		},
-	});
-
-	pi.registerTool({
-		name: "trajectory_flush",
-		label: "Trajectory Flush",
-		description: "Flushes any pending trajectory data to ensure all events are written",
-		parameters: Type.Object({}),
-		async execute(_toolCallId, _params, signal) {
-			try {
-				await fetch(`${baseUrl}/flush`, {
-					method: "POST",
-					signal: signal ?? AbortSignal.timeout(5000),
-				});
-				return {
-					content: [{ type: "text", text: "Trajectory data flushed." }],
-					details: {},
-				};
-			} catch (err) {
-				return {
-					content: [{ type: "text", text: `Flush failed: ${err}` }],
-					details: {},
-					isError: true,
-				};
-			}
-		},
-	});
-
-	pi.registerTool({
-		name: "trajectory_incognito",
-		label: "Trajectory Incognito",
-		description: "Toggles incognito mode for the current Pi session. Local JSONL capture continues, but publish to non-exempt Datadog destinations is suppressed while enabled.",
-		parameters: Type.Object({
-			enable: Type.Boolean({ description: "true to enable incognito, false to disable it" }),
-		}),
-		async execute(_toolCallId, params, signal) {
-			if (!sessionId) {
-				return {
-					content: [{ type: "text", text: "No active Pi session is registered yet." }],
-					details: {},
-					isError: true,
-				};
-			}
-
-			const enable = Boolean((params as { enable?: boolean }).enable);
-			try {
-				await ensureTrajectoryServe();
-				const res = await fetch(
-					`${baseUrl}/session/incognito?session_id=${encodeURIComponent(sessionId)}&enable=${enable}`,
-					{
-						method: "POST",
-						signal: signal ?? AbortSignal.timeout(POST_TIMEOUT_MS),
-					},
-				);
-				if (!res.ok) {
-					const body = await res.text();
-					return {
-						content: [{ type: "text", text: `Incognito toggle failed: ${res.status} ${body}` }],
-						details: {},
-						isError: true,
-					};
-				}
-				const state = enable ? "enabled" : "disabled";
-				const detail = enable
-					? "publish to non-exempt Datadog destinations is suppressed; local JSONL capture continues"
-					: "publish to non-exempt Datadog destinations is resumed";
-				return {
-					content: [{ type: "text", text: `Incognito ${state} for session ${sessionId}; ${detail}.` }],
-					details: {},
-				};
-			} catch (err) {
-				return {
-					content: [{ type: "text", text: `Incognito toggle failed: ${err}` }],
-					details: {},
-					isError: true,
-				};
-			}
-		},
-	});
-
-	pi.registerTool({
-		name: "trajectory_schema",
-		label: "Trajectory Schema",
-		description: "Introspects the local Trajectory SQLite cache schema. Call this before trajectory_query so SQL matches the live cache.",
-		parameters: Type.Object({
-			include_row_counts: Type.Optional(Type.Boolean({ description: "Include SELECT COUNT(*) per table. Defaults to false." })),
-		}),
-		async execute(_toolCallId, params) {
-			const result = buildTrajectorySchema(Boolean((params as { include_row_counts?: boolean }).include_row_counts));
-			return {
-				content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-				details: { result },
-				isError: !result.ok,
-			};
-		},
-	});
-
-	pi.registerTool({
-		name: "trajectory_query",
-		label: "Trajectory Query",
-		description: "Runs a guarded read-only SQL query against the local Trajectory SQLite cache. Call trajectory_schema first unless the schema was already fetched. Only SELECT, WITH, and PRAGMA are allowed after stripping comments.",
-		parameters: Type.Object({
-			query: Type.String({ description: "SQL query. First keyword after comments must be SELECT, WITH, or PRAGMA." }),
-			params: Type.Optional(Type.Record(Type.String(), Type.Any(), { description: "Optional named SQL parameters. Use placeholders such as :session_id." })),
-			limit: Type.Optional(Type.Number({ description: "Maximum rows to return. Defaults to 100, max 1000." })),
-			row_limit: Type.Optional(Type.Number({ description: "Alias for limit." })),
-		}),
-		async execute(_toolCallId, params) {
-			const result = runTrajectoryQuery(params as {
-				query: string;
-				params?: Record<string, string | number | boolean | null>;
-				limit?: number;
-				row_limit?: number;
-			});
-			return {
-				content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-				details: { result },
-				isError: !result.ok,
-			};
-		},
-	});
 
 	// -- CLI fallback for session lifecycle events -------------------
 	// Session lifecycle events (start/end) use CLI fallback to write directly
