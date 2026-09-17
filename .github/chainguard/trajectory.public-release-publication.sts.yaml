@@ -8,7 +8,7 @@ claim_pattern:
   event_name: workflow_dispatch
   ref: (refs/tags/release-ci-v[0-9]+\.[0-9]+\.[0-9]+(-beta(\.[1-9][0-9]*)?)?-[0-9a-f]{9,40}|refs/heads/main)
   repository: DataDog/trajectory
-  job_workflow_ref: DataDog/trajectory/\.github/workflows/(public-release-publication\.yml@refs/tags/release-ci-v[0-9]+\.[0-9]+\.[0-9]+(-beta(\.[1-9][0-9]*)?)?-[0-9a-f]{9,40}|public-release-mirror-recovery\.yml@refs/heads/main)
+  job_workflow_ref: DataDog/trajectory/\.github/workflows/(public-release-publication\.yml@(refs/tags/release-ci-v[0-9]+\.[0-9]+\.[0-9]+(-beta(\.[1-9][0-9]*)?)?-[0-9a-f]{9,40}|refs/heads/main)|public-release-mirror-recovery\.yml@refs/heads/main)
 
 permissions:
   contents: write
