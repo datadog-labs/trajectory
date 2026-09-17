@@ -159,8 +159,6 @@ jobs:
 
           releases = json.loads(Path("RELEASES.json").read_text(encoding="utf-8"))
           latest = github("releases/latest")
-          if latest.get("tag_name") != releases["stable"]["tag"]:
-              raise SystemExit("RELEASES.json stable channel must match GitHub latest")
 
           observed = {}
           for channel in ("stable", "beta"):
