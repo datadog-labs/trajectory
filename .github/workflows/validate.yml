@@ -43,11 +43,14 @@ jobs:
                   json.load(handle)
 
           releases = json.loads((root / "RELEASES.json").read_text(encoding="utf-8"))
-          unexpected = set(releases) - {"stable", "beta"}
+          channels = ("stable", "beta", "bravehearts")
+          unexpected = set(releases) - set(channels)
           if unexpected:
               raise SystemExit(f"unexpected release channels: {sorted(unexpected)}")
-          if set(releases) != {"stable", "beta"}:
-              raise SystemExit("RELEASES.json must define stable and beta channels")
+          if set(releases) != set(channels):
+              raise SystemExit(
+                  "RELEASES.json must define stable, beta, and bravehearts channels"
+              )
           version_pattern = re.compile(
               r"^(?P<major>0|[1-9][0-9]*)\."
               r"(?P<minor>0|[1-9][0-9]*)\."
@@ -68,7 +71,7 @@ jobs:
               )
 
           timestamp_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
-          for channel in ("stable", "beta"):
+          for channel in channels:
               record = releases[channel]
               if not isinstance(record, dict) or set(record) != {
                   "version", "tag", "released_at"
@@ -85,8 +88,10 @@ jobs:
                   raise SystemExit(f"RELEASES.json {channel} release timestamp is not UTC")
               if channel == "stable" and "-beta" in version:
                   raise SystemExit("RELEASES.json stable channel cannot target a beta release")
-          if version_key(releases["beta"]["version"]) < version_key(releases["stable"]["version"]):
-              raise SystemExit("RELEASES.json beta channel cannot trail stable")
+          stable_key = version_key(releases["stable"]["version"])
+          for channel in ("beta", "bravehearts"):
+              if version_key(releases[channel]["version"]) < stable_key:
+                  raise SystemExit(f"RELEASES.json {channel} channel cannot trail stable")
 
           installer = (root / "install.sh").read_text(encoding="utf-8")
           latest_asset_url = "https://github.com/$REPO/releases/latest/download/$asset"
@@ -161,7 +166,7 @@ jobs:
           latest = github("releases/latest")
 
           observed = {}
-          for channel in ("stable", "beta"):
+          for channel in ("stable", "beta", "bravehearts"):
               record = releases[channel]
               tag = record["tag"]
               release = observed.get(tag)
