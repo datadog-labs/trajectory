@@ -25,4 +25,25 @@ if [ ! -x "$BINARY" ]; then
     exit 0
 fi
 
-exec "$BINARY" capture-hook --wait-notify "$WAIT_NOTIFY" "$EVENT_TYPE"
+# The shared serve daemon can be busy for tens of seconds on other work (batch
+# repairs, marker evaluation, publish retries). Without a bound here, Claude
+# Code's own hook timeout eventually SIGKILLs this process and discards the
+# hook's output. Fail open before that happens instead.
+CAPTURE_TIMEOUT="${TRAJECTORY_CAPTURE_HOOK_TIMEOUT_SECONDS:-5}"
+case "$CAPTURE_TIMEOUT" in
+    ''|*[!0-9]*) CAPTURE_TIMEOUT=5 ;;
+esac
+
+TIMEOUT_BIN=""
+for candidate in timeout gtimeout; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+        TIMEOUT_BIN="$candidate"
+        break
+    fi
+done
+
+if [ -n "$TIMEOUT_BIN" ]; then
+    "$TIMEOUT_BIN" "$CAPTURE_TIMEOUT" "$BINARY" capture-hook --wait-notify "$WAIT_NOTIFY" "$EVENT_TYPE" || exit 0
+else
+    exec "$BINARY" capture-hook --wait-notify "$WAIT_NOTIFY" "$EVENT_TYPE"
+fi
