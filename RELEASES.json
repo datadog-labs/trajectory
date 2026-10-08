@@ -5,13 +5,13 @@
     "released_at": "2026-09-17T04:39:48Z"
   },
   "beta": {
-    "version": "0.6.0",
-    "tag": "v0.6.0",
-    "released_at": "2026-10-01T13:25:55Z"
+    "version": "0.6.1-beta",
+    "tag": "v0.6.1-beta",
+    "released_at": "2026-10-08T02:40:01Z"
   },
   "bravehearts": {
-    "version": "0.6.0",
-    "tag": "v0.6.0",
-    "released_at": "2026-10-01T13:25:55Z"
+    "version": "0.6.1-beta",
+    "tag": "v0.6.1-beta",
+    "released_at": "2026-10-08T02:40:01Z"
   }
 }
