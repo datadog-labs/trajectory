@@ -137,6 +137,13 @@ bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main
 
 Configure Datadog export later with `trajectory destination configure`.
 
+When OpenHands is detected on an interactive local-capture install, the
+installer offers a one-shot local-datastore verification suggestion for the
+`openhands_durable_history` feature flag. The prompt is informational only — it
+prints a command the user can run after setup — and never enables the flag or
+mutates durable state. See [docs/FEATURE-FLAGS.md](docs/FEATURE-FLAGS.md) for
+`openhands_durable_history`.
+
 Add `--security` to enable Datadog Security for detected Claude Code, Codex,
 and Cursor installations. Security defaults to enforce mode; use
 `--security-mode observe` for non-blocking recording. Pass `--app-key` or set
