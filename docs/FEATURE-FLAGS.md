@@ -177,3 +177,17 @@ table below explains the flags available in this release.
 | `uninstrument_command` | on | Allows the explicit `trajectory uninstrument <client\|all>` workflow to remove setup-owned hooks, plugins, MCP registrations, skills, commands, shims, marketplaces, runtime assets, and module dispatchers while preserving unrelated client configuration. Managed config or `TRAJECTORY_DISABLE_FEATURES=uninstrument_command` can stop new cleanup during rollout; the repository uninstaller fails closed and preserves the binary when cleanup is disabled or incomplete. |
 | `watcher_state_migration` | on | Stores Codex and Cursor Agent cursors and leader locks under root/source-keyed `${TRAJECTORY_HOME}/state/watchers/` paths. Enabled binaries dual-read and dual-write the released `${TRAJECTORY_HOME}/.state/` cursors and acquire the released leader lock first, so old binaries and rollback remain safe. User, managed, or environment disable returns entirely to the released paths. Changing this flag on a running serve owner is replacement-required; `trajectory config reload --yes` reports that status instead of moving an active watcher between namespaces. |
 | `cache_fts_index` | on | Builds SQLite FTS5 full-text indexes over cached `tool_calls` and `turns` text during cache materialization so agents can run indexed `MATCH` search instead of full-table `LIKE` scans. The default-on path creates trigram (`tool_calls`) and word/bm25 (`turns`) virtual tables plus keep-in-sync triggers, and runs a one-time backfill/rebuild for an already-populated cache. Disabling removes the FTS objects and materialization overhead to reclaim space. Managed-disable and `TRAJECTORY_DISABLE_FEATURES=cache_fts_index` act as kill switches. |
+
+### Installer Prompts
+
+`install.sh` is not a feature-flag surface and never mutates durable flag state.
+When OpenHands is detected on an interactive local-capture install
+(`NON_INTERACTIVE=0`, `LOCAL_ONLY=1` or no API key supplied, and a TTY on
+stdin), the installer surfaces a conditional, informational one-shot
+local-datastore verification suggestion for `openhands_durable_history`. The
+suggestion only prints the `trajectory features enable openhands_durable_history`
+and `trajectory backfill --from-openhands --dry-run` commands for the user to
+run after setup finishes; the flag's default-off semantics in the table above
+are unchanged. Non-interactive, piped, and Datadog-export installs skip the
+prompt silently.
+
