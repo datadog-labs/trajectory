@@ -1,290 +1,267 @@
 # Trajectory
 
-Observe AI coding agents like production systems.
+Trajectory records what AI coding agents do on your computer and sends that
+data to Datadog.
 
-See the whole run. Measure the behavior. Improve the workflow.
-
-Trajectory captures coding-agent sessions across Claude Code, Claude Desktop,
-Cline CLI, Codex, Gemini, Antigravity, Goose, Aider, Continue CLI, Mistral
-Vibe, Codebuff, Hermes Agent, Amp Code, Qwen Code, OpenHands, Kiro CLI, Kilo
-Code, Cursor, Pi, OpenCode, GitHub Copilot CLI, and Factory Droid, then turns them
-into local timelines, Datadog LLM Observability traces, operational metrics,
-and Markers.
-
-## What It Answers
-
-- What happened in this session?
-- Where did time, tokens, and cost go?
-- What kinds of work are agents doing, and what are they delivering?
-- Which repos, files, commits, and pull requests were involved?
-- Did the agent make progress, loop, retry, or stall?
-- Which agent workflows are improving across users and teams?
-
-## Markers
-
-Markers are Trajectory's signature feature: YAML-defined measurements for agent
-behavior. Write a rule once, then evaluate it across turns, sessions, tasks,
-commits, and pull requests.
-
-Example: add this to `.trajectory/markers.yaml` in a repo to turn an agent
-force-push into a measurable signal.
-
-```yaml
-version: 2
-
-points:
-  - name: force-push
-    description: Agent force-pushed to a remote
-    severity: warn
-    confidence: high
-    emit: metric
-    scope: session
-    match:
-      tool: [Bash, Shell, exec_command, run_shell]
-      command: '(?i)^git\s+push\b.*--force'
-      not_input: '--force-with-lease'
-
-measures:
-  - name: force-pushes
-    scope: session
-    count:
-      point: force-push
-```
-
-How it works:
-
-- `points` define behavior to detect. This point watches shell-like tool calls
-  for `git push --force`.
-- `not_input` excludes the safer `--force-with-lease` path.
-- `emit: metric` makes the point eligible for marker metric export.
-- `scope: session` says the signal describes the session, not just one turn.
-- `measures` turns point hits into a count named `force-pushes`.
-
-When the command appears in a captured session, Trajectory records a
-`force-push` marker and can publish `trajectory.session.force_pushes` plus a
-completed-session count metric. Raw behavior becomes something you can query by
-repo, team, environment, or release workflow.
-
-Use Markers to detect patterns such as:
-
-- retry loops
-- repeated failures
-- tool thrash
-- context churn
-- approval friction
-- cost spikes
-- task progress
-- pull-request attribution
-
-Marker results are available locally and can be exported as Datadog metrics, so
-agent behavior becomes something you can graph, alert on, compare, and improve.
-
-## Core Capabilities
-
-- **Multi-client instrumentation** for Claude Code, Cline CLI, Codex CLI,
-  Gemini CLI, Antigravity CLI, Goose, Aider, Continue CLI, Mistral Vibe,
-  Codebuff, Hermes Agent, Amp Code, Qwen Code, OpenHands, Kiro CLI, Kilo Code,
-  Cursor, Pi, OpenCode, GitHub Copilot CLI beta, and Factory Droid beta.
-- **Local-first timelines** for session lifecycle, turns, tool calls, model
-  usage, cost signals, and repository context.
-- **Work Insights and reports** for adoption, outcomes, task mix, complexity,
-  agent-work cost, pull-request attribution, and evidence-backed deliverables.
-- **Datadog-native export** for configurable LLM Observability traces and
-  operational metrics for tokens, cost, duration, tool use, capture health, and
-  attribution workflows.
-- **Agent Security controls** through the independently installable
-  `trajectory-security` plugin for Claude Code, Codex, and Cursor.
-- **Investigation tools** including `trajectory status`, `trajectory view`,
-  diagnostics, support bundles, MCP tools, and historical backfill.
-- **Privacy and capacity controls** including `/incognito`, local-only capture,
-  durable `trajectory config capture disable` / `trajectory config capture enable`
-  capture control,
-  sensitivity scanning, configurable trace detail, and controls for
-  Trajectory-owned LLM calls.
-- **Workflow attribution** across repositories, commits, pull requests, and
-  completed-session samples, including CODEOWNER-aware production analysis.
-- **Preview integrations** for CommandCode, Devin CLI, ForgeCode, gptme, Grok
-  Build, Kimi Code CLI, Muse Code, Oh My Pi, Qoder CLI, VS Code Copilot Chat,
-  Warp, Windsurf, ZCode, and Zed.
+You install one binary and run one setup command. Trajectory then captures
+each session from the coding agents you use. In these docs, a coding agent is
+called a *client*. Claude Code and Codex are examples.
 
 ## Install
 
-Choose the installation path that matches who manages the endpoint:
+Pick the method that matches who manages the computer:
 
-- **Managed fleets (MDM/UEM):** Endpoint administrators should start with the
-  [Managed Endpoint Deployment guide](docs/MANAGED-ENDPOINTS.md). It covers
-  package preparation, policy deployment, coding-agent selection, and
-  managed-endpoint verification.
-- **Individual developers:** Use the personal installer below. It installs
-  Trajectory for the current user and runs interactive setup.
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main/install.sh)
-```
-
-The installer downloads the latest Trajectory release asset for your platform,
-installs it under `~/.trajectory/bin/trajectory`, stages the Claude wrapper
-intercept runtime, runs `trajectory setup`, and registers detected coding-agent
-integrations. Agent command shims are opt-in and can be installed with
-`--install-client-shims` where supported.
-
-For local capture without a Datadog API key, leave the API-key prompt blank or
-make the choice explicit:
+- **Managed fleets (MDM/UEM):** Follow the
+  [Managed Endpoint Administrator Guide](docs/MANAGED-ENDPOINTS.md).
+  It shows how to deploy the package and policy, choose the clients, and check
+  the install.
+- **Individual developers:** Run the personal installer below. It installs
+  Trajectory for your user account.
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main/install.sh) --local-only
+git clone --depth=1 https://github.com/datadog-labs/trajectory.git /tmp/traj && bash /tmp/traj/install.sh
 ```
 
-Configure Datadog export later with `trajectory destination configure`.
+The installer does these steps:
 
-Add `--security` to enable Datadog Security for detected Claude Code, Codex,
-and Cursor installations. Security defaults to enforce mode; use
-`--security-mode observe` for non-blocking recording. Pass `--app-key` or set
-`DD_APP_KEY` when enabling security so result readback can authenticate.
+1. It downloads the latest binary.
+2. It sets up the clients that it finds on your computer.
+3. It starts interactive setup.
 
-To upgrade an install from this repository, rerun the installer.
+Setup asks for your Datadog site, a service name, and your Datadog API key.
+Then it registers hooks for each client.
 
-Release assets use this naming convention:
+### Try Trajectory without Datadog
 
-```text
-trajectory-darwin-amd64
-trajectory-darwin-arm64
-trajectory-darwin-universal
-trajectory-linux-amd64
-trajectory-linux-arm64
-trajectory-windows-amd64.exe
-trajectory-windows-amd64
+If you do not have a Datadog API key yet, leave the API key prompt blank. You
+can also pass `--local-only` to the installer. Trajectory then captures
+sessions and keeps them on your computer.
 
-trajectory-mdm-darwin-amd64
-trajectory-mdm-darwin-arm64
-trajectory-mdm-darwin-universal
-trajectory-mdm-linux-amd64
-trajectory-mdm-linux-arm64
-trajectory-mdm-windows-amd64.exe
-```
-
-The `trajectory-mdm-*` assets are administrator tools for preparing and
-verifying managed endpoint deployment kits. They are not installed on employee
-endpoints.
-
-## Supported Clients
-
-Trajectory supports:
-
-- Claude Code
-- Claude Desktop (macOS)
-- Cline CLI
-- Codex CLI
-- GitHub Copilot CLI beta
-- Gemini CLI
-- Antigravity CLI (`agy`)
-- Aider
-- Continue CLI
-- Mistral Vibe
-- Codebuff
-- Goose
-- Hermes Agent
-- Amp Code
-- Qwen Code
-- OpenHands
-- Kiro CLI
-- Kilo Code
-- Cursor Desktop and cursor-agent
-- Factory Droid beta
-- Pi
-- OpenCode
-- CommandCode (preview)
-- Devin CLI (preview)
-- ForgeCode (preview)
-- gptme (preview)
-- Grok Build (preview)
-- Kimi Code CLI (preview)
-- Muse Code (preview)
-- Oh My Pi (preview)
-- Qoder CLI (preview)
-- VS Code Copilot Chat (preview)
-- Warp/Oz CLI (preview)
-- Windsurf (preview)
-- ZCode (preview)
-- Zed (preview)
-
-See [docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md) for version
-requirements and [docs/CLIENT-INSTRUMENTATION.md](docs/CLIENT-INSTRUMENTATION.md)
-for the per-client hook, MCP, watcher, and backfill surfaces.
-
-## Reports
-
-Turn local agent activity into an operational view:
+When you are ready to send data, set up your Datadog destination. The
+destination is the site, service name, and API key that Trajectory sends to:
 
 ```bash
-trajectory summary                   # Usage, tokens, cost, agents, and projects
-trajectory outcomes                  # Yield, cost per commit, and cost per PR
-trajectory patterns                  # Work mix, outcomes, cost, and deliverables
-trajectory patterns session ID       # Task spans and turn-level cost drivers
+trajectory publish destination configure
 ```
 
-Reports support bounded time windows, stable JSON, local-only PR evidence, and
-optional GitHub reconciliation. Historical classification is explicit:
-`trajectory patterns estimate` makes no model calls, and
-`trajectory patterns analyze --yes` is the spending boundary.
+### Check the install
 
-See [docs/REPORTS.md](docs/REPORTS.md) for report semantics and
-[docs/WHY-TRAJECTORY.md](docs/WHY-TRAJECTORY.md) for how Trajectory fits into
-the broader observability stack.
+Run this command after you install:
 
-## Repository Contents
-
-```text
-.agents/plugins/          Codex marketplace metadata
-.claude-plugin/           Claude marketplace metadata
-commands/                 Gemini command assets
-docs/                     Public user documentation
-plugin/trajectory/        Claude Code plugin
-plugin/trajectory-security/ Standalone Agent Security plugin
-plugin/trajectory-codex/  Codex plugin
-plugin/trajectory-gemini/ Gemini context assets
-plugin/trajectory-antigravity/ Antigravity CLI plugin
-plugin/trajectory-pi/     Pi extension
-plugin/trajectory-opencode/ OpenCode plugin
-plugin/trajectory-kilo/   Kilo Code plugin
-intercepts/               Claude wrapper intercept runtime
-skills/                   Shared skill assets
-RELEASES.json             Release-channel selector
-install.sh                Installer
+```bash
+trajectory setup check
 ```
 
-## Development
+It shows which clients are ready and prints the next commands to run. To
+browse your sessions, run `trajectory local-ui --lapdog`.
 
-This repository accepts changes to public docs, marketplace metadata, plugin assets, installer scaffolding, and release metadata.
+### Add or refresh a client
 
-## Reference
+To set up one client again later, run its setup command from the list below.
+You do not need to enter your Datadog settings again.
 
-- [docs/USER-GUIDE.md](docs/USER-GUIDE.md): CLI workflows and day-to-day operation
-- [docs/WHY-TRAJECTORY.md](docs/WHY-TRAJECTORY.md): product scope and how Trajectory complements the rest of the observability stack
-- [docs/REPORTS.md](docs/REPORTS.md): summary, outcomes, Patterns, historical analysis, and session drilldown
-- [docs/CONFIGURATION.md](docs/CONFIGURATION.md): config files, managed defaults, environment overrides, and common settings
-- [docs/API-APP-KEY-MANAGEMENT.md](docs/API-APP-KEY-MANAGEMENT.md): Datadog API/application key storage, resolution, permissions, and rotation
-- [docs/SECURITY.md](docs/SECURITY.md): standalone Agent Security plugin setup, modes, destinations, and secret handling
-- [docs/MANAGED-ENDPOINTS.md](docs/MANAGED-ENDPOINTS.md): managed endpoint bundle preparation and endpoint verification
-- [docs/FEATURE-FLAGS.md](docs/FEATURE-FLAGS.md): feature-flag commands, runtime overrides, and registered flags
-- [docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md): supported coding-agent clients and version requirements
-- [docs/CLIENT-INSTRUMENTATION.md](docs/CLIENT-INSTRUMENTATION.md): per-client hook, watcher, MCP, and backfill surfaces
-- [docs/CURSOR-CAPTURE-TRUST.md](docs/CURSOR-CAPTURE-TRUST.md): trustworthy Cursor tokens, cost, surface, and subagent signals
-- [docs/COSTS.md](docs/COSTS.md): local cost summaries, turn evidence, objective observations, and fidelity checks
-- [docs/COST-ATTRIBUTION.md](docs/COST-ATTRIBUTION.md): additive cost totals, overlapping CODEOWNER associations, and safe dashboard patterns
-- [docs/PRIVACY.md](docs/PRIVACY.md): incognito, sensitive tags, and sensitivity scanning
-- [docs/SECURITY-EVENT-STREAM.md](docs/SECURITY-EVENT-STREAM.md): managed security event log projection
-- [docs/LLM-CAPACITY.md](docs/LLM-CAPACITY.md): which features use additional LLM capacity and how to control them
-- [docs/METRICS-REFERENCE.md](docs/METRICS-REFERENCE.md): emitted metric names, types, tags, and query guidance
-- [docs/MARKERS.md](docs/MARKERS.md): marker authoring and marker-derived metrics
-- [docs/REPO-MARKERS.md](docs/REPO-MARKERS.md): repo-level marker files and publish overlays
-- [docs/SKILL-OBSERVABILITY.md](docs/SKILL-OBSERVABILITY.md): skill usage, attribution, and dashboard guidance
-- [docs/DATA-FORMATS.md](docs/DATA-FORMATS.md): materialized session fields and LLM Observability export fields
-- [docs/SUBAGENT-TRACE-MODEL.md](docs/SUBAGENT-TRACE-MODEL.md): semantic subagent trace rendering and span-link behavior
-- [docs/LLM-OBS-SPAN-TAGS.md](docs/LLM-OBS-SPAN-TAGS.md): Datadog LLM Observability span tag contract
-- [docs/COST-OVERLAP-CONSUMER-GUIDE.md](docs/COST-OVERLAP-CONSUMER-GUIDE.md): cost-overlap dashboard guidance
-- [docs/LOCAL-UI-DATA-SOURCES.md](docs/LOCAL-UI-DATA-SOURCES.md): local-ui datastore provenance fields
+The command refreshes everything Trajectory installs for that client. This
+includes hooks, MCP entries, skills, commands, command shims, and local
+marketplace files. A *command shim* is an optional launcher with the same name
+as the client's command. With a shim, a normal launch of the client runs
+through Trajectory.
+
+- **Claude Code**: `trajectory setup --clients cc`
+- **Cline CLI**: `trajectory setup --clients cline`
+- **Codex**: `trajectory setup --clients codex` (local marketplace under `~/.trajectory/codex-marketplace`)
+- **GitHub Copilot CLI**: `trajectory setup --clients copilot` (beta, live capture only)
+- **Antigravity CLI**: `trajectory setup --clients agy`
+- **Goose**: `trajectory setup --clients goose`
+- **Cursor Desktop**: `trajectory setup --clients cursor` (registers hooks)
+- **cursor-agent CLI**: no setup needed. Trajectory watches its transcripts.
+- **Factory Droid**: `trajectory setup --clients droid` (beta, live capture only)
+- **Hermes Agent**: `trajectory setup --clients hermes` (beta observer plugin hooks)
+- **OpenHands**: `trajectory setup --clients openhands`
+- **Aider**: `trajectory setup --clients aider --install-client-shims` (opt-in command shim)
+- **Continue CLI**: `trajectory setup --clients continue --install-client-shims` (opt-in command shim)
+- **Mistral Vibe**: `trajectory setup --clients mistral-vibe --install-client-shims` (opt-in command shim and tool hooks)
+- **Codebuff**: `trajectory setup --clients codebuff --install-client-shims` (opt-in command shims)
+- **Amp Code**: `trajectory setup --clients amp`
+- **Qwen Code**: `trajectory setup --clients qwen`
+- **Pi**: `trajectory setup --clients pi`
+- **OpenCode**: `trajectory setup --clients opencode`
+- **Kilo Code**: `trajectory setup --clients kilo`
+- **Kiro CLI**: `trajectory setup --clients kiro`
+- **Preview clients**: enable the feature flag, then run the setup command. The
+  [supported-client matrix](docs/SUPPORTED-CLIENTS.md) lists both for each
+  client. Preview clients include Devin, Qoder, Kimi Code, Warp/Oz, VS Code
+  Copilot Chat, Windsurf, Zed, gptme, CodeWhale, ForgeCode, and CommandCode.
+- **OpenClaw**: released builds do not capture OpenClaw live. To import the
+  history that OpenClaw saves on disk, run
+  `trajectory config features enable openclaw_durable_history`. Then run
+  `trajectory session import openclaw`.
+
+Aider and Mistral Vibe can also import the history that they save on disk:
+
+- For Aider, run `trajectory config features enable aider_durable_history`.
+  Then run `trajectory session import aider`. You must tell Trajectory where
+  the Aider history is.
+- For Mistral Vibe, run
+  `trajectory config features enable mistral_vibe_durable_history`. Then run
+  `trajectory session import mistral-vibe`.
+
+To repair a client's plugin or hooks, run its `trajectory setup --clients ...`
+command again.
+
+### How setup changes your computer
+
+For Claude Code, setup uses Claude's own plugin manager. It registers
+Trajectory's local marketplace and installs the `trajectory@trajectory` plugin
+at user scope. If that step changes or removes one of your settings, setup puts
+the original settings back. Background repair never starts Claude. It changes
+only Trajectory's own plugin entry and its own cache folder.
+
+Setup makes the `trajectory` command available without client shims:
+
+- If a bin folder in your home directory is already on your `PATH`, setup
+  links `trajectory` into it.
+- Setup does not add `~/.trajectory/bin` to your shell startup files.
+- Setup installs client command shims only if you select them during
+  interactive setup or pass `--install-client-shims`.
+
+### Change Datadog settings
+
+To change the Datadog site, service name, or API key, run
+`trajectory publish destination configure`. To change client integrations or
+run the full setup wizard again, run `trajectory setup`.
+
+Setup checks the API key before it saves it. If saving a new key fails, setup
+keeps your old key in the OS keychain. To add a missing key yourself, run
+`trajectory config set-secret dd_api_key`. You can also set `DD_API_KEY` and
+then run `trajectory publish validate`.
+
+For how Trajectory stores, finds, and rotates API and application keys, see
+[docs/API-APP-KEY-MANAGEMENT.md](docs/API-APP-KEY-MANAGEMENT.md). It also
+covers managed installs.
+
+## Uninstall
+
+To uninstall a personal install, run:
+
+```bash
+bash ~/.trajectory/uninstall.sh
+```
+
+The script first stops capture and shuts down the running Trajectory process.
+It does this even when you pass `--skip-clients`. Then it removes the binary,
+the helper files, and every client integration that setup installed. It keeps
+your config and your captured session data.
+
+Caution: `--purge` deletes your config and your captured session data. It
+removes the whole Trajectory home folder. It also deletes every OS keychain
+entry that Trajectory saved through its secret commands. To remove everything,
+run:
+
+```bash
+bash ~/.trajectory/uninstall.sh --purge
+```
+
+To remove one client integration and keep Trajectory installed, run the
+command with the client's setup ID:
+
+```bash
+trajectory uninstrument codex
+```
+
+To remove every client integration, run `trajectory uninstrument all`.
+
+`trajectory uninstrument` also does these things:
+
+- It records that you removed the client. Managed auto-instrument then does
+  not install the client again for your user.
+- It turns off the client's passive and runtime capture flags.
+- It keeps shared skill and command files unless it can confirm that
+  Trajectory owns them.
+- For Codex, it leaves a marker file. If you later go back to an older
+  Trajectory binary, the marker makes that binary stop capture. The older
+  binary does not start passive capture again.
+
+If a client needs a preview feature flag, enable the flag again before you run
+`trajectory setup --clients <client>` later.
+
+For minimum client versions, see
+[docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md). For how Trajectory
+connects to each client through hooks, MCP, file watchers, and backfill, see
+[docs/CLIENT-INSTRUMENTATION.md](docs/CLIENT-INSTRUMENTATION.md).
+
+## What It Does
+
+Trajectory captures structured data from clients and sends it to Datadog LLM
+Observability:
+
+- **Session capture:** Trajectory records every tool call, prompt, compaction,
+  and subagent event.
+- **Metrics:** Trajectory sends more than 300 built-in
+  [Datadog metrics](docs/METRICS-REFERENCE.md). They cover cost, tokens, tool
+  use, duration, commits, PRs, markers, and Trajectory's own health.
+  Trajectory sends them straight to Datadog over OTLP, so you do not need a
+  Datadog Agent. To check them, run an audit or a canary, or read them back
+  from Datadog.
+- **Local browsing:** Lapdog is a viewer for the sessions on your computer. It
+  reads from a local Trajectory server.
+- **Behavioral markers:** Markers are YAML rules that find patterns in agent
+  sessions. See the [marker guide](docs/MARKERS.md).
+- **Many clients:** One binary works with all major AI coding agents.
+- **Session resume:** `trajectory session resume` continues a session in a
+  different client.
+
+## CLI Quick Reference
+
+| Task | Command |
+| --- | --- |
+| Check the install and print next steps | `trajectory setup check` |
+| Show a terminal dashboard | `trajectory status` |
+| Show this month's usage and cost | `trajectory summary` |
+| Show yield, cost per commit, and cost per PR | `trajectory patterns outcomes` |
+| Show the work mix, outcomes, cost, and deliverables | `trajectory patterns` |
+| Show the tasks and turn costs of one session | `trajectory patterns session ID` |
+| Find and explain problems | `trajectory doctor` |
+| View server logs | `trajectory doctor logs [-f] [--grep PAT]` |
+| Stop all capture for your user | `trajectory config capture disable` |
+| Start capture again for your user | `trajectory config capture enable` |
+| View your configuration | `trajectory config show` |
+| Set up your Datadog destination | `trajectory publish destination configure` |
+| Check publish settings and credentials | `trajectory publish validate` |
+| Send test metrics and read them back from Datadog | `trajectory doctor metrics canary --publish --readback` |
+| Preview metrics locally | `trajectory doctor metrics session --latest` |
+| Check published metrics against local data | `trajectory publish metrics audit --latest` |
+| Show the publish mode and destinations | `trajectory publish status` |
+| Explain what should publish and why | `trajectory doctor publish` |
+| Import Aider history (turn on `aider_durable_history` first) | `trajectory session import aider` |
+| Import Kilo history (turn on `kilo_durable_history` first) | `trajectory session import kilo` |
+| Import OpenClaw history (turn on `openclaw_durable_history` first) | `trajectory session import openclaw` |
+| Import Qwen history (turn on `qwen_durable_history` first) | `trajectory session import qwen` |
+| Read the built-in documentation | `trajectory user-guide [topic]` |
+
+For more detail, see these guides:
+
+- [docs/USER-GUIDE.md](docs/USER-GUIDE.md): the user guide. Run
+  `trajectory user-guide [topic]` for the same topics in the terminal.
+- [docs/MARKERS.md](docs/MARKERS.md): how to write markers.
+- [docs/REPO-MARKERS.md](docs/REPO-MARKERS.md): how to set up markers for a
+  repository with `publish.trajectory.yaml`.
+- [docs/METRICS-REFERENCE.md](docs/METRICS-REFERENCE.md): metric names, types,
+  tags, and how to query them.
+- [docs/COST-ATTRIBUTION.md](docs/COST-ATTRIBUTION.md): how to get cost totals
+  that add up, and safe dashboard patterns.
+
+## Key References
+
+- [docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md): supported clients,
+  versions, setup commands, and the signals that each client provides.
+- [docs/CLIENT-INSTRUMENTATION.md](docs/CLIENT-INSTRUMENTATION.md): the hooks,
+  MCP entries, file watchers, wrappers, and backfill for each client.
+- [docs/METRICS-REFERENCE.md](docs/METRICS-REFERENCE.md): every metric name,
+  type, and tag, with query guidance.
+
+To contribute, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE), [NOTICE](NOTICE), and [LICENSE-3rdparty.csv](LICENSE-3rdparty.csv).
+Trajectory is licensed under the Apache License, Version 2.0. See
+[LICENSE](LICENSE).

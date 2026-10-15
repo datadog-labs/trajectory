@@ -1,9 +1,11 @@
-# So You Want To Use Markers In Your Own Repo?
+# Use Markers in Your Own Repo
 
-This guide is for a team that wants a repository to define its own Trajectory
-markers and, optionally, publish those marker metrics to Datadog.
+Use this guide to define Trajectory markers in a repository. You can also
+publish the marker metrics to Datadog. A marker is a named rule that finds a
+behavior in a coding-agent session, such as a failed test. For the marker
+syntax, see [MARKERS.md](MARKERS.md).
 
-The short version is built into the binary:
+A short version of this guide is built into the binary:
 
 ```bash
 trajectory user-guide repo-markers
@@ -11,28 +13,30 @@ trajectory user-guide repo-markers
 
 ## The two repo files
 
-Repo-level marker setup usually uses two different files:
+A repo marker setup usually has two files:
 
 | File | Purpose |
 | --- | --- |
 | `.trajectory/markers.yaml` | Defines or overrides marker points, ranges, measures, and tags for sessions in this repo. |
-| `publish.trajectory.yaml` | Selects or narrows trusted publish destinations, adds safe destination tags, and turns marker metrics on for those destinations. |
+| `publish.trajectory.yaml` | Selects or limits trusted publish destinations, adds safe destination tags, and turns on marker metrics for those destinations. |
 
-`publish.trajectory.yaml` does not define marker rules. `.trajectory/markers.yaml`
-does not configure Datadog destinations. Keep those responsibilities separate.
+Put marker rules only in `.trajectory/markers.yaml`. Put Datadog destination
+settings only in `publish.trajectory.yaml`.
 
 ## Before you start
 
-Make sure Trajectory is installed and configured on the developer machines that
-will run coding agents:
+Install and configure Trajectory on each developer machine that runs coding
+agents:
 
 ```bash
 trajectory setup
 trajectory publish validate
 ```
 
-Repo publish overlays are ignored unless the repo's git origin is trusted by
-user or managed config. The relevant user config fields are:
+A publish overlay is a `publish.trajectory.yaml` file that changes the publish
+settings for one repo. Trajectory ignores a repo publish overlay unless the
+user config or managed config trusts the git origin of the repo. To set trust
+in user config, use these fields:
 
 ```yaml
 publish_trust:
@@ -41,9 +45,9 @@ publish_trust:
   require_committed: true
 ```
 
-When `require_committed: true` is set, commit `publish.trajectory.yaml` before
-expecting it to apply. `trajectory publish validate` reports when trust policy
-blocks a repo publish overlay.
+If you set `require_committed: true`, commit `publish.trajectory.yaml` before
+you expect it to apply. If the trust policy blocks a repo publish overlay,
+`trajectory publish validate` reports it.
 
 ## Step 1: add repo marker rules
 
@@ -86,21 +90,22 @@ measures:
       point: repo-test-failed
 ```
 
-Validate the marker file before relying on it:
+Validate the marker file before you use it:
 
 ```bash
-trajectory markers validate --config .trajectory/markers.yaml
-trajectory markers explain --config .trajectory/markers.yaml migration-file-edited
+trajectory patterns markers validate --config .trajectory/markers.yaml
+trajectory patterns markers explain --config .trajectory/markers.yaml migration-file-edited
 ```
 
-New sessions in the repo load the project marker layer automatically from the
-nearest parent directory containing `.git/`. You can force a project marker file
-for local testing with `TRAJECTORY_PROJECT_MARKERS_PATH`.
+New sessions in the repo load the project marker file without any extra step.
+Trajectory looks for it in the nearest parent directory that contains `.git/`.
+To test a different project marker file on your machine, set
+`TRAJECTORY_PROJECT_MARKERS_PATH`.
 
 ## Step 2: enable marker metrics for the repo
 
-If the default Datadog destination comes from `~/.trajectory/config.yaml`, refer
-to it as `_config_datadog` in `publish.trajectory.yaml`:
+Your default Datadog destination can come from `~/.trajectory/config.yaml`. If
+it does, refer to it as `_config_datadog` in `publish.trajectory.yaml`:
 
 ```yaml
 version: 1
@@ -115,12 +120,17 @@ destinations:
       service: payments-api
 ```
 
-This overlay can lower trace detail, add destination tags, and enable marker
-metrics for that trusted destination. It cannot create a new trace destination
-or raise trace detail above the trusted destination's ceiling.
+For that trusted destination, this overlay can do three things:
 
-For a metrics-only project destination, use `level: off` and keep marker logs and
-LLM Obs marker evaluations off:
+- lower the trace detail
+- add destination tags
+- turn on marker metrics
+
+The overlay cannot create a new trace destination. It also cannot raise the
+trace detail above the highest level that the trusted destination allows.
+
+A project destination can send only metrics. For that case, set `level: off`
+and keep marker logs off:
 
 ```yaml
 version: 1
@@ -141,37 +151,38 @@ destinations:
       service: payments-api
 ```
 
-Project configs cannot enable structured records, security event streams, AI
-Usage events, privacy exemptions, or new trace destinations.
+A project config cannot turn on security event streams, AI Usage events,
+privacy exemptions, or new trace destinations.
 
 ## Step 3: validate the effective setup
 
-Run these from inside the repo:
+Run these commands from inside the repo:
 
 ```bash
-trajectory markers validate
-trajectory markers list
+trajectory patterns markers validate
+trajectory patterns markers list
 trajectory publish validate
 trajectory publish status
 ```
 
-After a session runs, use local diagnostics before assuming a Datadog problem:
+After a session runs, check it on your machine before you look for a problem
+in Datadog:
 
 ```bash
-trajectory diagnose publish --session <session-id>
+trajectory doctor publish --session <session-id>
 trajectory publish metrics audit --session <session-id> --builtin-details
 ```
 
-If you changed marker definitions after a session already finished, re-evaluate
-the local cache before auditing or republishing historical metrics:
+You can change marker definitions after a session finishes. If you do,
+re-evaluate the local cache before you audit or republish older metrics:
 
 ```bash
-trajectory reevaluate --session <session-id>
+trajectory patterns markers reevaluate --session <session-id>
 ```
 
 ## How the files are merged
 
-Marker config layers are resolved in this order:
+Trajectory loads marker config layers in this order:
 
 1. Built-ins embedded in the binary.
 2. Org markers from `TRAJECTORY_ORG_MARKERS_PATH` or
@@ -181,18 +192,21 @@ Marker config layers are resolved in this order:
 5. Project markers from `TRAJECTORY_PROJECT_MARKERS_PATH` or
    `.trajectory/markers.yaml`.
 
-Later marker layers override earlier layers by marker name, except enforced org
-markers cannot be overridden locally.
+If two layers define a marker with the same name, the later layer wins. The
+exception is an enforced org marker. No local layer can override it.
 
-Repo publish overlays are separate. Trajectory walks upward from the working
-directory and merges every `publish.trajectory.yaml` it finds. A child overlay
-can narrow a same-name trusted destination, add safe tags, and add a metrics-only
-destination when policy allows it.
+Trajectory merges repo publish overlays separately. It walks up from the
+working directory and merges every `publish.trajectory.yaml` that it finds. An
+overlay in a child directory can do these things:
+
+- limit a trusted destination that has the same name
+- add safe tags
+- add a destination that sends only metrics, if the policy allows it
 
 ## What to send a teammate
 
-For authoring syntax, send [MARKERS.md](MARKERS.md). For the repo-specific
-workflow, send this guide. For the full publish-overlay contract, use:
+For marker syntax, send [MARKERS.md](MARKERS.md). For the repo setup steps,
+send this guide. For the full rules of publish overlays, run:
 
 ```bash
 trajectory user-guide publish

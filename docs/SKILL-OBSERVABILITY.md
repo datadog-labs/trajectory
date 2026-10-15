@@ -1,229 +1,308 @@
 # Skill Observability
 
-Skill observability is the privacy-preserving view for teams that maintain
-coding-agent skills. It answers where a skill is used, how often it is invoked,
-how trustworthy the signal is, what tool mix appears around the skill, how long
-skill-assisted turns take, and which cost source applies to the same repo and
-client scope.
+Skill observability helps teams that maintain coding-agent skills. It shows
+where each skill is used and how often agents invoke it. It also shows how
+reliable each signal is and which tools run with the skill. Turn duration and
+the cost source for the same repository and client are also available.
 
-It is intentionally derived telemetry. The dashboard and marker metrics do not
-publish prompts, assistant responses, tool input or output, shell commands,
-diffs, file contents, raw trace payloads, or local file paths.
+Trajectory builds these views from derived data only. Marker metrics and AI
+Usage events do not publish prompts or assistant responses.
+They also do not publish tool input or output, shell commands, diffs, file
+contents, raw trace payloads, or local file paths.
 
 ## Quick Setup
 
-For most teams, skill observability is a metrics dashboard. You do not need
-project skill mutation or read virtualization to start.
+For most teams, skill observability is a Datadog dashboard that you build from
+the skill metrics. Trajectory does not ship one. You do not need AI Usage
+events, changes to project skill files, or read virtualization to start.
 
-1. Enable normal Trajectory capture and metrics:
+1. Set up capture for Claude Code:
 
-```bash
-trajectory setup --clients cc
-trajectory config set export.metrics true
-trajectory metrics verify
-```
+   ```bash
+   trajectory setup --clients cc
+   ```
 
-2. For Claude Code, launch sessions through Trajectory when you want the best
-   skill signal and native tool-window attribution:
+2. Turn on metric export:
 
-```bash
-trajectory claude
-trajectory claude -- "use the release skill to prepare the release checklist"
-```
+   ```bash
+   trajectory config set export.metrics true
+   ```
 
-3. Export and import the skill observability dashboard:
+3. Send a test metric to confirm that metrics reach Datadog:
 
-```bash
-trajectory dashboard export --type skill-observability --output trajectory-skill-observability.json
-```
+   ```bash
+   trajectory doctor metrics canary
+   ```
 
-Import `trajectory-skill-observability.json` in Datadog, then set the dashboard
-variables for `repo`, `skill_name`, `trajectory.client_source`, and
-`signal_confidence:high`.
+4. Start Claude Code sessions through Trajectory. This gives the best skill
+   signal and tool attribution:
 
-4. Read the first panels this way:
+   ```bash
+   trajectory claude
+   ```
 
-| Panel | What It Tells You |
-|---|---|
-| Skill invocations by repo | Whether the skill is being used and where |
-| Signal source and confidence | Whether the skill name came from Claude transcript, Claude native OTLP, or a weaker observation |
-| Tool totals and tool mix | How complex skill-assisted turns are |
-| Duration | How long skill-assisted turns typically take |
-| Cost-source context | Which cost stream applies to the same repo/client slice |
+   To start the session with a prompt, put the prompt after `--`:
 
-This simple path is enough for the common skill-maintainer questions: which
-repos use the skill, how often it is invoked, whether attribution is reliable,
-which tools it tends to drive, and how slow skill-assisted turns are.
+   ```bash
+   trajectory claude -- "use the release skill to prepare the release checklist"
+   ```
 
-## Optional Paths
+5. Open Datadog Metrics Explorer. Start with the `repo`, `skill_name`,
+   `trajectory.client_source`, and `signal_confidence:high` tags.
 
-Use these only when you need the extra surface:
+## Optional Additions
 
-| Need | Add |
-|---|---|
-| Tighter Claude tool windows | Run Claude with `trajectory claude` so native OTLP can flow through local `trajectory serve` |
-| Project `.claude/skills` fallback instrumentation | Opt in with `TRAJECTORY_CLAUDE_SKILLS_PROJECT=1 trajectory claude skills sync --project` |
-| Non-mutating skill-file experiments | Use `trajectory claude --skill-read-virtualization --skill-managed-binary -- <claude args>` |
+Add these only when you need them:
 
-## Dashboard Import Details
+| Need | What to do |
+| --- | --- |
+| Tighter tool windows for Claude | Run `trajectory claude`. Claude's native OTLP data then flows through the local `trajectory serve`. |
+| Fallback hooks in user or project `.claude/skills` | Turn on `claude_skill_file_hooks`, run setup again, and sync the scope. See [skill file hooks](#claude-skill-file-hooks). |
+| Skill-file experiments that change no files | Run `trajectory claude --skill-read-virtualization --skill-managed-binary -- <claude args>`. |
+| AI Usage events for downstream intake | Turn on managed `required_destinations[].ai_usage`. You do not need it for metrics. |
 
-Export the standalone skill-maintainer dashboard:
+## Questions You Can Answer
 
-```bash
-trajectory dashboard export --type skill-observability --output trajectory-skill-observability.json
-```
+Filter the metrics by these tags: `trajectory.user`, `trajectory.client_source`,
+`trajectory.client_version`, `repo`, `skill_name`, `source_scope`,
+`signal_confidence`, `attribution_reason`, and `skill_attribution`. Start with
+`signal_confidence:high`. Add lower confidence levels only when you look for
+missing or weak signals.
 
-Import the JSON through the Datadog UI or Dashboard API. If an agent is creating
-the dashboard through Datadog MCP, export the MCP-shaped payload instead:
-
-```bash
-trajectory dashboard export --type skill-observability --format mcp --output trajectory-skill-observability-mcp.json
-```
-
-The dashboard uses variables for `trajectory.user`,
-`trajectory.client_source`, `trajectory.client_version`, `repo`, `skill_name`,
-`source_scope`, `signal_confidence`, and `skill_attribution`. Start with
-`signal_confidence:high`, then broaden only when investigating missing or
-weaker signals.
-
-## What You Can Answer
-
-Use these fields and metrics directly in Datadog Metrics Explorer or dashboard
-panels:
-
-| Question | Use |
-|---|---|
+| Question | Query or tags |
+| --- | --- |
 | Which skills are used, and where? | `sum:trajectory.turn.skill_invocations{...} by {repo,skill_name}` |
-| How often is a skill invoked? | `trajectory.turn.skill_invocations`; use `trajectory.session.skill_invocations.completed_count` for completed-session rollups |
-| Which signal produced the skill name? | group by `detected_from`, `source_scope`, and `signal_confidence` |
-| How many tools did skill-assisted turns use? | `trajectory.turn.skill_tool_uses.total` grouped by `skill_name` and `skill_attribution` |
-| Which tool types and names appear? | `trajectory.turn.skill_tool_uses` grouped by `skill_name`, `tool_type`, and `tool_name` |
+| How often is a skill invoked? | `trajectory.turn.skill_invocations`. For completed sessions, use `trajectory.session.skill_invocations.completed_count`. |
+| Which signal found the skill name? | Group by `detected_from`, `source_scope`, `signal_confidence`, and `attribution_reason`. |
+| How many tools did skill-assisted turns use? | `sum:trajectory.turn.skill_tool_uses.additive{...}.as_count()` by `skill_name` and `skill_attribution` |
+| Which tool types and names appear? | `trajectory.turn.skill_tool_uses.additive` by `skill_name`, `tool_type`, and `tool_name` |
 | How long do skill-assisted turns take? | `p95:trajectory.turn.skill_duration_ms.total{...} by {skill_name,skill_attribution}` |
-| What cost source is in scope? | cost panels or queries grouped by `trajectory.cost_source` and `trajectory.cost_role` for the same repo/client filters |
+| Which cost source applies? | Cost queries grouped by `trajectory.cost_source` and `trajectory.cost_role`, with the same repo and client filters. |
 
-Cost panels are context for the same filtered repo, client, model, and version
-scope. They are not proof that every token in a turn was caused by the skill.
-When comparing Claude native telemetry with Trajectory attribution cost, keep
-`trajectory.cost_role:client_telemetry` plus
-`trajectory.cost_source:claude_native_otlp` separate from
-`trajectory.cost_role:attribution`.
+Cost panels give context for the same repository, client, model, and version.
+They do not show how much of a turn's cost the skill caused.
+
+To compare Claude's native cost data with Trajectory's attribution cost, keep
+them in separate queries:
+
+- Claude native data: `trajectory.cost_role:client_telemetry` and
+  `trajectory.cost_source:claude_native_otlp`.
+- Trajectory attribution: `trajectory.cost_role:attribution`.
 
 ## Signal Quality
 
-Skill invocation metrics are derived from the high-confidence
-`skill-invoked-turn-count` marker point. Prefer
-`trajectory.turn.skill_invocations` for trusted usage reports.
-This metric publishes when the invoking turn completes; the corresponding
-`trajectory.session.skill_invocations` rollup is finalized at session end. If
-final ingestion discovers an invocation that was unavailable at turn end, the
-session-end cycle reconciles the missing turn-count point through the
-replay-safe metric outbox alongside the completed-session rollup.
+All skill invocation metrics come from the `skill-invoked-turn-count` marker.
+Use `trajectory.turn.skill_invocations` as the single metric for invocations.
+Filter or group it by `signal_confidence` and `attribution_reason` to get the
+quality your report needs.
+
+Trajectory sends the turn metric when the turn completes. The session does not
+need to end. It sends `trajectory.session.skill_invocations.completed_count`
+when the session ends. If Trajectory finds an invocation only at session end,
+it sends the missing turn point then, with the session total.
+
+### Tags on invocation metrics
+
+| Tag | Values |
+| --- | --- |
+| `signal_confidence` | `high`, `medium`, or `low` |
+| `attribution_reason` | `native_attribution`, `explicit_skill_action`, `structured_provenance`, `prompt_activation`, `skill_file_observation`, or `unclassified` |
+| `source_scope` | Where the skill came from, such as `user`, `project`, or `global` |
+| `detected_from` | The signal that found the skill. See the next table. |
 
 Common `detected_from` values:
 
 | Value | Meaning |
-|---|---|
-| `claude_native_transcript` | Claude transcript `message.attributionSkill` identified the skill |
-| `claude_native_otel` | Claude native OTLP emitted a `skill_activated` log through Trajectory |
-| `provenance` or `skill_prompt` | Trajectory inferred the skill from local capture or explicit skill metadata |
+| --- | --- |
+| `claude_native_transcript` | The Claude transcript field `message.attributionSkill` named the skill. |
+| `claude_native_otel` | Claude native OTLP sent a `skill_activated` log through Trajectory. |
+| `pi_skill_prompt` | Pi's skill activation wrapper named the skill and its source path. |
+| `provenance` or `skill_prompt` | Trajectory found the skill in local capture or in skill metadata. |
 
-`source_scope` describes where the skill came from, such as `user`,
-`project`, or `global`. `signal_confidence:high` means the point is suitable
-for normal usage reporting. Lower-confidence breadcrumbs publish as
-`trajectory.turn.skill_observations` and
-`trajectory.session.skill_observations`; use them for troubleshooting, not for
-primary adoption reporting.
+Current versions send lower-confidence skill signals in the invocation
+metrics, with a confidence tag.
 
 ## Tool and Duration Attribution
 
-Tool and duration metrics carry `skill_attribution` so you can tell whether the
-tool window came from native Claude trace structure or from Trajectory's
-same-turn fallback:
+Tool and duration metrics carry a `skill_attribution` tag. It tells you where
+Trajectory got the tool window for the skill:
 
 | Value | Meaning |
-|---|---|
-| `span_tool_attribute` | A native Claude tool span carried the skill name |
-| `span_temporal` | A single high-confidence skill signal was matched to native tool spans in the same turn by time |
-| `turn_assisted` | No usable native trace window was available, so Trajectory used all non-skill tools in the same skill-assisted turn |
+| --- | --- |
+| `span_tool_attribute` | A native Claude tool span carried the skill name. |
+| `span_temporal` | Trajectory matched one high-confidence skill signal to native tool spans in the same turn, by time. |
+| `turn_assisted` | No native trace window was available. Trajectory counted all non-skill tools in the same turn. |
 
-Use `span_tool_attribute` and `span_temporal` when you need a tighter estimate
-of skill complexity. Use `turn_assisted` for broad trend analysis and for
-clients or sessions that do not expose native skill spans.
+For a tighter estimate of skill complexity, use `span_tool_attribute` and
+`span_temporal`. Use `turn_assisted` for broad trends, and for clients or
+sessions without native skill spans.
 
-## Setup Details
+## Claude Code Setup Details
 
-The baseline path is normal Trajectory capture plus metrics publishing:
+### Transcript attribution
 
-```bash
-trajectory setup --clients cc
-trajectory config set export.metrics true
-trajectory metrics verify
-```
+Normal setup reads skill activation from Claude transcripts when Claude writes
+`message.attributionSkill`. This gives invocation counts by repository,
+confidence breakdowns, and `turn_assisted` tool metrics. Setup is the same as
+in [Quick Setup](#quick-setup).
 
-For Claude Code, normal setup can capture skill activation from Claude
-transcripts when the runtime writes `message.attributionSkill`. That is enough
-for repo-scoped invocation counts, signal-confidence breakdowns, and fallback
-same-turn tool metrics.
+### Native trace windows
 
-Run Claude through `trajectory claude` when you want Trajectory to route Claude
-native OTLP and derive native trace-backed skill tool windows:
+To get tool windows from Claude's native traces, run Claude through
+`trajectory claude`. Trajectory then routes Claude's native OTLP data:
 
 ```bash
 trajectory claude
+```
+
+To start the session with a prompt, put the prompt after `--`:
+
+```bash
 trajectory claude -- "work on the release checklist"
 ```
 
-Claude skill-file instrumentation is default-off because it writes reversible
-hook metadata into real `SKILL.md` files. Enable it explicitly, then run setup
-to refresh an existing Trajectory plugin installation without changing Claude
-settings. An active Claude session can use `/reload-plugins` to load the new
-generation. Project scope also requires the project opt-in:
+### Claude skill file hooks
 
-```bash
-trajectory features enable claude_skill_file_hooks
-trajectory setup --clients cc
-TRAJECTORY_CLAUDE_SKILLS_PROJECT=1 trajectory claude skills sync --project
-trajectory claude skills status
-trajectory claude skills restore --stale
-```
+Skill file hooks are off by default because they write hook metadata into
+your real `SKILL.md` files. You can undo these changes with `restore`. Normal
+setup and removal of the Claude integration never edit these files.
 
-Normal setup and Claude integration removal never edit these files. The
-explicit `trajectory claude skills restore` command removes Trajectory-owned
-hook entries while preserving unrelated frontmatter and user edits.
+1. Turn on the feature:
 
-On supported macOS launch chains, the non-mutating read-virtualization path can
-serve virtualized `SKILL.md` bytes through a managed Claude launch copy:
+   ```bash
+   trajectory config features enable claude_skill_file_hooks
+   ```
+
+2. Refresh the Trajectory plugin. Setup does not change your Claude settings:
+
+   ```bash
+   trajectory setup --clients cc
+   ```
+
+3. In a running Claude session, run `/reload-plugins` to load the new plugin
+   version.
+4. Sync the user skills:
+
+   ```bash
+   trajectory claude skills sync --user
+   ```
+
+5. Project skills need the project opt-in. Set
+   `TRAJECTORY_CLAUDE_SKILLS_PROJECT=1`, or create
+   `.trajectory/claude-skills-project-enabled` in the repository:
+
+   ```bash
+   TRAJECTORY_CLAUDE_SKILLS_PROJECT=1 trajectory claude skills sync --project
+   ```
+
+6. List the skill files that Trajectory instruments, with the status of each:
+
+   ```bash
+   trajectory claude skills status
+   ```
+
+7. Restore the files whose sync is no longer active:
+
+   ```bash
+   trajectory claude skills restore --stale
+   ```
+
+`trajectory claude skills restore` removes the hook entries that Trajectory
+added. It keeps other frontmatter and your own edits.
+
+### Read virtualization
+
+On supported macOS launch chains, Trajectory can serve modified `SKILL.md`
+content without changing the files. It launches a managed copy of Claude:
 
 ```bash
 trajectory claude --skill-read-virtualization --skill-managed-binary -- <claude args>
 ```
 
-Read virtualization is useful for clean experiments and for avoiding durable
-project-file edits. It is not required for the main transcript attribution path.
+Use read virtualization for clean experiments, or to avoid long-lasting edits
+to project files. Transcript attribution does not need it.
 
+## AI Usage Events
+
+A managed Datadog destination can also send AI Usage events. Turn them on in
+`required_destinations`:
+
+```yaml
+required_destinations:
+  - name: aiusage-events
+    type: datadog_agentless
+    site: datadoghq.com
+    ml_app: coding-agents
+    api_key_ref: dd-aiusage-api-key
+    level: off
+    ai_usage:
+      enabled: true
+      endpoint: https://eudm-intake.datadoghq.com/api/v2/aiusage
+      track: aiusage
+```
+
+To send the events through the local Datadog Agent, set
+`type: datadog_agent`. The Agent's `evp_proxy` adds the API key and the site.
+`ai_usage.subdomain` sets the intake subdomain for both transports. Its
+default is `eudm-intake`.
+
+AI Usage events use their own publisher, separate from logs, metrics, and
+traces. Trajectory sends one `trajectory.ai_usage.skill.v1` event for each
+skill-assisted turn. Each event has these fields, when they are available:
+
+- Skill name, invocation count, and detection source.
+- Repository, user, and coding-agent identity.
+- Tool count, distinct tool count, tool names, and tool types.
+- Turn duration and `skill_attribution`.
+- Cost source fields.
+
+Only invocations with `signal_confidence:high` create AI Usage events. Medium
+and low invocations still appear in the invocation metric.
+
+A project `publish.trajectory.yaml` file cannot turn on AI Usage events.
+Datadog can accept an event and still drop it. This happens when the event's
+`hostname` is not a known host in the target organization. Before you rely on
+the events, confirm that they appear in Datadog.
 
 ## Troubleshooting
 
-If the dashboard has no skill data, first confirm metrics are publishing:
+**Your dashboard has no skill data.** Check that metrics are publishing.
 
-```bash
-trajectory metrics session --latest
-trajectory metrics verify
-trajectory publish status
-```
+1. Check the metrics for your latest session:
 
-If invocation counts are missing but observations exist, filter
-`trajectory.turn.skill_observations` by `repo`, `skill_name`, `source_scope`,
-and `trajectory.client_version`. This usually means the client exposed a weak
-skill breadcrumb but not a high-confidence activation signal.
+   ```bash
+   trajectory doctor metrics session --latest
+   ```
 
-If Claude skill invocations dropped after a runtime update, group
+2. Send a test metric to confirm that metrics reach Datadog:
+
+   ```bash
+   trajectory doctor metrics canary
+   ```
+
+3. Show whether the current config is expected to publish metrics:
+
+   ```bash
+   trajectory publish status
+   ```
+
+**High-confidence invocation counts are missing.** Filter
+`trajectory.turn.skill_invocations` by `signal_confidence:medium` or
+`signal_confidence:low`. Then group by `attribution_reason`, `repo`,
+`skill_name`, `source_scope`, and `trajectory.client_version`. This shows weak
+signals in the same metric.
+
+**Claude skill invocations dropped after a Claude update.** Group
 `trajectory.turn.skill_invocations` by `trajectory.client_version`,
-`detected_from`, and `signal_confidence`. A shift away from
-`detected_from:claude_native_transcript` can indicate Claude stopped writing
-`message.attributionSkill`.
+`detected_from`, and `signal_confidence`. Fewer
+`detected_from:claude_native_transcript` points can mean that Claude stopped
+writing `message.attributionSkill`.
 
-If tool counts are present only with `skill_attribution:turn_assisted`, run the
-session through `trajectory claude` and confirm Claude native OTLP is reaching
-local `trajectory serve`. Native trace-backed windows require the Claude native
-OTLP path; fallback same-turn metrics do not.
+**Tool counts appear only with `skill_attribution:turn_assisted`.** Run the
+session through `trajectory claude`. Confirm that Claude's native OTLP data
+reaches the local `trajectory serve`. Native trace windows need that OTLP
+path. The `turn_assisted` metrics do not.
+
+**AI Usage events do not appear in Datadog.** Check the managed destination
+config, the credential reference, and the endpoint. Then confirm that the
+event `hostname` is a known host in your Datadog organization.

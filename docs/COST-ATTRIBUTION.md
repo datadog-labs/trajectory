@@ -1,8 +1,9 @@
 # Cost Attribution and Dashboarding
 
-This guide explains which Trajectory cost metrics are additive, which are
-overlapping associations, and how to build Datadog dashboards without inflating
-spend. For the concise built-in workflow, run:
+Use this guide to build Datadog cost dashboards from Trajectory metrics. It
+shows which cost metrics you can add up and which queries to use. Follow it so
+that a dashboard does not count the same spend twice. For a short version that
+is built into the binary, run:
 
 ```bash
 trajectory user-guide cost-attribution
@@ -10,221 +11,508 @@ trajectory user-guide cost-attribution
 
 ## The Two Independent Overlap Problems
 
-Trajectory dashboards must handle two different forms of overlap. Solving one
-does not solve the other.
+A cost dashboard must handle two kinds of overlap: source overlap and grain
+overlap. A fix for one kind does not fix the other.
 
 ### Source overlap
 
-Trajectory attribution, native client telemetry, provider analytics, gateway
-analytics, and cloud billing may describe the same underlying model usage.
-Choose one source family for a total. Use `trajectory.cost_role`,
-`trajectory.cost_dedupe_group`, and the other cost-overlap tags described in
-[Cost Overlap Consumer Guide](COST-OVERLAP-CONSUMER-GUIDE.md).
+Several sources can report the same model usage:
 
-Trajectory's metric outbox provides local delivery idempotency for
-authoritative v2 additive `.total` cost points: one logical point per canonical
-turn/session grain across restart, retry, destination rename, transport change,
-and timestamp drift. It does not deduplicate provider billing, gateway, native
-client, or other provider and platform sources against one another. Cross-source exact
-deduplication still requires a shared request/event identity; otherwise use the
-reconciliation levels below and fail closed on an authoritative combined total.
+- Trajectory attribution
+- native client telemetry
+- provider analytics
+- gateway analytics
+- cloud billing
 
-Do not overload stream source with pricing source. Current Trajectory
-turn-derived cost uses `trajectory.cost_source:turn_metrics` regardless of the
-rate-card owner. The independent `trajectory.pricing_source` tag identifies
-`organization_rate_card`, `local_rate_card`, `public_rate_card`,
-`provider_reported`, or another bounded pricing authority. Cursor native rate
-cards also carry `trajectory.cost_method:four_component_token_rate_card`,
-`trajectory.cost_fidelity:token_derived`, the selected economic
-`trajectory.cost_basis`, and a bounded `trajectory.pricing_version`.
+Choose one source family for each total. To tell the sources apart, use
+`trajectory.cost_role`, `trajectory.cost_dedupe_group`, and the other
+cost-overlap tags. The
+[Cost Overlap Consumer Guide](COST-OVERLAP-CONSUMER-GUIDE.md)
+explains them.
 
-An explicit unpriced Cursor decision emits no turn USD sample. A partially
-priced Cursor session emits no complete session USD metric, and a legitimate
-priced zero remains a priced numeric sample. Use
-`trajectory.cursor.token_capture.turns_total`,
-`trajectory.pricing.lookup.total`, and the session priced/unpriced turn gauges
-for coverage; do not replace missing USD with zero. The lookup metric separates
-exact observed aliases from approved canonical models and carries bounded
-thinking, speed, billing, and context dimensions. A heuristic equivalence
-candidate remains unpriced until org config adds an exact mapping and rate.
+The metric outbox is the local queue of metric points that wait to go to
+Datadog. It keeps one v2 cost point for each turn or session. A restart, a
+retry, a renamed destination, a transport change, or clock drift does not add
+a second point.
 
-### Owner association overlap
+The outbox does not guarantee delivery. A point can arrive late or not at all
+when a send fails. The same can happen when Trajectory cannot tell whether
+Datadog accepted the point. To see points that wait or that failed, run
+`trajectory publish queue --kind metrics`.
 
-A file, turn, commit, or PR can involve multiple CODEOWNERS. Trajectory creates
-one association with every retained owner; it does not invent a fractional
-allocation. A turn involving three owners can therefore appear in all three
-owner groups.
+The outbox removes duplicates only inside Trajectory. It does not remove
+duplicates between Trajectory and provider billing, gateways, native clients,
+or other upstream sources. Exact deduplication across sources needs a request
+or event ID that the sources share. If they share none, use the levels in
+[Source Selection Versus Reconciliation](COST-OVERLAP-CONSUMER-GUIDE.md#source-selection-versus-reconciliation).
+In that case, never present a combined total of the sources as exact.
 
-Owner-grouped values answer:
+Trajectory uses separate tags for the stream source and the pricing source:
 
-> How much observed work involved this owned area?
+- All cost that Trajectory derives from turns has
+  `trajectory.cost_source:turn_metrics`, whoever owns the rate card.
+- The `trajectory.pricing_source` tag names the source of the rate. Its values
+  come from a fixed set, such as `organization_rate_card`, `local_rate_card`,
+  `public_rate_card`, or `provider_reported`.
+- Cost from a Cursor native rate card also has
+  `trajectory.cost_method:four_component_token_rate_card` and
+  `trajectory.cost_fidelity:token_derived`.
+- Cursor cost also has the selected `trajectory.cost_basis` and a
+  `trajectory.pricing_version` from a fixed set.
+- Built-in Codex public pricing has the version `codex-rollout-cost-v6`.
+  Trajectory does not replace it with `other`.
 
-They do not answer:
+Each priced attribution must name its source, method, fidelity, basis, unit,
+version, and card. When Trajectory builds the base metrics, it rejects an
+attribution that is missing one of these. So every v2 USD point that counts
+toward a total records where its price came from.
 
-> What mutually exclusive share of the bill belongs to this owner?
+Trajectory follows these rules for Cursor cost:
 
-Datadog formulas operate on the metric series returned by queries. Once one
-unit of work is represented in multiple owner series, no dashboard formula can
-reconstruct a unique total without a separate exclusive key or allocation
-policy. “Deduplicating” an owner dashboard therefore means using the canonical
-ungrouped metric for totals, not summing owner groups.
+- If Trajectory decides that a Cursor turn has no price, it sends no USD sample
+  for that turn.
+- If only some turns in a Cursor session have a price, Trajectory sends no
+  session USD metric.
+- If the correct price of a turn is zero, Trajectory sends a priced sample with
+  the value 0.
 
-There is no honest formula for mutually exclusive owner allocation in the
-current data. `sum`, `max`, `avg`, distinct owner counts, and equal division all
-either double-count work or silently invent an allocation policy. A dashboard
-must state this plainly anywhere owner-associated cost is shown.
+To measure pricing coverage, use these metrics:
+
+- `trajectory.cursor.token_capture.turns_total`
+- `trajectory.pricing.lookup.total`
+- `trajectory.session.cost.priced_turns` and
+  `trajectory.session.cost.unpriced_turns`
+
+Never replace a missing USD value with zero. The lookup metric puts the
+observed model name and the approved standard model in separate tags:
+`gen_ai.request.model` and `trajectory.model.canonical`. Its thinking, speed,
+billing, and context tags each have a fixed set of values. Sometimes
+Trajectory only guesses that a model matches a priced model. The model then
+stays unpriced until the organization config adds an exact mapping and a rate.
+
+### Grain overlap
+
+The turn, session, and PR views of cost describe the same usage at different
+grains. A session cost is the sum of its turns. A PR work cost reuses the cost
+of the turns assigned to that PR. Select one grain for each total. Never add
+the turn, session, and PR views of the same usage.
 
 ## Metric Classes
 
-### Canonical additive totals
+### Additive totals
 
-Use an ungrouped canonical metric for totals, budgets, denominators, and alert
-thresholds. Choose one grain and source family for each widget.
+Use an ungrouped additive metric for totals, budgets, denominators, and alert
+thresholds. For each widget, choose one grain (turn, session, or PR) and one
+source family.
 
-Current general cost examples:
+The general cost metric is:
 
 ```text
 trajectory.turn.cost.usd.additive
-trajectory.session.cost.usd.total
 ```
 
-Do not add turn and session cost metrics together; they are different views of
-the same sessions. For a turn-based spend total, use only the additive COUNT
-metric. For completed-session percentiles, use the session distribution.
+Use only this additive COUNT metric for spend totals.
 
-Trajectory emits this canonical PR-work total:
+`trajectory.turn.cost.usd.total` and `trajectory.session.cost.usd.total` are
+optional distribution samples for percentile analysis. Trajectory cannot
+correct or backfill them, so never use them for totals.
+
+To get the exact average cost of a completed session, select the completed
+sessions. Then sum only the turns in those sessions. This needs a session-grain
+view or a join. You can divide a window of turn cost by
+`trajectory.session.completed`, but the result is only an approximation. The
+two series take their timestamps at different points in the session.
+
+### PR work totals
+
+Trajectory sends this additive total for PR work:
 
 ```text
-trajectory.pr.work.cost.usd.total
+trajectory.pr.work.cost.usd.additive
 ```
 
-It is the non-duplicated sum of completed turns with one primary PR assignment.
-The same projection emits assigned duration and token totals plus explicit PR
-interaction counts; see [Metrics Reference](METRICS-REFERENCE.md).
+Every supported PR candidate uses this one metric name. Trajectory divides the
+cost of each eligible turn between the candidates with fixed evidence weights.
+The shares for a turn always add up to exactly one. The confidence and the
+allocation reason are tags.
 
-It is canonical only inside the PR-work projection. PR work cost reuses base
-turn cost; it is not incremental spend. Never add it to turn cost, session
-cost, or the legacy creation-tail PR cost metrics.
+`trajectory.pr.observations.total` is the matching denominator. It counts each
+PR that Trajectory observed, including PRs with no price. Trajectory uses the
+same shares to divide duration, the four token counters, and the fractional
+counts of completed turns. Counts of explicit PR interactions keep their
+meaning. See the [Metrics Reference](METRICS-REFERENCE.md).
+
+Use `trajectory.pr.work.cost.usd.additive` only for PR views. PR work cost
+reuses the base turn cost, so it is not extra spend. Never add it to turn cost,
+session cost, or older PR creation cost metrics.
+
+Trajectory sets the PR work cost of each turn as follows:
+
+- At session end and during correction recovery, the PR work cost of a turn is
+  the final value of `trajectory.turn.cost.usd.additive` for that turn.
+- If that metric leaves a turn unpriced, the turn has no PR cost.
+- A turn without a completed `turn_end` never reports a cost, so it has no PR
+  cost.
+- During a session, PR work cost uses the turn cost in the local cache. At
+  session end, a signed correction replaces any difference.
+- PR work never counts an estimate from content length (characters divided by
+  4) as spend.
+- PR work never counts a stored zero for an unpriced turn as spend.
+
+Do not use the retired PR work distributions, either alone or with the
+`.additive` series. Their old points came only from finished sessions, so they
+under-report open and abandoned sessions.
+
+Trajectory no longer publishes commit attribution metrics.
+
+A PR correction keeps the timestamp of the completed turn. A cell is one
+timestamp and tag set. The correction ledger first reverses the old value of a
+cell. Then it applies the new value.
+
+For Datadog destinations, Trajectory sends signed corrections through OTLP only
+within one hour after the source turn completes. Other OTLP collectors accept
+corrections of any age. Older rows stay in the queue with the reason
+`unsupported_pr_source_history`. A correction's reversal and its new value are
+held together, so a held correction leaves the value Datadog already has.
+Datadog Historical Metrics Ingestion replaces cells, so it cannot carry signed
+changes. Corrections therefore cover only
+this one-hour window. The USD value comes from the stored source cost,
+including any richer pricing data. Missing pricing never becomes a zero-cost
+observation.
+
+### DD Harness cost coverage
+
+DD Harness wraps the real pi agent, so the DD Harness capture mapper
+computes its own `llm_call` cost from the `model_request_ended` observation's
+tokens. For a model the verified public rate card can represent, a formal
+`costattribution.Attribution` is built from the standard four token
+components (input/output/cache-read/cache-creation).
+`ModelRequestEndedEvent` builds it explicitly the same way other generic
+token-rate-card clients do. It uses
+`capturecost.GenericPublicTokenRateCardForClientAt` with the request's own
+observation time, plus `costattribution.PriceTokens`. The `llm_call` then
+carries a real `cost_attribution` object instead of only the legacy flat
+`cost_nanodollars`/`cost_source` fields.
+
+`publish/metric_catalog_tags.go`'s existing, client-agnostic tagging then
+applies `trajectory.cost_role:attribution` /
+`trajectory.cost_source:turn_metrics` to the derived turn/session cost
+metrics automatically. Every other client gets the same treatment, so no
+DD Harness-specific metric tagging code is needed for that part.
+
+Most of DD Harness's real-world traffic (current Claude models) has a
+fifth pricing dimension: a distinct 1-hour cache-write rate. The
+four-component card cannot represent it yet. This limitation of
+`costattribution` predates DD Harness (Claude Code's native capture path
+has the same gap). Rather than regress a real, working cost to
+"unavailable" for the common case, `ModelRequestEndedEvent` detects this
+and falls back to the legacy token-derived estimate. That estimate comes
+from `llmcall.BuildObservedEvent`'s own internal computation, the path
+Trajectory already used for every DD Harness model before this. Those
+events carry no formal `cost_attribution`. Extending
+`costattribution.TokenRateCard`
+to a fifth component is a larger, shared package change affecting every
+four-component client, not a DD Harness-scoped fix.
+
+pi's own self-reported, metadata-priced usage
+(`model_request_ended.usage.cost`) is carried as a clearly separate,
+namespaced diagnostic field
+(`dd_harness_pi_metadata_cost_usd`/`_role:client_telemetry`/`_source`).
+It is never summed into or confused with Trajectory's own attribution
+cost, and it is not given a `trajectory.cost_role`/`trajectory.cost_source`
+metric tag. It never becomes a Datadog metric at all. It stays an
+event-level diagnostic field. This differs from the Claude-native-OTLP
+precedent below, which proxies a real, separate OTLP metrics stream
+Claude's own telemetry already exports. DD Harness emits no such separate
+metrics stream of its own to proxy. DD Harness's own
+Datadog-sourced UI cost is a third, independent number that Trajectory never
+ingests or republishes at all.
 
 ### Client cost coverage and Codex
 
-Under the v2 usage-integrity contract, the monetary cost metrics
-(`trajectory.turn.cost.usd*`, `trajectory.session.cost.usd*`) emit only for
-turns that carry an explicit priced cost attribution
-(`trajectory.cost_role:attribution`, `trajectory.cost_contract:v2`). Token and
-session-count metrics are pricing-independent and always emit. A model with no
-known price therefore shows tokens and sessions but an empty cost tile - the
-metric is suppressed rather than reported as a misleading zero.
+Trajectory sends the cost metrics (`trajectory.turn.cost.usd*` and
+`trajectory.session.cost.usd*`) only for turns with a priced cost attribution.
+Those turns have the tags `trajectory.cost_role:attribution` and
+`trajectory.cost_contract:v2`. Token and session-count metrics do not depend on
+pricing, so Trajectory always sends them. For a model with no known price, a
+dashboard shows tokens and sessions but an empty cost tile. Trajectory does
+not report a cost of zero, because zero would be wrong.
 
-Codex cost is token-derived from the published OpenAI rate card. Codex model
-IDs price at the base model's rates, including `-codex` variants - e.g.
-`gpt-5.4-codex` prices as `gpt-5.4` - provided the base model is in the rate
-card. A model absent from the card (for example a new flagship before its rate
-lands) is fail-closed unpriced and emits no cost metric. Codex turns attach an
-explicit priced token-derived attribution, so priced Codex cost enters the
-authoritative attribution lane above rather than only the legacy untagged
-`trajectory.turn.cost.usd.total`.
+Trajectory calculates Codex cost from token counts and the published OpenAI
+rate card:
 
-The `trajectory cost` warning `N Codex sessions use a stale cost derivation and
-are excluded` is a **local display** exclusion: a session whose stored
-`cost_derivation_version` predates the current Codex derivation is left out of
-the local total until `trajectory backfill --from-codex-sessions --force`
-re-derives and re-publishes it. Staleness gates the local summary, not metric
-emission - already-published cost metrics are unaffected.
+- A Codex model ID uses the rates of its base model, if the rate card has the
+  base model. This includes `-codex` variants. For example, `gpt-5.4-codex`
+  uses the `gpt-5.4` rates.
+- A model that is not in the card stays unpriced, and Trajectory sends no cost
+  metric for it. An example is a new model before its rate is added.
+- Each priced Codex turn has a token-derived attribution. So
+  `trajectory.turn.cost.usd.additive` includes priced Codex cost.
+- `trajectory.turn.cost.usd.total` is an optional distribution sample for
+  percentile analysis. The `metric_samples_turn_cost` selection controls it.
+  Use the additive metric for totals.
 
-### Exclusive coverage partitions
+### Codex cache tokens
 
-Coverage metrics partition canonical PR work exactly once per qualifying turn.
-Trajectory emits four attributed/unattributed pairs:
+In Codex `token_count` records, `input_tokens` is the total prompt. This total
+includes `cached_input_tokens`, which are cache reads. Recent Codex CLI
+releases also include `cache_write_input_tokens`, which are prompt-cache
+writes. Trajectory first saw this in release 0.149.0. Trajectory subtracts
+each of them once:
 
-```text
-trajectory.pr.work.codeowner_attributed_turns.total
-trajectory.pr.work.codeowner_unattributed_turns.total
-trajectory.pr.work.codeowner_attributed_cost.usd.total
-trajectory.pr.work.codeowner_unattributed_cost.usd.total
-trajectory.pr.work.codeowner_attributed_input_tokens.total
-trajectory.pr.work.codeowner_unattributed_input_tokens.total
-trajectory.pr.work.codeowner_attributed_output_tokens.total
-trajectory.pr.work.codeowner_unattributed_output_tokens.total
-```
+- `input_tokens` is the uncached remainder.
+- `cache_read_tokens` is the cached input.
+- `cache_creation_tokens` is the cache-write count.
 
-These may be added together because one turn contributes to exactly one side.
-They are appropriate for coverage percentages and data-quality widgets, not
-owner allocation. Under identical filters and time windows, each pair sums to
-its canonical PR-work measurement: turns, cost, input tokens, or output tokens.
+Trajectory prices cache writes at the cache-write rate of the model. On the
+GPT-5.6 and GPT-6 cards, this rate is 1.25 times the uncached input rate.
+Some cards have no cache-write rate:
 
-`Unattributed` means no eligible current-session production-owner evidence was
-available for the turn. It does not necessarily mean the repository has no
-CODEOWNERS file. The five-owner cap can make an owner ranking incomplete while
-coverage still correctly counts the turn as attributed: coverage tests the
-complete eligible owner set before the cap, not only the five retained owners.
+- On a card with no cache-write rate, Trajectory bills cache writes at the
+  uncached input rate. OpenAI bills them as ordinary input on those models.
+- ChatGPT Codex credit estimates also use the input credit rate for cache
+  writes, because the credit card lists no cache-write rate.
+- The provisional Guardian `codex-auto-review` proxy also has no cache-write
+  rate. A turn with cache writes on this proxy stays unpriced, because the
+  proxy has no validated billing basis.
 
-### Owner association metrics
+If a rollout has no cache-write field, Trajectory keeps the split into two
+parts. The cache-write value can be malformed, or larger than the uncached
+input that it comes from. Then the input of the turn is unverified. Its
+observed parts stay visible, but the turn is unpriced and has
+`tokens_status: partial`.
 
-General owner relationship metrics include:
+### Codex cost repair
 
-```text
-trajectory.codeowner.associations.total
-trajectory.codeowner.files.total
-```
+The token split is part of the Codex cost derivation `codex-rollout-cost-v6`.
+When the derivation version changes, saved Codex sessions become stale. Two
+repair paths derive them again from their saved rollouts:
 
-They count relationships and owned-file involvement. The current PR-production
-family adds spend and token involvement:
+- the Codex cost repair in the serve process
+- the automatic repair in `trajectory cost`
 
-```text
-trajectory.codeowner.pr.production.turns.total
-trajectory.codeowner.pr.production.cost.usd.total
-trajectory.codeowner.pr.production.input_tokens.total
-trajectory.codeowner.pr.production.output_tokens.total
-trajectory.codeowner.pr.production.cache_read_tokens.total
-trajectory.codeowner.pr.production.cache_creation_tokens.total
-```
+If Trajectory no longer has the rollout of a session, the session stays stale.
+[Stale Codex sessions](#stale-codex-sessions) describes the effect.
 
-Each metric emits one scalar `trajectory.codeowner` per retained owner and
-finalized PR context. The values are intentionally non-exclusive: a co-owned
-turn contributes its full value to every involved retained owner. Filter or
-rank these series, but never sum owner groups to produce global cost, budgets,
-chargeback, allocation, or coverage denominators.
+Repair keeps the billing lane of the session. The billing lane is how Codex
+billed the session. The rollout does not record how Codex authenticated. Only
+the session JSONL that Trajectory writes has the billing mode and the first
+service tier from the live watcher:
 
-All owner-production and coverage series carry `source:prwork`, normalized PR
-identity (`change_host`, Git repository `owner`, `repo`, `change_number`),
-`context_source`, `work_context_mode`, `identity_confidence`,
-`signal_confidence`, `local_range_status`, `trajectory.codeowner_scope:pr`,
-`trajectory.codeowner_source`, `trajectory.codeowner_status`, and
-`trajectory.codeowner_truncated`. Owner-production series additionally carry
-`trajectory.codeowner` and `trajectory.codeowner_kind`. Cost/token series carry
-`trajectory.cost_role:attribution` and the bounded provider/overlap tags when
-available; the two turns metrics intentionally do not.
+- `session_start` and every `turn_end` have `codex_billing_mode`. Its value is
+  `api`, `chatgpt_credits`, or `unknown`.
+- `session_start` also has `codex_initial_service_tier`. This is the tier that
+  the watcher started with, before any rollout setting applied.
+- Every `turn_end` has its `service_tier`.
+
+Both repair paths read the billing lane from the session JSONL. They rebuild
+the session the same way that the live watcher builds it. Then they replay the
+tier changes from the rollout `thread_settings_applied` records. This includes
+a change in the middle of the first turn. As a result:
+
+- Repair prices an API-key fast session at the API priority rate. Live capture
+  recorded the same amount.
+- API-key and `unknown` lanes get no Codex credit estimate.
+- A session JSONL that recorded no mode is a legacy session. It keeps standard
+  pricing.
+
+Some sessions were captured before `codex_initial_service_tier` existed. For
+those, repair takes the first tier from the first `turn_end`. That value
+already includes any tier change that Codex made during the first turn. So
+repair prices a request made before such a change at the changed tier.
+
+If repair cannot find the billing lane, it does not price the session at the
+standard rate. This happens when the session JSONL has one of these problems:
+
+- It is missing or cannot be parsed.
+- It has no `session_start`.
+- It records the API-key lane, but has no first-tier record and no completed
+  turn.
+- It records two different billing modes.
+- It names another session.
+
+The two repair paths handle this case differently:
+
+- `trajectory cost` automatic repair skips the session. It keeps the stored
+  cost and derivation marker, so the session stays stale. It reports the
+  session as `unverified_billing_lane`, or `kept (billing lane unverified)` in
+  text output.
+- Repair in the serve process keeps the existing session file and reports an
+  inspect error. If the recorded lane of a file changes after conversion
+  starts, this repair keeps the file and tries again later.
+
+An earlier release repaired some sessions before this rule existed. That
+repair rewrote the session file without the billing mode. Repair cannot get
+those modes back, because neither the rollout nor the local index records
+them.
+
+### Pricing rules for all clients
+
+For every token-based estimate, Trajectory looks up model equivalence and
+provider pricing with two inputs. They are the client that produced the usage
+and the time Trajectory observed it. It does this when capture writes the request or turn. It
+does this again when it rebuilds or repairs a saved session. So an alias for
+one client cannot use the rate of another client. An older turn cannot use
+the current rate card.
+
+Claude Code records the transcript usage time as `observed_at` on each
+completed turn. Session totals use this time even when capture finishes after
+a rate change.
+
+Trajectory applies long-context price increases per request, and only when it
+has token counts for each request. Sometimes a fallback has only the token sum
+for a session with several requests. If that sum crosses the threshold,
+Trajectory leaves the total unpriced. It does not assume that one request
+crossed the threshold.
+
+The long-context input multiplier applies to these rates:
+
+- uncached input
+- cache reads
+- the 5-minute cache-creation rate
+- the 1-hour cache-creation rate
+
+The long-context output multiplier applies to output tokens.
+
+If pricing data is incomplete or invalid, Trajectory loses cost only for the
+affected part or model:
+
+- Cache-creation tokens can lack a split into 5-minute and 1-hour buckets, or
+  the split can cover only some of them. Trajectory then prices them at the
+  5-minute rate. That rate is the client default and gives a lower bound. The
+  lookup reason is `cache_creation_ttl_assumed_5m`.
+- If the buckets of a split add up to more than the total, the split is
+  inconsistent. The tokens stay unpriced, with the reason
+  `cache_creation_ttl_breakdown_inconsistent`.
+- Cost reconciliation treats lower-bound turns as unavailable, so it compares
+  only exact results.
+- At runtime, Trajectory drops an invalid rate card from the managed provider
+  catalog and keeps the others.
+- If two overlapping cards claim the same model, Trajectory drops only that
+  model.
+- If Trajectory cannot read the catalog, the process keeps the last copy that
+  it loaded. If the catalog cannot be used, Trajectory uses the verified
+  built-in rates.
+- Organization sync still validates the whole file before it installs the
+  file.
+- Like Cursor, Claude Code `session_end` reports `cost_complete`,
+  `cost_priced_turns`, `cost_unpriced_turns`, and `cost_known_subtotal_usd`.
+- `session_cost_usd` is always a complete total. Trajectory leaves it out
+  while any turn with tokens has no price.
+- The two final token counts of a Cursor turn can disagree. Trajectory then
+  records the turn with its response and turn number, but without tokens or
+  cost. The token coverage of the session becomes partial. It does not become
+  invalid.
+
+### Built-in OpenAI GPT-6 rate cards
+
+The built-in `gpt-6-astra`, `gpt-6-sol`, and `gpt-6-luna` cards use OpenAI's
+[published API pricing](https://developers.openai.com/api/docs/pricing). The
+Astra rates below are in USD per million tokens. They were checked against
+that page on 2026-09-25.
+
+These rules apply to all three cards:
+
+- If a request has more than 272K total prompt tokens, the full request uses
+  the long-context rates. Those are 2 times the input and cache rates, and 1.5
+  times the output rate.
+- Fast or priority mode doubles every rate that applies. This includes cache
+  reads, cache writes, and the long-context rates.
+
+| Mode | Input | Output | Cache read | Cache write |
+| --- | ---: | ---: | ---: | ---: |
+| Standard, up to 272K | $10 | $50 | $1 | $12.50 |
+| Standard, above 272K | $20 | $75 | $2 | $25 |
+| Fast / Priority, up to 272K | $20 | $100 | $2 | $25 |
+| Fast / Priority, above 272K | $40 | $150 | $4 | $50 |
+
+Sol and Luna use the same long-context and fast rules, applied to their own
+standard rates:
+
+| Model | Input | Output | Cache read | Cache write |
+| --- | ---: | ---: | ---: | ---: |
+| `gpt-6-sol` | $2 | $10 | $0.20 | $2.50 |
+| `gpt-6-luna` | $0.10 | $0.50 | $0.01 | $0.125 |
+
+OpenAI publishes no effective date and no separate 1-hour cache-write rate for
+these cards. Trajectory does not infer a Codex product-credit rate for any of
+them. Codex API-key sessions use the selected API tier. Sessions signed in
+with ChatGPT keep the standard USD estimate at API rates and get no credit
+estimate.
+
+### Built-in rate cards for GitHub Copilot models
+
+These built-in cards cover models in the GitHub Copilot model picker. Each row
+uses the published API rate of the model provider, checked on 2026-10-08. The
+rates are in USD per million tokens. `mai-code-1.1-flash` is the one exception.
+
+| Model | Input | Output | Cache read | Cache write | Source |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `gpt-5-mini` | $0.25 | $2 | $0.025 | none | [OpenAI](https://developers.openai.com/api/docs/pricing) |
+| `gpt-5.4-mini` | $0.75 | $4.50 | $0.075 | none | [OpenAI](https://developers.openai.com/api/docs/pricing) |
+| `gpt-6.1-sol` | $2 | $10 | $0.10 | $2.50 | [OpenAI](https://developers.openai.com/api/docs/pricing) |
+| `gemini-3.6-flash`, `gemini-3.7-flash`, `gemini-3.8-flash` | $0.75 | $3.75 | $0.075 | none | [Google](https://ai.google.dev/gemini-api/docs/pricing) |
+| `grok-4.5` | $2 | $6 | $0.30 | none | [xAI](https://docs.x.ai/docs/models) |
+| `grok-4.6`, `grok-4.7` | $2 | $6 | $0.50 | none | [xAI](https://docs.x.ai/docs/models) |
+| `mai-code-1.1-flash` | $0.20 | $1.20 | $0.02 | none | [GitHub Copilot](https://docs.github.com/en/enterprise-cloud@latest/copilot/reference/copilot-billing/models-and-pricing) |
+
+- The Gemini rates are a Google promotion that ends on 2026-12-31. From
+  2027-01-01, they are $1.50, $7.50, and $0.15.
+- Trajectory uses the rate in effect when it observed the usage. Google
+  publishes no start date for the Gemini 3.6 Flash promotion. So every 3.6
+  Flash observation before 2027 uses the promotional rate.
+- `gpt-6.1-sol` follows the GPT-6 Sol long-context and fast rules above.
+- Fast mode is 1.8 times the rate for `gpt-5-mini` and 2 times the rate for
+  `gpt-5.4-mini`. Neither mini model has a long-context rate.
+- If the prompt of a Grok request reaches 200K tokens, the whole request costs
+  2 times every rate.
+- `mai-code-1.1-flash` uses the published GitHub Copilot price, because
+  Microsoft publishes no API price for it. It is the only built-in row that
+  does not use the API rate of the model provider.
+
+### Model names with an effort level
+
+Some model names end in a reasoning effort level: `-low`, `-medium`, `-high`,
+or `-xhigh`. Such a name uses the built-in card of its base model. OpenAI,
+Google, and xAI charge the same rate per token at every effort. For example,
+`gpt-5.6-luna-low` uses the `gpt-5.6-luna` card.
+
+The rule does not apply to Claude model names. It also does not apply to
+`-max`, `-fast`, `-none`, and `-minimal`.
+
+Since 2026-10-08, organization rate cards follow the same rule. These cards are
+`org/pricing.yaml`, which prices Cursor, and `org/provider-pricing.yaml`:
+
+- An effort name uses the base row from the same organization catalog. An
+  organization no longer needs one row for each effort.
+- An effort name never falls back to the built-in card.
+- If an organization provider card is installed but lists neither the name nor
+  its base, the name stays unpriced.
+
+### Stale Codex sessions
+
+`trajectory cost` can show the warning `N Codex sessions use a stale cost
+derivation and are excluded`. This warning is about the **local display**
+only. A session is stale when its stored `cost_derivation_version` is older
+than the current Codex derivation. The local total then leaves out that
+session.
+
+To derive the session again and publish it, run
+`trajectory session import codex --force`. A stale session changes only the
+local summary. It does not change metric sending. Cost metrics that Trajectory
+already published do not change.
 
 ## Datadog Dashboard Recipes
 
-Datadog dashboard metric queries support tag filtering, grouping, arithmetic,
-and formulas. Use formulas for ratios between exclusive queries; do not use
-them to claim uniqueness across overlapping owner groups. See Datadog's
-[dashboard querying guide](https://docs.datadoghq.com/dashboards/querying/)
-for query and formula mechanics.
+Datadog dashboard queries support tag filters, grouping, arithmetic, and
+formulas. Use formulas for ratios between queries that do not overlap. Never
+use a formula to make overlapping grains look unique. For query and formula
+details, see the Datadog
+[dashboard querying guide](https://docs.datadoghq.com/dashboards/querying/).
 
-### Start from the packaged dashboard
-
-Export the dashboard templates that ship with the current binary, then import
-the raw JSON through Datadog or use the MCP-shaped payload with the Datadog MCP
-dashboard tool:
-
-```bash
-trajectory dashboard export --type enterprise --output trajectory-enterprise.json
-trajectory dashboard export --type developer --output developer-dashboard.json
-trajectory dashboard export --type data-fidelity --format mcp --output trajectory-data-fidelity-mcp.json
-```
-
-Run `trajectory user-guide dashboards` for the complete export and import
-workflow. The enterprise dashboard includes the `PR Work & CODEOWNER
-Attribution` panel, the developer dashboard uses canonical PR work plus a
-non-additive owner-involvement view, and the data-fidelity dashboard includes
-the `PR CODEOWNER Fidelity` coverage, reconciliation, status, truncation, and
-dropped-owner diagnostics. Whether you use a packaged template or a custom
-dashboard, the canonical/owner/coverage rules below are the same. Templates
-visualize metrics; they do not enable collection or create missing historical
-points.
+The rules below apply to every dashboard that you maintain yourself. Queries
+and formulas only show metrics. They do not turn on collection, and they
+cannot create missing historical points.
 
 ### Total attributed coding-agent cost
 
@@ -234,230 +522,68 @@ Use a Query Value or Timeseries widget with one source family and one grain:
 sum:trajectory.turn.cost.usd.additive{trajectory.cost_contract:v2,trajectory.cost_role:attribution}.as_count()
 ```
 
-Managed historical correction uses the separate COUNT namespace
-`trajectory.historical.turn.cost.usd.additive`. Always filter it to one
-authoritative `campaign_id`, `trajectory.cost_contract:v2`, and
-`trajectory.cost_role:attribution`, then use `.as_count()`. Do not blend it with
-the live additive metric over overlapping timestamps. Historical gauge and
-distribution points are not rewritten; successor campaigns replace the
-dashboard campaign filter instead of attempting in-place correction.
+Backfill sends the live metric again with the original turn timestamps and the
+same `trajectory.cost_contract:v2` tag. So query only the live metric for both
+current and backfilled cost.
 
-This metric name is Trajectory's turn-cost attribution stream. Do not add
+This metric is the Trajectory stream of turn cost attribution. Do not add
 client-native metrics, provider billing, or the completed-session metric to
-this query. The positive `trajectory.cost_contract:v2` selection is the
-authoritative cutover: old legacy samples remain untagged, while current generic
-backfill and provider-history replay emit no attribution token/cost samples.
-Both therefore stay out of the total. Create separate legacy/unverified or provider
-comparison widgets when those sources are useful; do not broaden the
-authoritative query to include missing contract or role tags.
+this query.
 
-For Cursor, this query contains only newly captured turns that reached an
-explicit priced decision in managed `emit` mode. It does not contain
-workspace/cloud activity or historical replay. Show the Cursor organization
-ledger and local capture/pricing coverage separately rather than adding them
-to the local attribution stream.
+The `trajectory.cost_contract:v2` filter selects only data from after the
+change to the v2 contract:
 
-### CODEOWNER involvement
+- Old legacy samples have no contract tag, so they stay out of the total.
+- Older historical metrics and provider history replay send no attribution
+  token or cost samples, so they also stay out.
+- To see legacy data, unverified data, or provider data, create separate
+  widgets.
+- Never widen this total query to include samples that have no contract tag
+  or role tag.
 
-For general owner relationship data, use a flat Top List:
+For Cursor, this query contains only newly captured turns that got a priced
+result in managed `emit` mode. It does not contain workspace activity, cloud
+activity, or historical replay. Show the Cursor organization ledger and the
+local capture and pricing coverage in separate widgets. Do not add them to the
+local attribution stream.
 
-```text
-sum:trajectory.codeowner.associations.total{trajectory.codeowner_scope:pr}
-  by {trajectory.codeowner}.as_count()
-```
+### PR work cost
 
-Suggested title:
-
-> PR scopes involving each CODEOWNER - non-additive
-
-For current PR-production cost involvement, use a separate flat Top List:
+Use the PR work metric for PR cost:
 
 ```text
-sum:trajectory.codeowner.pr.production.cost.usd.total{source:prwork}
-  by {trajectory.codeowner}
+sum:trajectory.pr.work.cost.usd.additive{source:facts}.as_count()
 ```
 
-Suggested title:
-
-> Production cost involving each CODEOWNER - overlapping, do not sum
-
-Use a flat Top List only. Do not use a stacked timeseries, stacked bar, pie,
-sunburst, query value that sums the groups, or a table with a total row: each
-would visually or numerically imply an additive whole. A Top List ranks the
-overlapping groups without inventing one. See the Datadog
-[Top List widget guide](https://docs.datadoghq.com/dashboards/widgets/top_list/).
-
-### CODEOWNER coverage
-
-Using the same `source:prwork` filter in every query, define:
-
-```text
-a = sum:trajectory.pr.work.codeowner_attributed_cost.usd.total{source:prwork}
-u = sum:trajectory.pr.work.codeowner_unattributed_cost.usd.total{source:prwork}
-c = sum:trajectory.pr.work.cost.usd.total{source:prwork}
-```
-
-Then show:
-
-```text
-100 * a / (a + u)
-```
-
-Widget title:
-
-> Percent of PR work cost with production CODEOWNER evidence
-
-Description:
-
-> Exclusive coverage partition. Attributed means at least one eligible
-> current-session production CODEOWNER before the five-owner display cap.
-
-The denominator is exclusive because it is `attributed + unattributed`; it is
-not a sum across owners. Add a Query Value using `a + u - c` titled
-`PR work CODEOWNER coverage reconciliation (expected 0)`. A non-zero result
-means the filters, time aggregation, or rollup differ. The same invariant holds
-for turns, input tokens, and output tokens by substituting the matching three
-metric names.
-
-Recommended widgets:
-
-| Widget | Query/formula | Required description |
-| --- | --- | --- |
-| Canonical PR work cost | `sum:trajectory.pr.work.cost.usd.total{source:prwork}` | `Canonical ungrouped PR-work projection; do not add to turn/session/creation-tail cost.` |
-| CODEOWNER production involvement | `sum:trajectory.codeowner.pr.production.cost.usd.total{source:prwork} by {trajectory.codeowner}` | `Overlapping owner association; flat Top List only; never sum groups.` |
-| Production coverage | `100 * a / (a + u)` | `Exclusive attributed/unattributed partition; eligible owner evidence is evaluated before cap.` |
-| Coverage reconciliation | `a + u - c` | `Expected 0 under identical filters and time aggregation.` |
-
-### Cap and overflow diagnostics
-
-Every scope computes the complete eligible owner set, retains the top five in
-deterministic rank order, and persists exact eligible, retained, dropped, and
-truncated values. Use these diagnostics at PR grain:
-
-```text
-sum:trajectory.codeowner.truncated.total{trajectory.codeowner_scope:pr}.as_count()
-sum:trajectory.codeowner.owners.dropped{trajectory.codeowner_scope:pr}
-```
-
-`trajectory.codeowner_truncated:true` on a production/coverage point means the
-PR summary had more than five eligible owners. Truncation changes which owner
-series are visible; it does not move the turn to the unattributed coverage
-bucket. A turn with six eligible owners remains attributed even though only
-five owners are retained for public grouping.
-
-### Privacy-safe evidence diagnostics
-
-Diagnose missing ownership with bounded status and source dimensions, not raw
-repository evidence. For example:
-
-```text
-sum:trajectory.codeowner.scopes.total{trajectory.codeowner_scope:pr}
-  by {trajectory.codeowner_status,trajectory.codeowner_source}.as_count()
-
-sum:trajectory.codeowner.truncated.total{trajectory.codeowner_scope:pr}
-  by {trajectory.codeowner_source}.as_count()
-```
-
-PR-production and coverage points also expose bounded context diagnostics such
-as `context_source`, `work_context_mode`, `identity_confidence`,
-`signal_confidence`, and `local_range_status`. These dimensions describe the
-derivation state. They never contain a command, path, ref, object ID, diff,
-CODEOWNERS pattern, or source content. Do not create custom tags from those raw
-local values to make a dashboard more detailed.
-
-At session end, `trajectory.codeowner.resolution_failures.total` counts
-resolution failures by `trajectory.codeowner_scope`, bounded
-`trajectory.codeowner_failure_reason` (`missing`, `parse_error`,
-`snapshot_store_error`, or `change_files_unavailable`), and bounded
-`trajectory.codeowner_snapshot_source` (`session_head`, `persisted_snapshot`,
-or `pr_turn_range`). These are categorical diagnostics only. Locally,
-`trajectory audit --source-data` reports the same failure categories and
-counts; it does not display paths, Git object IDs, CODEOWNERS contents, or
-source content.
-
-### Owner filtering without false totals
-
-A dashboard template variable for `trajectory.codeowner` can filter the
-association widget and related trace links. Keep the global total widget on the
-canonical ungrouped metric. Filtering the owner widget to one team answers
-“work involving this team”; it does not establish that the displayed amount
-belongs only to that team.
-
-## Required Widget Labels
-
-Every owner-cost widget must include one of these statements in its title or
-description:
-
-- `Overlapping owner association; do not sum across owners.`
-- `Involvement, not mutually exclusive allocation.`
-- `Global total uses the canonical ungrouped PR work metric.`
-
-Avoid these labels unless a future allocation policy exists:
-
-- `team spend total`
-- `allocated cost`
-- `chargeback`
-- `share of bill`
-- `deduplicated owner cost`
+This metric reuses the base turn cost. Do not add it to turn cost, session
+cost, or PR creation cost.
 
 ## Dashboard Review Checklist
 
-Before publishing a Trajectory cost dashboard:
+Before you publish a Trajectory cost dashboard, check these items:
 
-- Select exactly one cost source family for each total.
-- Follow the source registry, upstream configuration, and reconciliation-level
-  contract in [Cost Overlap Consumer Guide](COST-OVERLAP-CONSUMER-GUIDE.md)
-  or `trajectory user-guide cost-reconciliation`.
-- Select exactly one grain for each total; do not add turn, session, and PR
+- Each total uses exactly one cost source family.
+- The dashboard follows the source registry, upstream configuration, and
+  reconciliation levels in the
+  [Cost Overlap Consumer Guide](COST-OVERLAP-CONSUMER-GUIDE.md) or
+  `trajectory user-guide cost-reconciliation`.
+- Each total uses exactly one grain. No total adds the turn, session, and PR
   views of the same usage.
-- Use canonical ungrouped metrics for totals, budgets, denominators, and alerts.
-- Use owner association metrics only for filtering, ranking, comparison, and
-  “involves this owner” analysis.
-- Use a flat Top List only for owner cost; never stack or sum owner groups.
-- Build coverage from exclusive attributed/unattributed metrics, not owner
-  groups.
-- State whether a widget shows attributed cost or provider-billed cost.
-- Add a note explaining the five-owner cap and expose truncation diagnostics.
-- Diagnose gaps with bounded source/status tags; never promote paths, commands,
-  refs, object IDs, patterns, or source text into dashboard tags.
+- Totals, budgets, denominators, and alerts use ungrouped additive metrics.
+- Each widget says whether it shows attributed cost or provider-billed cost.
+- Gaps are diagnosed with source and status tags that have a fixed set of
+  values.
+- No paths, commands, refs, object IDs, patterns, or source text become
+  dashboard tags.
 
-## Evidence and privacy boundary
+## Ownership and Privacy
 
-Production ownership is derived locally from successful writes and exact files
-in eligible immutable commit evidence produced during the session. Entry
-baselines, downloaded PR contents, fetch/pull/switch/rebase/reset imports, and
-merge or cherry-pick operations alone do not become this user's production.
-Trajectory resolves the stored CODEOWNERS snapshot locally and publishes only
-bounded owner identities and counters. It does not call a provider API, reuse
-GitHub/GitLab credentials, or publish source content, CODEOWNERS patterns,
-commands, paths, refs, object IDs, diffs, or email owners.
+Trajectory decides on the local machine which work a user produced. It uses
+successful writes, and the files in eligible commits made during the session.
+These things alone never count as work the user produced:
 
-Read/search attribution remains a later, separately labeled investigation
-contract. It must not be mixed into these production metrics.
-
-## Managed `pr_attribution` v2 records
-
-Managed record-enabled destinations receive one schema-v2 record per finalized
-durable context. The public repository namespace is `repo_owner`; Git
-repository `owner` and CODEOWNER identity are never overloaded. The parallel
-`codeowners` and `codeowner_kinds` arrays contain at most five normalized
-identities without leading `@`, while eligible, retained, dropped, and
-truncated fields preserve the exact cap state. Emission requires finalized
-spend and CODEOWNER projection version 2.
-
-The record ID is deterministically derived from session, generation, context,
-and schema version, so live retry and backfill use stable dedup identity.
-`retroactive_membership:true` means only that record's `creation_window`
-context includes bounded earlier primary turns. It does not rewrite turn-root
-spans already accepted by the cloud before PR identity was known.
-
-## No Allocation Policy Yet
-
-Trajectory does not currently divide one turn's cost among co-owners. Equal
-splits, file-count weighting, line-count weighting, and “primary owner” rules
-would each encode a policy choice that CODEOWNERS itself does not provide.
-
-If a mutually exclusive allocation is required in the future, it needs a
-separate product contract, an explicit allocation method, and metrics emitted
-with that method. It cannot be derived honestly from the current association
-series alone.
+- the entry baseline, which is the state of the repository when the session
+  started
+- downloaded PR contents
+- changes brought in by fetch, pull, switch, rebase, or reset
+- merge or cherry-pick operations

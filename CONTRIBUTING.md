@@ -2,29 +2,32 @@
 
 Thanks for helping improve Trajectory.
 
-This repository contains distribution metadata, documentation, and coding-agent plugin assets. Please keep contributions scoped to the files present here.
+This repository holds the Trajectory installer, documentation, coding-agent
+plugins, marketplace metadata, and release metadata. Release binaries are
+attached to GitHub Releases.
+
+Datadog generates most files here from its source repository. If you propose
+a change to a document, plugin, or installer, Datadog makes the change at the
+source. The change then appears here in a later update.
 
 ## Local Checks
 
 ```bash
 python3 -m json.tool RELEASES.json >/dev/null
-python3 .github/scripts/public_release_mirror.py validate-contract \
-  --contract contracts/public-release-mirror-v1.json
-python3 -m unittest discover -s tests -p 'test_*.py' -v
 ruby -e 'require "yaml"; ARGV.each { |path| YAML.parse_file(path) }' \
   .github/workflows/*.yml .github/chainguard/*.yaml
-bash -n install.sh
+bash -n install.sh uninstall.sh
 ```
 
-These checks validate release metadata, protected publication contracts,
-workflow and policy syntax, and shell syntax for the installer.
+These checks parse the release metadata, the workflow and policy files, and the
+shell scripts.
 
 ## Pull Requests
 
-- Keep changes focused on one concern.
-- Update docs when install or plugin behavior changes.
-- Do not add built binaries to git. Release binaries belong in GitHub Releases.
-- Do not add unrelated directories, worktrees, maintainer runbooks, local paths, or credential material.
+- Keep each change to one concern.
+- Update the docs when install or plugin behavior changes.
+- Do not add built binaries to Git. Release binaries belong in GitHub Releases.
+- Do not add local paths, credentials, or files unrelated to the change.
 
 ## Security
 
