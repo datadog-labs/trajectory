@@ -2,7 +2,7 @@
   "version": 1,
   "hooks": {
     "sessionStart": [{
-      "command": "\"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" security setup --marketplace --clients cursor >/dev/null 2>&1 || true",
+      "command": "\"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" plugins security setup --marketplace --clients cursor >/dev/null 2>&1 || true",
       "timeout": 5
     }],
     "beforeSubmitPrompt": [{

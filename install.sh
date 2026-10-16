@@ -14,7 +14,7 @@
 # --local-only) are passed through to `trajectory setup`. Run `trajectory setup
 # --help` for the full flag reference. --local-only installs capture locally
 # without requiring an API key; Datadog export can be configured later with
-# `trajectory destination configure`.
+# `trajectory publish destination configure`.
 #
 # Install-only flags (not passed through to `trajectory setup`):
 #   --security   After baseline setup, enable the Datadog Security product
@@ -46,12 +46,15 @@
 #                stored when security is enabled, and it is never passed to
 #                `trajectory setup` or to the security command itself.
 #
-# Enabling security also creates the 'ai-guard-apm' required destination in
-# config.defaults.yaml, which publishes agent-security module spans and enables
+# Enabling security also creates the 'ai-guard-apm' required destination (a
+# compatibility name) in
+# config.defaults.yaml, which publishes Agent Security findings and AI-EDR
+# custody-backed projections as Logs and enables
 # app-key readback. It must live in the managed defaults file: publish reads
 # required_destinations only from that layer, never from user config.yaml. Its
-# site and ml_app follow --site/--ml-app. The step is idempotent and never
-# modifies a destination that already carries that name.
+# site and ml_app follow --site/--ml-app, then the site and ML app Trajectory is
+# already configured with, then the defaults `trajectory setup` uses. The step
+# is idempotent and never modifies a destination that already carries that name.
 #
 # Both keys fall back to the environment when their flag is omitted:
 #   --api-key    DD_API_KEY, DATADOG_API_KEY
@@ -76,6 +79,7 @@ INTERCEPT_DIR="$INSTALL_DIR/intercepts"
 # become trajectory.exe on Windows (Git Bash / MSYS / Cygwin) and trajectory
 # on darwin/linux.
 BINARY="$BIN_DIR/trajectory"
+printf -v BINARY_COMMAND '%q' "$BINARY"
 BINARY_SUFFIX=""
 REPO="datadog-labs/trajectory"
 
@@ -105,9 +109,11 @@ SECURITY_PRIVACY_MODE=""
 # keychain as dd_app_key, which Agent Security needs for result readback.
 APP_KEY=""
 API_KEY_PROVIDED=0
-# Required destination created for Agent Security module spans. Site and ML app
-# follow --site/--ml-app so the destination is correct on every Datadog site,
-# and fall back to the same defaults `trajectory setup` uses.
+# Required destination created for Agent Security Logs. Site and ML app follow
+# --site/--ml-app so the destination is correct on every Datadog site, then the
+# values already configured for Trajectory (an interactive setup and a
+# pre-existing install both set them without any installer flag), and finally
+# the same defaults `trajectory setup` uses.
 SECURITY_DESTINATION_NAME="ai-guard-apm"
 SECURITY_DESTINATION_SERVICE="coding-agents"
 SITE=""
@@ -232,8 +238,8 @@ while [ "$#" -gt 0 ]; do
 done
 
 # Both Datadog keys fall back to the standard environment variable names that
-# `trajectory` itself recognizes (trajectory/config/secrets.go). An explicit
-# flag always wins over the environment.
+# `trajectory` itself recognizes. An explicit flag always wins over the
+# environment.
 if [ "$API_KEY_PROVIDED" = "0" ] && [ "$LOCAL_ONLY" = "0" ]; then
     _ENV_API_KEY="${DD_API_KEY:-${DATADOG_API_KEY:-}}"
     if [ -n "$_ENV_API_KEY" ]; then
@@ -255,7 +261,7 @@ store_app_key() {
     if [ -z "$APP_KEY" ]; then
         info "      No Datadog application key supplied (--app-key or DD_APP_KEY)."
         info "      Agent Security result readback needs one; store it later with:"
-        info "        $BINARY config set-secret dd_app_key --stdin"
+        info "        $BINARY_COMMAND config set-secret dd_app_key --stdin"
         return 0
     fi
     if output=$(printf '%s' "$APP_KEY" | "$BINARY" config set-secret dd_app_key --stdin 2>&1); then
@@ -264,7 +270,7 @@ store_app_key() {
     fi
     warn "Could not store the Datadog application key as dd_app_key."
     if [ -n "$output" ]; then printf '%s\n' "$output" >&2; fi
-    warn "      Retry manually: $BINARY config set-secret dd_app_key --stdin"
+    warn "      Retry manually: $BINARY_COMMAND config set-secret dd_app_key --stdin"
     warn "      Or export DD_APP_KEY in the environment."
 }
 
@@ -277,13 +283,13 @@ apply_security_privacy_mode() {
     if [ -z "$SECURITY_PRIVACY_MODE" ]; then
         return 0
     fi
-    if output=$("$BINARY" modules evaluator configure agent-security ai_guard \
+    if output=$("$BINARY" plugins modules evaluator configure agent-security ai_guard \
         --privacy-mode "$SECURITY_PRIVACY_MODE" 2>&1); then
         if [ "$SECURITY_PRIVACY_MODE" = "unredacted" ]; then
             warn "Agent Security privacy mode is UNREDACTED: full prompt and tool"
             warn "      content evaluated by AI Guard is sent to Datadog without redaction."
             warn "      Switch back with:"
-            warn "        $BINARY modules evaluator configure agent-security ai_guard --privacy-mode coding_agent"
+            warn "        $BINARY_COMMAND plugins modules evaluator configure agent-security ai_guard --privacy-mode coding_agent"
         else
             info "      Agent Security privacy mode set to $SECURITY_PRIVACY_MODE (content is redacted)."
         fi
@@ -291,17 +297,38 @@ apply_security_privacy_mode() {
     fi
     warn "Could not set the Agent Security privacy mode to $SECURITY_PRIVACY_MODE."
     if [ -n "$output" ]; then printf '%s\n' "$output" >&2; fi
-    warn "      Retry manually: $BINARY modules evaluator configure agent-security ai_guard --privacy-mode $SECURITY_PRIVACY_MODE"
+    warn "      Retry manually: $BINARY_COMMAND plugins modules evaluator configure agent-security ai_guard --privacy-mode $SECURITY_PRIVACY_MODE"
 }
 
-# Create the required destination that publishes agent-security module spans.
+# Read one export setting from the config `trajectory setup` just wrote. Used
+# to resolve the security destination's site and ML app when this invocation did
+# not pass --site/--ml-app: the interactive wizard and a pre-existing install
+# both configure them without any installer flag, and a destination pinned to
+# US1 publishes nowhere for those users. Prints nothing when the key is unset or
+# still holds the setup placeholder, so callers keep their own default.
+configured_export_value() {
+    local key="$1" value=""
+
+    value="$("$BINARY" config get "$key" 2>/dev/null | head -n 1 | tr -d '\r')" || value=""
+    case "$value" in
+        ""|"your Datadog site") return 0 ;;
+    esac
+    printf '%s\n' "$value"
+}
+
+# Escape one value for a double-quoted YAML scalar. site and ml_app carry
+# arbitrary user input, so a colon, a leading `#`, or a quote would otherwise
+# emit a config.defaults.yaml that the security setup calls cannot load.
+yaml_quote() {
+    printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+}
+
+# Create the required destination that publishes Agent Security Logs.
 # Called only from the security activation workflow.
 #
-# This must be config.defaults.yaml, not config.yaml. Publish resolves
-# required_destinations exclusively from the managed defaults layer
-# (mainconfig.LoadDefaultsIfPresent in trajectory/publish/cmd.go); the same key
-# in user config.yaml is never read, so a destination written there is silently
-# inert. `trajectory security destination add` can only amend a destination that
+# This must be config.defaults.yaml, not config.yaml. Publish reads
+# required_destinations only from the managed defaults layer. The same key in
+# user config.yaml is never read, so a destination written there does nothing. `trajectory plugins security destination add` can only amend a destination that
 # already exists and no CLI command creates one, so the installer writes it.
 # Idempotent: an existing destination with this name is left untouched.
 ensure_security_destination() {
@@ -316,29 +343,34 @@ ensure_security_destination() {
         else
             warn "$config_file already exists, so the $SECURITY_DESTINATION_NAME destination was not added."
             warn "      That file is managed configuration this installer does not own."
-            warn "      Add the destination there manually to publish agent-security module spans."
+            warn "      Add the destination there manually to publish Agent Security Logs."
         fi
         return 0
     fi
 
-    site="${SITE:-datadoghq.com}"
-    ml_app="${ML_APP:-coding-agents}"
+    # Explicit flags win, then whatever Trajectory is already configured with,
+    # then the same defaults `trajectory setup` uses.
+    site="$SITE"
+    [ -n "$site" ] || site="$(configured_export_value export.site)"
+    [ -n "$site" ] || site="datadoghq.com"
+    ml_app="$ML_APP"
+    [ -n "$ml_app" ] || ml_app="$(configured_export_value export.ml_app)"
+    [ -n "$ml_app" ] || ml_app="coding-agents"
     if ! cat > "$config_file" <<EOF
 required_destinations:
   - name: ${SECURITY_DESTINATION_NAME}
     type: datadog
-    site: ${site}
+    site: "$(yaml_quote "$site")"
     service: ${SECURITY_DESTINATION_SERVICE}
-    ml_app: ${ml_app}
+    ml_app: "$(yaml_quote "$ml_app")"
     level: "off"
+    incognito_exempt: true
     api_key_ref: dd_api_key
     app_key_ref: dd_app_key
-    module_spans:
-      enabled: true
-      modules:
-        - agent-security
-      native_composite_attributes:
-        - agent-security
+    agent_security:
+      metrics: true
+      findings: true
+      disclosure_profile: curated
 EOF
     then
         warn "Could not write $config_file; $SECURITY_DESTINATION_NAME was not added."
@@ -346,7 +378,7 @@ EOF
     fi
     chmod 0644 "$config_file" 2>/dev/null || true
     info "      Wrote $config_file with the $SECURITY_DESTINATION_NAME destination"
-    info "      (site=$site, ml_app=$ml_app) for agent-security module spans."
+    info "      (site=$site, ml_app=$ml_app) for Agent Security Logs."
 }
 
 codex_marketplace_add() {
@@ -494,6 +526,19 @@ EOF
     chmod 0644 "$metadata" 2>/dev/null || true
 }
 
+# Older binaries add a historical whole-document header when creating this
+# file. Adding security defaults later can then quarantine fresh setup output.
+# A nonempty user document avoids that header without reclassifying old files.
+prepare_user_config() {
+    local config_file="$INSTALL_DIR/config.yaml"
+    if [ -e "$config_file" ] || [ -L "$config_file" ]; then
+        return 0
+    fi
+    if ! (umask 077; set -o noclobber; printf '{}\n' > "$config_file"); then
+        fail "Could not initialize $config_file before setup."
+    fi
+}
+
 # Enable the Datadog Security product plugin for the coding agents the main
 # install already detected. SECURITY_CLIENTS is populated by the per-client
 # detection blocks below, so detection happens exactly once and security can
@@ -523,7 +568,7 @@ enable_security_modules() {
         warn "--security was requested, but none of the security-supported clients were detected."
         warn "      Datadog Security supports Claude Code, Codex, and Cursor."
         warn "      Enable it later for an explicit client list:"
-        warn "        $BINARY security setup --mode $SECURITY_MODE --clients cc,codex,cursor$confirm"
+        warn "        $BINARY_COMMAND plugins security setup --mode $SECURITY_MODE --clients cc,codex,cursor$confirm"
         return 0
     fi
 
@@ -538,7 +583,7 @@ enable_security_modules() {
     # must not stop the remaining detected clients from being protected.
     info "      Enabling Datadog Security ($SECURITY_MODE mode) for: $client_list"
     for client in "${clients[@]}"; do
-        if "$BINARY" security setup "${mode_args[@]}" --clients "$client"; then
+        if "$BINARY" plugins security setup "${mode_args[@]}" --clients "$client"; then
             enabled+=("$client")
             info "      - $client: enabled"
         else
@@ -555,22 +600,22 @@ enable_security_modules() {
             info "      Datadog Security enabled in ENFORCE mode for $enabled_list - it can"
             info "      block agent actions that violate policy."
             info "      To fall back to non-blocking observation:"
-            info "        $BINARY security setup --mode observe --clients $enabled_list"
+            info "        $BINARY_COMMAND plugins security setup --mode observe --clients $enabled_list"
         else
             info "      Datadog Security enabled in observe mode for $enabled_list - it records"
             info "      local security decisions and does not block agent actions."
             info "      To switch to blocking enforcement:"
-            info "        $BINARY security setup --mode enforce --clients $enabled_list --yes"
+            info "        $BINARY_COMMAND plugins security setup --mode enforce --clients $enabled_list --yes"
         fi
-        info "      To check status:  $BINARY security status"
-        info "      To turn it off:   $BINARY security disable --clients $enabled_list --remove-hooks"
+        info "      To check status:  $BINARY_COMMAND plugins security status"
+        info "      To turn it off:   $BINARY_COMMAND plugins security disable --clients $enabled_list --remove-hooks"
     fi
 
     if [ "${#failed[@]}" -gt 0 ]; then
         failed_list="$(IFS=,; echo "${failed[*]}")"
         warn "Datadog Security could not be enabled for: $failed_list"
         warn "      Baseline observability capture is unaffected for those clients."
-        warn "      Retry manually: $BINARY security setup --mode $SECURITY_MODE --clients $failed_list$confirm"
+        warn "      Retry manually: $BINARY_COMMAND plugins security setup --mode $SECURITY_MODE --clients $failed_list$confirm"
     fi
 }
 
@@ -586,6 +631,7 @@ case "$PLATFORM" in
     *)         BINARY_SUFFIX="" ;;
 esac
 BINARY="${BIN_DIR}/trajectory${BINARY_SUFFIX}"
+printf -v BINARY_COMMAND '%q' "$BINARY"
 ASSET="trajectory-${PLATFORM}${BINARY_SUFFIX}"
 info "[1/5] Detected platform: $PLATFORM"
 
@@ -614,8 +660,12 @@ else
     chmod +x "$BINARY"
 
     if [ "$(uname -s)" = "Darwin" ] && command -v codesign >/dev/null 2>&1; then
-        info "[3/5] Codesigning binary (macOS)..."
-        codesign -f -s - "$BINARY"
+        if codesign --verify --deep --strict "$BINARY" >/dev/null 2>&1; then
+            info "[3/5] Preserving existing valid macOS signature"
+        else
+            info "[3/5] Applying ad-hoc signature to unsigned binary (macOS)..."
+            codesign -f -s - "$BINARY"
+        fi
     else
         info "[3/5] Codesign skipped (not macOS or codesign not available)"
     fi
@@ -626,6 +676,9 @@ fi
 install_intercept_assets
 install_uninstaller
 write_install_metadata
+if [ "$ENABLE_SECURITY" = "1" ]; then
+    prepare_user_config
+fi
 
 if [ "$NON_INTERACTIVE" = "1" ] && [ "$LOCAL_ONLY" = "1" ]; then
     info "[4/5] Running setup (non-interactive local-only)..."
@@ -693,6 +746,7 @@ fi
 
 # GitHub Copilot CLI plugin (marketplace-based, beta)
 if command -v copilot >/dev/null 2>&1; then
+    SECURITY_CLIENTS+=("copilot")
     COPILOT_MARKETPLACE_DIR="$INSTALL_DIR/copilot-marketplace"
     if [ -d "$COPILOT_MARKETPLACE_DIR/.github/plugin" ]; then
         info "      Installing GitHub Copilot CLI plugin (beta)..."
@@ -727,15 +781,6 @@ if command -v droid >/dev/null 2>&1; then
     fi
 else
     info "      Factory Droid CLI not detected - skipping Droid plugin."
-fi
-
-# Gemini CLI configuration (handled by setup wizard)
-if command -v gemini >/dev/null 2>&1; then
-    info "      Gemini CLI detected - configuration is handled by the setup wizard."
-    info "      To refresh Gemini wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients gemini"
-    PLUGIN_INSTALLED=1
-else
-    info "      Gemini CLI not detected - skipping Gemini configuration guidance."
 fi
 
 # Antigravity CLI configuration (handled by setup wizard)
@@ -851,7 +896,7 @@ fi
 if command -v devin >/dev/null 2>&1; then
     info "      Devin CLI detected - preview instrumentation is disabled by default."
     info "      Enable Devin explicitly, then run setup:"
-    info "        1. ~/.trajectory/bin/trajectory features enable devin_cli_instrumentation"
+    info "        1. ~/.trajectory/bin/trajectory config features enable devin_cli_instrumentation"
     info "        2. ~/.trajectory/bin/trajectory setup --clients devin"
     PLUGIN_INSTALLED=1
 else
@@ -862,7 +907,7 @@ fi
 if command -v qodercli >/dev/null 2>&1; then
     info "      Qoder CLI detected - preview instrumentation is disabled by default."
     info "      Enable Qoder explicitly, then run setup:"
-    info "        1. ~/.trajectory/bin/trajectory features enable qoder_cli_instrumentation"
+    info "        1. ~/.trajectory/bin/trajectory config features enable qoder_cli_instrumentation"
     info "        2. ~/.trajectory/bin/trajectory setup --clients qoder"
     PLUGIN_INSTALLED=1
 else
@@ -873,7 +918,7 @@ fi
 if command -v command-code >/dev/null 2>&1 || command -v commandcode >/dev/null 2>&1 || command -v cmdc >/dev/null 2>&1 || [ -d "$HOME/.commandcode/projects" ]; then
     info "      CommandCode detected - preview instrumentation is disabled by default."
     info "      Enable CommandCode explicitly, then run setup:"
-    info "        1. ~/.trajectory/bin/trajectory features enable commandcode_instrumentation"
+    info "        1. ~/.trajectory/bin/trajectory config features enable commandcode_instrumentation"
     info "        2. ~/.trajectory/bin/trajectory setup --clients commandcode"
     PLUGIN_INSTALLED=1
 else
@@ -884,7 +929,7 @@ fi
 if command -v zed >/dev/null 2>&1 || [ -f "$HOME/Library/Application Support/Zed/threads/threads.db" ] || [ -f "${XDG_DATA_HOME:-$HOME/.local/share}/zed/threads/threads.db" ]; then
     info "      Zed detected - passive-history preview instrumentation is disabled by default."
     info "      Enable Zed explicitly, then run setup:"
-    info "        1. ~/.trajectory/bin/trajectory features enable zed_passive_history"
+    info "        1. ~/.trajectory/bin/trajectory config features enable zed_passive_history"
     info "        2. ~/.trajectory/bin/trajectory setup --clients zed"
     PLUGIN_INSTALLED=1
 else
@@ -895,7 +940,7 @@ fi
 if command -v kimi >/dev/null 2>&1; then
     info "      Kimi Code CLI detected - preview instrumentation is disabled by default."
     info "      Enable Kimi explicitly, then run setup:"
-    info "        1. ~/.trajectory/bin/trajectory features enable kimi_cli_instrumentation"
+    info "        1. ~/.trajectory/bin/trajectory config features enable kimi_cli_instrumentation"
     info "        2. ~/.trajectory/bin/trajectory setup --clients kimi"
     PLUGIN_INSTALLED=1
 else
@@ -906,7 +951,7 @@ fi
 # setup does so only after the explicit default-off feature is enabled.
 if command -v code >/dev/null 2>&1 || command -v code-insiders >/dev/null 2>&1 || command -v codium >/dev/null 2>&1; then
     info "      VS Code Copilot Chat detected - preview instrumentation is disabled by default."
-    info "        1. ~/.trajectory/bin/trajectory features enable vscode_copilot_instrumentation"
+    info "        1. ~/.trajectory/bin/trajectory config features enable vscode_copilot_instrumentation"
     info "        2. ~/.trajectory/bin/trajectory setup --clients vscode-copilot"
 fi
 
@@ -914,7 +959,7 @@ fi
 if command -v oz >/dev/null 2>&1 || command -v oz-preview >/dev/null 2>&1 || command -v warp-cli >/dev/null 2>&1; then
     info "      Warp/Oz CLI detected - preview instrumentation is disabled by default."
     info "      Enable Warp/Oz explicitly, then run setup:"
-    info "        1. ~/.trajectory/bin/trajectory features enable warp_oz_instrumentation"
+    info "        1. ~/.trajectory/bin/trajectory config features enable warp_oz_instrumentation"
     info "        2. ~/.trajectory/bin/trajectory setup --clients warp"
     PLUGIN_INSTALLED=1
 else
@@ -924,7 +969,7 @@ fi
 # Windsurf preview guidance (explicit opt-in; installer does not mutate it)
 if command -v windsurf >/dev/null 2>&1 || [ -d "$HOME/.windsurf" ] || [ -d "$HOME/.codeium/windsurf" ]; then
     info "      Windsurf detected - preview instrumentation is disabled by default."
-    info "        1. ~/.trajectory/bin/trajectory features enable windsurf_instrumentation"
+    info "        1. ~/.trajectory/bin/trajectory config features enable windsurf_instrumentation"
     info "        2. ~/.trajectory/bin/trajectory setup --clients windsurf"
     PLUGIN_INSTALLED=1
 else
@@ -1010,7 +1055,6 @@ if [ "$PLUGIN_INSTALLED" = "0" ]; then
     info "    Codex:       ~/.trajectory/bin/trajectory setup --clients codex"
     info "    Copilot beta: ~/.trajectory/bin/trajectory setup --clients copilot"
     info "    Droid beta:  ~/.trajectory/bin/trajectory setup --clients droid"
-    info "    Gemini:      ~/.trajectory/bin/trajectory setup --clients gemini"
     info "    Antigravity: ~/.trajectory/bin/trajectory setup --clients agy"
     info "    Goose:       ~/.trajectory/bin/trajectory setup --clients goose"
     info "    Cline CLI:   ~/.trajectory/bin/trajectory setup --clients cline"
@@ -1024,25 +1068,25 @@ if [ "$PLUGIN_INSTALLED" = "0" ]; then
     info "    Qwen Code:   ~/.trajectory/bin/trajectory setup --clients qwen"
     info "    Kiro CLI:    ~/.trajectory/bin/trajectory setup --clients kiro"
     info "    Devin preview (explicit opt-in):"
-    info "      1. ~/.trajectory/bin/trajectory features enable devin_cli_instrumentation"
+    info "      1. ~/.trajectory/bin/trajectory config features enable devin_cli_instrumentation"
     info "      2. ~/.trajectory/bin/trajectory setup --clients devin"
     info "    Qoder preview (explicit opt-in):"
-    info "      1. ~/.trajectory/bin/trajectory features enable qoder_cli_instrumentation"
+    info "      1. ~/.trajectory/bin/trajectory config features enable qoder_cli_instrumentation"
     info "      2. ~/.trajectory/bin/trajectory setup --clients qoder"
     info "    CommandCode preview (explicit opt-in):"
-    info "      1. ~/.trajectory/bin/trajectory features enable commandcode_instrumentation"
+    info "      1. ~/.trajectory/bin/trajectory config features enable commandcode_instrumentation"
     info "      2. ~/.trajectory/bin/trajectory setup --clients commandcode"
     info "    Zed passive-history preview (explicit opt-in):"
-    info "      1. ~/.trajectory/bin/trajectory features enable zed_passive_history"
+    info "      1. ~/.trajectory/bin/trajectory config features enable zed_passive_history"
     info "      2. ~/.trajectory/bin/trajectory setup --clients zed"
     info "    Kimi preview (explicit opt-in):"
-    info "      1. ~/.trajectory/bin/trajectory features enable kimi_cli_instrumentation"
+    info "      1. ~/.trajectory/bin/trajectory config features enable kimi_cli_instrumentation"
     info "      2. ~/.trajectory/bin/trajectory setup --clients kimi"
     info "    Warp/Oz preview (explicit opt-in):"
-    info "      1. ~/.trajectory/bin/trajectory features enable warp_oz_instrumentation"
+    info "      1. ~/.trajectory/bin/trajectory config features enable warp_oz_instrumentation"
     info "      2. ~/.trajectory/bin/trajectory setup --clients warp"
     info "    Windsurf preview (explicit opt-in):"
-    info "      1. ~/.trajectory/bin/trajectory features enable windsurf_instrumentation"
+    info "      1. ~/.trajectory/bin/trajectory config features enable windsurf_instrumentation"
     info "      2. ~/.trajectory/bin/trajectory setup --clients windsurf"
     info "    OpenHands:   ~/.trajectory/bin/trajectory setup --clients openhands"
     info "    Kiro CLI:    ~/.trajectory/bin/trajectory setup --clients kiro"
@@ -1064,19 +1108,26 @@ info "  Config:  $INSTALL_DIR/config.yaml"
 info "  Traces:  $INSTALL_DIR/trajectories/"
 info ""
 info "  To start the capture server:"
-info "    $BINARY serve"
+info "    $BINARY_COMMAND serve"
 info ""
 info "  To check status:"
-info "    $BINARY doctor"
+info "    $BINARY_COMMAND doctor"
+info ""
+info "  To read troubleshooting guidance:"
+info "    $BINARY_COMMAND user-guide --format md diagnostics"
+info ""
+# Setup reports readiness after checking ownership. File existence alone cannot.
+info "  For help from your coding agent, read the installation guide:"
+info "    $BINARY_COMMAND user-guide --format md install"
 info ""
 if [ "$LOCAL_ONLY" = "1" ]; then
     info "  To configure Datadog export later:"
-    info "    $BINARY destination configure"
+    info "    $BINARY_COMMAND publish destination configure"
     info ""
 fi
 if [ "$ENABLE_SECURITY" = "1" ]; then
     info "  To check Datadog Security status:"
-    info "    $BINARY security status"
+    info "    $BINARY_COMMAND plugins security status"
 fi
 info ""
 info "  To uninstall:"
