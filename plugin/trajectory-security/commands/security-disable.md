@@ -2,4 +2,4 @@
 description: Disable Trajectory Security
 ---
 
-Run `trajectory security disable`. Explain that the security plugin hooks remain installed but become fail-open because the module is disabled; uninstall `trajectory-security` from the Trajectory marketplace to remove its hook surface completely.
+Run `trajectory plugins security disable`. Explain that the security plugin hooks stay installed but fail open because the module is disabled. To remove the hooks completely, uninstall `trajectory-security` from the Trajectory marketplace.

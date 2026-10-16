@@ -4,7 +4,7 @@
       "matcher": "",
       "hooks": [{
         "type": "command",
-        "command": "\"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" security setup --marketplace --clients codex >/dev/null 2>&1 || true",
+        "command": "\"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" plugins security setup --marketplace --clients codex >/dev/null 2>&1 || true",
         "timeout": 5
       }]
     }],
