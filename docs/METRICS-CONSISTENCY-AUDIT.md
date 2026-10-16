@@ -1,51 +1,57 @@
 # Metrics Consistency Audit
 
-This audit documents the coding-agent contracts behind the base Trajectory
-metrics. It is meant to prevent metric names from drifting into
-adapter-specific meanings.
+This page explains how each coding agent supplies the data behind the base
+Trajectory metrics. Each metric name keeps one meaning for every agent.
 
-## Metric Semantics
+## Turn and session values
 
-`trajectory.turn.*` metrics are per completed-turn samples. A turn metric
-should not contain cumulative session-to-date values unless the metric name
-says so, for example `trajectory.session.*.elapsed` or `.accumulated`.
+Each `trajectory.turn.*` metric holds one sample for one completed turn. A turn
+metric never holds a session-to-date value, unless its name says so. Examples
+of names that do are `trajectory.session.*.elapsed` and `.accumulated`.
 
-`trajectory.turn.errors` means failed tool results in the completed turn,
-grouped by the `category` tag. It does not mean Trajectory capture, publish,
-or Datadog submission failures. The source precedence is:
+The metric catalog states how each turn metric rolls up:
 
-1. Use explicit `turn_end.tool_error_categories` when an adapter provides a
-   per-turn map.
-2. Otherwise derive one error category from each completed `tool_use` event
-   with `success:false`.
+- Each turn metric is either additive or an observation. It also names its
+  rollup target and the check that validates it.
+- An additive metric states its target: an exact session total, a total over
+  completed turns, or a total over a limited subset of turns. Trajectory never
+  guesses the target from the metric type.
+- Trajectory stores session totals for turns, tools, input tokens, output
+  tokens, cache-aware tokens, and cost. `trajectory audit --source-data`
+  recomputes each of these from the stored turn rows and compares them.
+- Marker session counts and turn counts come from the same stored marker
+  points and ranges. Use `.completed_count` on dashboards for the final
+  session value.
 
-The shared category taxonomy currently includes `command-failed`,
-`user-rejected`, `edit-failed`, `file-changed`, `file-too-large`,
-`file-not-found`, and `other`.
+Only additive metrics add up across turns. Ordinals, ratios, and latency
+distributions do not, so the catalog never treats them as additive.
+
+## Failed tool calls
+
+`trajectory.turn.errors.additive` counts failed tool results in a completed
+turn, grouped by the `category` tag. It does not count failures in Trajectory
+capture, publishing, or Datadog submission.
+
+Trajectory takes the categories from these sources, in this order:
+
+1. If the agent supplies a per-turn map in `turn_end.tool_error_categories`,
+   Trajectory uses it.
+2. Otherwise, Trajectory takes one category from each completed `tool_use`
+   event that has `success:false`.
+
+The categories are `command-failed`, `user-rejected`, `edit-failed`,
+`file-changed`, `file-too-large`, `file-not-found`, and `other`.
 
 ## Agent Coverage
 
-| Agent | Failed-tool source for `trajectory.turn.errors` | Per-turn enrichment source |
+| Agent | Source of failed tool calls for `trajectory.turn.errors.additive` | Source of per-turn data |
 |---|---|---|
-| Claude Code | `PostToolUse`/`PostToolUseFailure` failed `tool_use` records, plus transcript-derived `turn_end.tool_error_categories` | Transcript enrichment is applied as the just-read turn delta, not the cumulative session state |
-| Codex | `PostToolUse` records with `tool_error` or `is_error:true` | Adapter emits failed `tool_use`; publish derives categories when no explicit turn map exists |
-| Cursor | `PostToolUse` records with `tool_error` or `is_error:true` | Adapter emits failed `tool_use`; publish derives categories when no explicit turn map exists |
-| Gemini | `AfterTool` records with `tool_error` | Adapter emits failed `tool_use`; publish derives categories when no explicit turn map exists |
-| Pi | Explicit `turn_end.tool_error_categories` when supplied; otherwise `PostToolUse` records with `is_error:true` | Adapter forwards per-turn turn-end fields from the Pi payload |
-| OpenCode | `tool.execute.after` payloads with `is_error` or `tool_error`, normalized to failed `tool_use` records | Adapter emits failed `tool_use`; publish derives categories when no explicit turn map exists |
-| Copilot CLI | Reuses the Claude-compatible capture contract | Supports `PostToolUseFailure`; no historical transcript backfill |
-| Factory Droid | Reuses the Claude-compatible capture contract for documented hooks | Current documented plugin hook set lacks `PostToolUseFailure`; ordinary `PostToolUse` failures are still captured when the payload carries `tool_error` or `is_error:true` |
-
-## Findings
-
-Claude Code transcript enrichment now stores cumulative state only for
-incremental transcript reads and writes only the new delta onto the current
-turn. This keeps turn-level error, language, line, file, interruption, and
-denial fields scoped to the completed turn.
-
-Publish now derives the same error categories from failed completed
-`tool_use` records when no explicit turn-end category map exists, so
-`trajectory.turn.errors` has the same meaning across adapters.
-
-OpenCode capture now preserves failed tool outcomes, error text, and output
-summaries, matching the other adapters' normalized `tool_use` shape.
+| Claude Code | Failed `tool_use` records from `PostToolUse` and `PostToolUseFailure`, plus `turn_end.tool_error_categories` from the transcript | Trajectory reads the transcript and adds only the change since the last read to the current turn. It never adds the whole session state. |
+| Codex | `PostToolUse` records with `tool_error` or `is_error:true` | The adapter sends failed `tool_use` events. Trajectory takes categories from them when there is no per-turn map. |
+| Cursor | `PostToolUse` records with `tool_error` or `is_error:true` | The adapter sends failed `tool_use` events. Trajectory takes categories from them when there is no per-turn map. |
+| Gemini | `AfterTool` records with `tool_error` | The adapter sends failed `tool_use` events. Trajectory takes categories from them when there is no per-turn map. |
+| Pi | `turn_end.tool_error_categories` when the agent supplies it. Otherwise, `PostToolUse` records with `is_error:true`. | The adapter forwards the turn-end fields from the Pi payload. |
+| OpenCode | `tool.execute.after` payloads with `is_error` or `tool_error`, converted to failed `tool_use` records | The adapter sends failed `tool_use` events. Trajectory takes categories from them when there is no per-turn map. |
+| OpenClaw | The same hook format as Pi | The plugin maps `after_tool_call` errors to `PostToolUse` with `is_error:true`. |
+| Copilot CLI | The same hook format as Claude Code | Supports `PostToolUseFailure`. Trajectory does not backfill history from transcripts. |
+| Factory Droid | The same hook format as Claude Code, for the documented hooks | The documented plugin hooks do not include `PostToolUseFailure`. Trajectory still captures a failure from `PostToolUse` when the payload has `tool_error` or `is_error:true`. |

@@ -1,13 +1,17 @@
 # Client Instrumentation Reference
 
-Trajectory instruments each supported coding agent through that agent's native
-plugin, hook, MCP, or transcript surface. All live capture paths normalize into
-canonical JSONL under `~/.trajectory/trajectories/` and route through the local
-capture server on `localhost:19222` through the transport each client supports.
+This page explains how Trajectory connects to each coding agent. For each
+client it lists what setup installs, how capture works, which data is
+available, and what is missing.
 
-For installation status and version support, see
-[SUPPORTED-CLIENTS.md](SUPPORTED-CLIENTS.md).
-For the built-in user-facing client guides, run:
+Trajectory uses each client's own plugin, hook, MCP, or history files. Every
+capture path writes session JSONL under `~/.trajectory/trajectories/`. Live
+events reach the local capture server on `localhost:19222` through the
+transport that each client supports.
+
+For install status and version support, see
+[SUPPORTED-CLIENTS.md](SUPPORTED-CLIENTS.md). For the built-in client guides,
+run:
 
 ```bash
 trajectory user-guide clients
@@ -15,257 +19,537 @@ trajectory user-guide clients
 
 ## Summary
 
-| Client | Setup path | Live capture surface | Backfill |
+| Client | Setup | Live capture | Past sessions |
 |---|---|---|---|
-| Claude Code | `trajectory setup --clients cc` (`--install-client-shims` optional) | Marketplace plugin hooks plus MCP; optional transparent `trajectory claude` launcher | Transcript backfill |
-| Codex CLI | `trajectory setup --clients codex` (`--install-client-shims` optional) | CLI and Desktop session, prompt, Stop, and SessionEnd boundary hooks plus authoritative rollout reconciliation by default; optional full eleven-hook compatibility and transparent `trajectory codex` launcher with complete Responses API request/response capture | Codex rollout backfill |
-| GitHub Copilot CLI | `trajectory setup --clients copilot`; optionally install the explicit command shim and enable `copilot_cli_durable_history` / `copilot_cli_native_otel` | Beta plugin command hooks plus MCP, bounded session-state reconciliation, and strict content-disabled native OTel request capture | Enable `copilot_durable_history`; `trajectory backfill --from-copilot-sessions` remains the explicit bulk-history and repair path |
-| Gemini CLI | `trajectory setup --clients gemini` | Managed command hooks plus MCP | Gemini transcript backfill |
-| Antigravity CLI (`agy`) | `trajectory setup --clients agy` | Antigravity plugin command hooks plus MCP | Default-off exact prompt plus schema-v1 generation-usage reconciliation |
-| Goose | `trajectory setup --clients goose` | Open Plugins command hooks | Default-off bounded schema-v15 SQLite reconciliation and native-trace usage enrichment via `goose_durable_history` |
-| Cline CLI | `trajectory setup --clients cline` | File hooks plus MCP | None |
-| Cursor Desktop | `trajectory setup --clients cursor` | Cursor command hooks plus MCP | Cursor chat backfill |
-| cursor-agent CLI | Enable `cursor_agent_durable_history`; command hooks use the Cursor setup | Default-off shared passive JSONL watcher for current main/child and legacy flat layouts | Same shared JSONL source contract plus Cursor chat stores |
-| Factory Droid | `trajectory setup --clients droid` | Beta Factory command hooks plus MCP | None |
-| Hermes Agent | `trajectory setup --clients hermes` | Observer Python plugin plus MCP | Default-off read-only `state.db` reconciliation and backfill |
-| Amp Code | `trajectory setup --clients amp` | System TypeScript plugin plus MCP | Default-off bounded thread reconciliation via `amp_durable_history` |
-| Qwen Code | `trajectory setup --clients qwen` | Native HTTP hooks plus MCP | Default-off bounded active-chain chat JSONL watcher and explicit backfill, including archives, via `qwen_durable_history` |
-| Kiro CLI | `trajectory setup --clients kiro` | Agent command hooks plus MCP | Default-off bounded JSONL/SQLite reconciliation via `kiro_durable_history` |
-| Devin CLI | Enable `devin_cli_instrumentation`, then `trajectory setup --clients devin` | Authoritative local source reconciliation, hook wake hints, MCP, and incognito skill | No bulk historical import; active/changed source reconciliation only |
-| Grok Build | Enable `grok_build_instrumentation`, then `trajectory setup --clients grok` | Native global hooks, exact-source durable reconciliation, and owned incognito skill/command | Bounded root/nested reconciliation plus explicit `backfill --from-grok` repair |
-| Qoder CLI | Enable `qoder_cli_instrumentation`, then `trajectory setup --clients qoder` | Native plugin wake hooks, authoritative JSONL transcript reconciliation, MCP, and incognito skill | No bulk historical import; active/changed source reconciliation only |
-| ZCode | Enable `zcode_instrumentation`, then `trajectory setup --clients zcode` | Wake-only native hooks, authoritative SQLite reconciliation, MCP, and incognito skill | `trajectory backfill --from-zcode`; no fabricated terminal state for active rows |
-| CommandCode | Enable `commandcode_instrumentation`, then `trajectory setup --clients commandcode` | Native wake hooks plus authoritative mutable-transcript reconciliation, MCP, and owned incognito skill/command | Existing and changed transcripts reconcile in bounded passes; no inferred terminal lifecycle or native usage |
-| Muse Code (macOS/Linux) | Enable `muse_code_instrumentation`, then `trajectory setup --clients muse` | Owner-only managed wake hooks plus authoritative append-only session reconciliation, optional MCP, and an owned incognito skill | Completed retained sessions are baselined; active and new sessions retain provider UUIDs, explicit terminal lifecycle, usage, tools, compaction, and subagent paths; managed intent is macOS-only |
-| Kimi Code CLI | Enable `kimi_cli_instrumentation`, then `trajectory setup --clients kimi` | Wake hooks plus authoritative `wire.jsonl`/`context.jsonl`/state reconciliation, MCP, and incognito skill | Current and legacy roots are migration-deduplicated; fixture-first CI |
-| gptme | Enable `gptme_instrumentation`, then `trajectory setup --clients gptme` | Metadata-only native lifecycle hooks plus authoritative conversation/events/config reconciliation, MCP, and `/incognito` | Existing and changed sessions reconcile in bounded passes; real credential-free CI |
-| CodeWhale | Enable `codewhale_instrumentation`, then `trajectory setup --clients codewhale` | Saved-session and runtime-thread reconciliation, wake-only native hooks, MCP, and an incognito skill | Plain exec is invisible unless stream-JSON or resume persists it; unknown source modes skip privacy-derived features |
-| ForgeCode | Enable `forgecode_instrumentation`, then `trajectory setup --clients forgecode` | Read-only `.forge.db`/WAL reconciliation, MCP, and owned incognito skill/command; no hooks or wrapper | Existing and changed conversations reconcile in bounded passes; fixture-first passive history |
-| Warp/Oz CLI | Enable `warp_oz_instrumentation`, then `trajectory setup --clients warp` | Read-only local Warp/Oz SQLite+protobuf reconciliation, MCP, and incognito skill | Active/changed local stores only; cloud runs excluded |
-| VS Code Copilot Chat | Enable `vscode_copilot_instrumentation`, then `trajectory setup --clients vscode-copilot` | Passive JSONL/JSON chat history, first-party native OTel, MCP, and incognito prompt | Fixture-proven current source contract; real Electron/UI and incognito correlation smoke pending |
-| Zed | Enable `zed_passive_history`, then `trajectory setup --clients zed` | Read-only provider thread DB reconciliation, MCP, and incognito skill; no hooks/wrapper/OTel | Fixture-first; live Zed UI/incognito follow-up |
-| OpenHands | `trajectory setup --clients openhands`; optionally enable `openhands_durable_history` | Command hooks plus MCP; default-off provider conversation reconciliation; no default OTLP relay | `trajectory backfill --from-openhands` behind `openhands_durable_history` |
-| Continue CLI | `trajectory setup --clients continue --install-client-shims` | Opt-in `cn` shim plus exact post-run session-delta and tool-state reconstruction | Current invocation JSON only; exact CLI `--resume`/`--fork` selection, no bulk backfill |
-| Codebuff | `trajectory setup --clients codebuff --install-client-shims` | Opt-in command shims plus post-run chat-history import | Codebuff chat history backfill |
-| Pi | `trajectory setup --clients pi` | TypeScript extension plus eager MCP | `.pi/agent/sessions` backfill |
-| Oh My Pi (`omp`) | Enable `omp_instrumentation`, then `trajectory setup --clients omp` | Native `omp.extensions` lifecycle capture, eager MCP, and bounded automatic v3 history reconciliation | `trajectory backfill --from-omp-sessions` remains the explicit complete-history repair path |
-| OpenCode | `trajectory setup --clients opencode` | OpenCode plugin SDK events plus MCP | JSON-storage and SQLite durable-history backfill plus opt-in watcher |
-| Kilo Code | `trajectory setup --clients kilo` | OpenCode-compatible plugin SDK events plus MCP; optional default-off durable-history watcher | `trajectory backfill --from-kilo` behind `kilo_durable_history` |
+| Claude Code | `trajectory setup --clients cc` (`--install-client-shims` optional) | Marketplace plugin hooks and MCP. Optional `trajectory claude` launcher. | Transcript backfill |
+| Claude Desktop (macOS) | `trajectory setup --clients claude-desktop` | Watcher that reads Cowork session files | `trajectory session import claude-desktop` |
+| Codex CLI | `trajectory setup --clients codex` (`--install-client-shims` optional) | CLI and Desktop hooks for session start, prompt, `Stop`, and `SessionEnd`. Rollout files are the source of truth. Optional full eleven-event hook mode. Optional `trajectory codex` launcher that keeps complete Responses API requests and responses. | Codex rollout backfill |
+| GitHub Copilot CLI | `trajectory setup --clients copilot`. Optionally install the command shim and turn on `copilot_cli_durable_history` or `copilot_cli_native_otel`. | Beta plugin command hooks and MCP. Optional session-state watcher. Optional native OTel request capture with content off. | `trajectory session import copilot`, behind `copilot_durable_history` |
+| VS Code Copilot Chat | Turn on `vscode_copilot_instrumentation`, then `trajectory setup --clients vscode-copilot` | Chat history files, first-party native OTel, MCP, and an incognito prompt | Tested with fixtures. Not yet tested in the real app or with incognito. |
+| Cursor Desktop | `trajectory setup --clients cursor` | 18 Agent command hooks and MCP. Tab and workspace hooks are left out on purpose. | Cursor chat backfill |
+| cursor-agent CLI | Turn on `cursor_agent_durable_history`. Command hooks use the Cursor setup. | Off by default. A watcher reads current and legacy JSONL transcripts. | The same transcript files plus Cursor chat stores |
+| Antigravity CLI (`agy`) | `trajectory setup --clients agy` | Antigravity plugin command hooks and MCP | Off by default. Prompt history and generation usage through `antigravity_durable_history`. |
+| Goose | `trajectory setup --clients goose` | Open Plugins command hooks | On by default. SQLite history and usage through `goose_durable_history`. |
+| Cline CLI | `trajectory setup --clients cline` | File hooks and MCP | None |
+| Factory Droid | `trajectory setup --clients droid` | Beta Factory command hooks and MCP | None |
+| Hermes Agent | `trajectory setup --clients hermes` | Observer Python plugin and MCP | Off by default. Read-only `state.db` import through `hermes_durable_history`. |
+| Amp Code | `trajectory setup --clients amp` | System TypeScript plugin and MCP | Off by default. Thread files through `amp_durable_history`. |
+| Qwen Code | `trajectory setup --clients qwen` | Native HTTP hooks and MCP | Off by default. Chat JSONL watcher and import, including archives, through `qwen_durable_history`. |
+| Kiro CLI | `trajectory setup --clients kiro` | Agent command hooks and MCP | Off by default. JSONL and SQLite history through `kiro_durable_history`. |
+| Pi | `trajectory setup --clients pi` | TypeScript extension and MCP | `.pi/agent/sessions` backfill |
+| Oh My Pi (`omp`) | Turn on `omp_instrumentation`, then `trajectory setup --clients omp` | Native `omp.extensions` capture, MCP, and an automatic v3 history watcher | `trajectory session import omp` |
+| OpenCode | `trajectory setup --clients opencode` | OpenCode plugin SDK events and MCP | JSON and SQLite history import. Optional watcher. |
+| Kilo Code | `trajectory setup --clients kilo` | OpenCode-compatible plugin SDK events and MCP. Optional history watcher. | `trajectory session import kilo`, behind `kilo_durable_history` |
+| OpenHands | `trajectory setup --clients openhands`. Optionally turn on `openhands_durable_history`. | Command hooks and MCP. Off-by-default history watcher. No OTLP relay by default. | `trajectory session import openhands`, behind `openhands_durable_history` |
+| Continue CLI | `trajectory setup --clients continue --install-client-shims` | Opt-in `cn` shim. After each run, Trajectory rebuilds the session and tool state that changed. | Current run only. Follows the CLI's `--resume` and `--fork` choice. No bulk backfill. |
+| Codebuff | `trajectory setup --clients codebuff --install-client-shims` | Opt-in command shims. Chat history import after each run. | Codebuff chat history backfill. No guessed session end. |
+| Aider | `trajectory setup --clients aider --install-client-shims` | Opt-in `aider` shim and Aider history files | `trajectory session import aider`, behind `aider_durable_history` |
+| Mistral Vibe | `trajectory setup --clients mistral-vibe --install-client-shims` | Opt-in `vibe` shim, Vibe hooks, and session log import after each run | `trajectory session import mistral-vibe`, behind `mistral_vibe_durable_history` |
+| Windsurf | Turn on `windsurf_instrumentation`, then `trajectory setup --clients windsurf` | Cascade hooks that tell Trajectory to read the transcript | Newest transcripts and older chat history |
+| Devin CLI | Turn on `devin_cli_instrumentation`, then `trajectory setup --clients devin` | Local session store is the source of truth. Hooks only wake the reader. MCP and incognito skill. | No bulk import. Reads active and changed sessions only. |
+| Grok Build | Turn on `grok_build_instrumentation`, then `trajectory setup --clients grok` | Native global hooks, session file watcher, and incognito skill and command | Watcher reads root and nested sessions. `trajectory session import grok` repairs history. |
+| Qoder CLI | Turn on `qoder_cli_instrumentation`, then `trajectory setup --clients qoder` | Plugin hooks that wake a JSONL transcript reader. MCP and incognito skill. | No bulk import. Reads active and changed sessions only. |
+| ZCode | Turn on `zcode_instrumentation`, then `trajectory setup --clients zcode` | Hooks that wake a SQLite reader. MCP and incognito skill. | `trajectory session import zcode`. Active sessions get no guessed end. |
+| CommandCode | Turn on `commandcode_instrumentation`, then `trajectory setup --clients commandcode` | Hooks that wake a transcript reader. MCP and incognito skill and command. | Existing and changed transcripts. No guessed session end or usage. |
+| Muse Code (macOS and Linux) | Turn on `muse_code_instrumentation`, then `trajectory setup --clients muse` | Hooks that wake a session file reader. Optional MCP and incognito skill. | Existing completed sessions get a baseline. New sessions keep provider IDs, session end, usage, tools, compaction, and subagents. Managed setup is macOS only. |
+| Kimi Code CLI | Turn on `kimi_cli_instrumentation`, then `trajectory setup --clients kimi` | Hooks that wake a reader for `wire.jsonl`, `context.jsonl`, and state files. MCP and incognito skill. | Current and legacy roots without duplicates. Tested with fixtures. |
+| gptme | Turn on `gptme_instrumentation`, then `trajectory setup --clients gptme` | Metadata-only lifecycle hooks that wake a session file reader. MCP and `/incognito`. | Existing and changed sessions. Tested with a real gptme install without credentials. |
+| CodeWhale | Turn on `codewhale_instrumentation`, then `trajectory setup --clients codewhale` | Saved-session and runtime-thread reader, wake-only hooks, MCP, and incognito skill | Plain `exec` runs are not captured unless stream JSON or resume saves them |
+| ForgeCode | Turn on `forgecode_instrumentation`, then `trajectory setup --clients forgecode` | Read-only `.forge.db` reader, MCP, and incognito skill and command. No hooks or wrapper. | Existing and changed conversations. Tested with fixtures. |
+| Warp/Oz CLI | Turn on `warp_oz_instrumentation`, then `trajectory setup --clients warp` | Read-only local Warp/Oz SQLite reader, MCP, and incognito skill | Active and changed local stores only. Cloud runs are not captured. |
+| Zed | Turn on `zed_passive_history`, then `trajectory setup --clients zed` | Read-only thread database reader, MCP, and incognito skill. No hooks, wrapper, or OTel. | Tested with fixtures. Not yet tested in the Zed app or with incognito. |
+| OpenClaw | Turn on `openclaw_durable_history` | Off-by-default saved-history watcher. Released builds do not capture OpenClaw live. | `trajectory session import openclaw`, behind `openclaw_durable_history` |
+| Gemini CLI (retired) | None | None | Earlier sessions stay readable |
 
-### VS Code Copilot Chat preview contract
+## Hook ownership
 
-The provider-history reconciler covers Code, Code - Insiders, and VSCodium
-workspace, empty-window, and transferred chat-session stores. JSONL operation
-logs take precedence over JSON fallback and `workspace.json` changes invalidate
-the sessions below that workspace hash. Native `/v1/traces` ingestion requires
-the first-party `copilot-chat` service, `github` provider, `invoke_agent`
-operation, a Copilot-owned session attribute, and a nonempty agent name. Agent
-names may vary for top-level modes and participants; nested subagent container
-spans cannot replace or duplicate the accepted root identity. Trace attribution
-and pending children survive split requests in bounded TTL state; durable
-source IDs prevent restart replay. When native facts arrive after provider history,
-the corresponding token or tool fact is promoted in the same atomic durable
-replacement that appends its native evidence; unrelated provider text and
-unmatched tools remain intact. Content remains off unless the provider emitted
-it, and setup always writes
-`github.copilot.chat.otel.captureContent=false` when that key is unowned.
+Some hook payloads can reach the wrong client's capture path. For example, two
+clients can read the same hook file. Trajectory checks which client sent each
+hook before it records anything. These paths use the check:
+
+- command hooks and module dispatchers
+- native HTTP hooks
+- the Codex capture helper
+- Pi batch and compatibility hooks
+- the remaining client-specific capture commands
+
+Trajectory identifies the sending client as follows:
+
+- A known top-level `client_source` value names the client. Known aliases
+  match the client's main name.
+- A non-empty `cursor_version` identifies Cursor. So does a pair of non-empty
+  `conversation_id` and `generation_id` values. A conversation ID alone does
+  not identify Cursor.
+- Legacy `codex-app` payloads belong to Codex hooks. `antigravity` and `agy`
+  share hooks.
+- Clients with similar payloads stay separate. Pi and OMP are separate
+  clients. So are OpenCode and Kilo.
+
+When a hook clearly belongs to another client, Trajectory ignores it and
+reports success. It does not send the event to the other client. The HTTP
+path returns an empty 200 before it records a delivery receipt or changes the
+session. The ignored event therefore cannot use up the right client's
+delivery ID.
+
+The Claude capture wrapper hands recovery to the `capture-hook` command, which
+runs the check. Claude skill sync in hook mode and the security marketplace
+bootstrap also check the sender before they change configuration. The check
+does not apply to these commands:
+
+- explicit setup commands
+- history import
+- `capture-shared`, which handles events from several clients on purpose
+
+Transport health counts and command diagnostics still run.
+
+The check prevents accidental routing between clients. It does not
+authenticate the caller, and it is not a plugin setting. In these cases
+Trajectory keeps the normal path:
+
+- The origin data is missing, malformed, or unknown.
+- The origin fields conflict. Repeated fields with different values conflict,
+  including case variants and escaped key names. Identical repeated values
+  keep their normal meaning.
+
+Some native hooks carry no field that identifies the client. Claude-compatible
+Codex hooks are one example. Trajectory cannot tell these apart from their
+shape. Full protection needs origin data from the calling client itself. A
+label that the hook adds about itself is not enough. The check never guesses
+from nested tool input, model or provider names, generic event names, or
+inherited environment variables.
+
 ## Shared Local Flow
 
-Live hook integrations post payloads to:
+Live hook integrations send each payload to:
 
 ```text
 http://localhost:19222/capture/<client>/<event>
 ```
 
-or to a client-specific capture endpoint that maps native events to canonical
-Trajectory events. The capture server writes JSONL locally first. Publish,
-markers, metrics, diagnosis, and local UI indexing derive from local capture.
+Some clients use their own capture endpoint, which maps native events to
+Trajectory events. Each client runtime turns the native payload into
+Trajectory event records. The capture server writes them to local session
+JSONL first. Publishing, markers, metrics, diagnosis, and the local viewer
+index all read from that local capture.
 
-The setup-managed clients also install or register the associated assets needed
-for the client:
+The capture server's own working directory belongs to no session. Some hook
+payloads name no directory, such as `cwd`, `project_dir`, `working_dir`, or a
+workspace root. For those, `capture-hook` adds the directory it ran in as
+`cwd`, with `cwd_provenance=hook_process_working_dir`. The client starts the
+hook in that directory. Session-start handlers never read the directory of
+their own process. A payload sent without a directory therefore records no
+project directory or branch. PR tracking does not read Git state for it.
 
-- MCP entries that expose Trajectory tools and resources for local
-  introspection.
-- Agent skills or slash commands where the client supports them.
-- Local marketplace metadata for plugin-based clients.
-- An installed or extension-local `trajectory` binary path where the client
-  expects one.
+### Assets that setup installs
 
-Plugin-only manual installs can miss these assets. Use
-`trajectory setup --clients <client>` for normal installs. For clients that
-capture by launching through an agent-name command shim, pass
-`--install-client-shims` in scripted setup or answer yes to the interactive
-setup prompt. Claude and Codex do not require launch interception for their
-native setup integrations, but the same explicit flag optionally writes
-same-name launchers for their built-in Trajectory wrappers. Setup records the
-real upstream binary, refuses self-wrapping and unowned-file replacement, and
-removes only Trajectory-owned files and links. The
-`builtin_wrapper_command_shims` flag gates these optional built-in launchers;
-when disabled, an installed launcher passes through to its recorded upstream
-binary without instrumentation. This is the
-client-only add/update path: it refreshes hooks, MCP entries, skills, commands,
-and local marketplace files without prompting for Datadog site or API key
-values. Run `trajectory setup` without `--clients` to change export settings.
+Setup also installs the assets each client needs:
 
-### Oh My Pi preview contract
+- MCP entries that give the agent Trajectory tools and resources for local
+  inspection
+- Agent skills or slash commands, where the client supports them
+- Local marketplace files for plugin-based clients
+- A `trajectory` binary path, installed or inside the extension, where the
+  client expects one
 
-OMP setup follows the provider's active profile rather than assuming
-`~/.omp/agent`. `OMP_PROFILE` takes precedence over `PI_PROFILE`, including an
-explicitly empty value selecting the default profile. Named profiles use
-`~/${PI_CONFIG_DIR:-.omp}/profiles/<name>/agent` and ignore
-`PI_CODING_AGENT_DIR`; the default profile honors that agent-dir override.
-Migrated XDG history is selected only when the matching `$XDG_DATA_HOME/omp`
-or profile directory exists. Extensions and `mcp.json` remain in the effective
-config agent directory even when sessions move to XDG data storage.
+A manual plugin-only install can miss these assets. Use
+`trajectory setup --clients <client>` for normal installs.
 
-The native extension posts lifecycle, prompts, assistant/model/usage,
-tool-call/result, compaction, switch, branch, and shutdown signals to
-`/capture/omp`. Serve owns `client_source=omp`; payloads cannot relabel the
-client. Parent identities come only from the current v3 header or the exact
-provider-owned previous file, so resume and switch reasons do not invent fork
-relationships. While the flag is enabled, a bounded watcher recursively
-reconciles existing and changed v3 files from the same effective profile/XDG
-root. Its crash-safe cursor contains IDs and fingerprints rather than source
-paths or content; native extension facts win over overlapping provider history,
-and passive updates do not invent session completion, activate sessions, or
-trigger publish. `trajectory backfill --from-omp-sessions` remains the explicit
-complete-history repair path. Credential-free CI pins OMP 17.0.4 with Bun
-1.3.14, initializes the real RPC server, reads native state, runs a direct local
-command without a model call, and requires exactly one native start and end in
-strict canonical order. The gate correlates OMP's raw/provider identity and
-selected model/provider, leaves token and cost facts absent, and verifies the
-complete zero-turn session is unpriced in SQLite. Provider-backed turns,
-interactive UI, and positive privacy-feature behavior remain live follow-ups;
-fixtures cover local-UI list, trace, and fetch readback. ccusage
-independently corroborates recursive Pi-format history and usage fields, but it
-does not validate OMP profiles, XDG selection, native lifecycle behavior, or
-native/passive reconciliation.
+`trajectory setup --clients <client>` only adds or updates clients. It
+refreshes hooks, MCP entries, skills, commands, and local marketplace files.
+It does not ask for the Datadog site or API key. To change export settings,
+run `trajectory setup` without `--clients`.
+
+### Command shims and launchers
+
+Some clients have no native capture method. Trajectory captures them through a
+command shim with the same name as the client command. To install one, pass
+`--install-client-shims` in scripted setup. In interactive setup, answer yes
+at the prompt.
+
+Claude and Codex do not need a shim. Their native integrations work without
+one. The same flag optionally installs same-name launchers for the built-in
+`trajectory claude` and `trajectory codex` wrappers.
+
+Setup handles shims and launchers as follows:
+
+- Setup records the path of the real client binary.
+- Setup stores built-in wrapper scripts in `~/.trajectory/client-shims/bin`.
+- An opt-in creates launcher links in `~/.trajectory/bin`. If that folder is
+  already on your `PATH`, the wrappers become active.
+- Setup refuses to wrap its own shim. It refuses to replace files it does not
+  own. It removes only files and links it created.
+- Setup removes or moves a legacy wrapper script in `~/.trajectory/bin` only
+  when the wrapper's metadata records that path.
+- Cleanup of retired binaries keeps any script, or any link to an outside
+  file, at a client command name.
+- Setup keeps a wrapper that you put in place yourself, as a copy or a link.
+  It also keeps it during the refresh after `trajectory update`.
+- After an opt-in, setup replaces an exact copy of its own wrapper with the
+  launcher link. It refuses to replace any other file.
+- Launcher links from an earlier opt-in stay in place during normal refreshes.
+
+Setup records your shim choice for each client in
+`~/.trajectory/state/setup-install-record.json`. It records an explicit
+`--install-client-shims` or `--no-client-shims` flag, or your answer at the
+interactive prompt. A later run without either flag applies the recorded
+choice. This includes the refresh after `trajectory update`.
+
+The refresh after an update follows these rules:
+
+- It adds `--install-client-shims` for clients that require shims and have no
+  recorded choice. It does not record that flag.
+- For installs made before the record existed, it records the opt-in it can
+  see. That is setup's own launcher link in `~/.trajectory/bin`, or a wrapper
+  that setup wrote for a client that requires one.
+
+`--no-client-shims` records an opt-out. It does not remove a shim that is
+already installed. Managed reconciliation makes its own shim choice. It does
+not read or write the install record.
 
 ## Setup Instrumentation Policy
 
-Client setup must use the least invasive registration surface the upstream
-client supports:
+Setup uses the least invasive way to register with each client:
 
-- Prefer native package, plugin, hook, MCP, extension-manifest, or transcript
-  discovery before command shims or wrapper-style launch interception.
-- Write only scoped client integration files needed for capture, MCP, skills,
-  commands, or plugin discovery. Do not add Trajectory to broad user settings
-  when a package manifest or plugin directory can register the same entrypoint.
-- Do not edit shell startup files, shell aliases, shell functions, or export
-  PATH from setup. When `trajectory` is not on PATH, setup and doctor should
-  prefer an existing home bin directory and suggest a symlink such as
+- Setup prefers the client's native package, plugin, hook, MCP, extension
+  manifest, or transcript files. It uses command shims or launch wrappers only
+  when no native method exists.
+- Setup writes only the client files needed for capture, MCP, skills,
+  commands, or plugin discovery. It does not add Trajectory to broad user
+  settings when a package manifest or plugin folder can do the same job.
+- Setup never edits shell startup files, aliases, or functions, and never
+  exports `PATH`. The one exception is the marked `PATH` block that managed
+  setup adds while the managed profile turns on client command shims. See
+  "Route ordinary `claude`, `codex`, and `copilot` commands through
+  Trajectory" in the [administrator guide](MANAGED-ENDPOINTS.md).
+- If `trajectory` is not on your `PATH`, setup and `trajectory doctor` suggest
+  a link in an existing home bin folder. An example is
   `ln -s ~/.trajectory/bin/trajectory ~/.local/bin/trajectory`.
-- Command shims named like upstream agent commands are allowed only for clients
-  that have no stable native capture surface, and they must require explicit
-  opt-in through `--install-client-shims` or the interactive setup prompt.
-- Feature gates are required for new behavior that mutates durable user state,
-  changes client startup, adds wrapper or OTLP interposer behavior, depends on
-  managed settings precedence, or changes outbound network shape. Register the
-  flag as a registered Trajectory feature flag in the feature-flag catalog,
-  document the default, and test the default, enabled, disabled,
-  managed-disabled, and env-disabled paths.
-- Wrapper metadata must record the real upstream binary, setup must avoid
-  self-wrapping an existing Trajectory shim, and uninstall must remove only
-  Trajectory-managed shim files and metadata.
-- Setup verification, inventory, and doctor must report the actual registration
-  mechanism. Examples: Pi reports package manifest registration, wrapper-based
-  clients report command shim and metadata, and hook-based clients report their
-  hook or MCP config path.
-- Every setup-owned mutation must have an idempotent removal path registered in
-  `trajectory uninstrument`. Cleanup must attempt all owned surfaces after an
-  individual failure, remove module dispatchers as well as baseline capture,
-  preserve unrelated user state in shared files, and participate in the
-  exhaustive all-client cleanup contract test. A new client is incomplete
-  until `trajectory uninstrument <client>` and `trajectory uninstrument all`
-  both cover it. Explicit uninstrumentation also writes the selected client to
-  the user-scoped managed auto-instrument deny list so background
-  reconciliation cannot silently reinstall it and disables any client-specific
-  passive/runtime capture flag; direct setup remains available after an
-  intentional feature re-enable when one is required.
+- Managed reconciliation does not run with your terminal `PATH`. It links
+  `~/.local/bin/trajectory` itself when that name is free.
+- A command shim named after a client command is used only for clients with
+  no stable native capture method. It always needs an opt-in through
+  `--install-client-shims` or the interactive prompt.
+- New behavior ships behind a feature flag when it changes saved user
+  state or client startup. The same applies to wrapper or OTLP relay
+  behavior, managed settings, and outbound network traffic.
+- Wrapper metadata records the real client binary. Setup never wraps its own
+  shim. Uninstall removes only the shim files and metadata that Trajectory
+  manages.
+- Setup verification, `trajectory doctor`, and the client inventory report the
+  real registration method. For example, Pi reports package manifest
+  registration. Wrapper clients report the command shim and its metadata.
+  Hook clients report their hook or MCP config path.
+- For plugin clients whose plugin records Trajectory can read, the inventory
+  also reports activation: `enabled`, `disabled`, `not_installed`, or
+  `unknown`. Plugin files that are only staged never count as enabled.
+  Unreadable records are `unknown`, never `enabled`. Claude Code's activation
+  comes from `internal/claudeconfig`, which applies `CLAUDE_CONFIG_DIR` for
+  the current user's home and selects managed policy with the same
+  precedence as launch validation. Activation also names its deciding source,
+  user settings or managed policy, so doctor can tell a user-level fix from
+  one only an administrator can make.
 
-  Codex is the mixed-version exception: released binaries predate the
-  `codex_durable_history` flag. Uninstrumentation therefore also writes a
-  selective compatibility fence. Current binaries keep non-Codex capture
-  active and honor the client flag; an older downgraded binary sees the
-  released global capture marker and fails closed instead of restarting Codex
-  history capture. Explicitly enabling `codex_durable_history` clears that
-  compatibility fence.
+Trajectory modules extend this setup path. They do not use separate installers
+or copied client hook logic.
 
-When adding a new client, document why the chosen surface is the least invasive
-viable option. If a wrapper or command shim is still required, document the
-missing upstream hook/plugin surface and add setup tests that prove the shim is
-opt-in and uninstallable.
+### Removing an integration
 
-The authoritative MCP catalog, including safe query examples, is embedded in
-the binary:
+`trajectory uninstrument <client>` and `trajectory uninstrument all` remove
+every change that setup made. They behave as follows:
+
+- They repeat cleanly when you run them more than once.
+- They try every item that setup owns, even after one item fails.
+- They remove module dispatchers as well as the main capture hooks.
+- They keep unrelated user settings in shared files.
+- They add the client to your user-level auto-instrument deny list. Background
+  reconciliation then cannot reinstall it without telling you.
+- They turn off any capture feature flag that belongs to that client.
+
+To restore a client later, turn its feature flag back on if it needs one. Then
+run `trajectory setup --clients <client>`.
+
+Codex needs one extra step because released binaries predate the
+`codex_durable_history` flag. Uninstrumenting Codex also writes a
+compatibility fence. Current binaries keep capture on for other clients and
+follow the Codex flag. An older binary, after a downgrade, sees the fence and
+stops capture for all clients. Turning on `codex_durable_history` again
+removes the fence.
+
+### MCP tools
+
+The full MCP catalog, with safe query examples, is built into the binary. If
+it differs from the list below, the built-in catalog is correct:
 
 ```bash
 trajectory user-guide mcp
 ```
 
-Compact MCP surface:
-
-| Surface | Names |
+| Group | Names |
 |---|---|
-| Session/status tools | `trajectory_status`, `list_active_sessions`, `get_session_trajectory` |
+| Session and status tools | `trajectory_status`, `get_session_trajectory` |
 | Privacy tools | `trajectory_incognito` |
 | SQLite tools | `trajectory_schema`, `trajectory_query`, `trajectory_search` |
 | Resources | `trajectory://status`, `trajectory://config`, `trajectory://sqlite/schema` |
 
-Agents should call `trajectory_schema` before `trajectory_query` so SQL matches
-the live local-ui database selected by `TRAJECTORY_CACHE_DB` or the cache under
-`TRAJECTORY_ROOT`.
+Agents should call `trajectory_schema` before `trajectory_query`. The SQL then
+matches the live local database. `TRAJECTORY_CACHE_DB` selects that database.
+Without it, Trajectory uses the cache under `TRAJECTORY_ROOT`.
+
+## Local backfill order
+
+Backfill rebuilds local history newest first for Claude Code, Cursor, Codex,
+Antigravity, Pi, and Copilot. OpenCode already worked this way. The order
+applies within each client, across all its projects and source folders.
+Events inside a session stay in their original order.
+
+Trajectory uses these times to sort:
+
+- Claude, Cursor, Codex, Pi, OMP, and Copilot use the source file's change
+  time. Copying or touching a source file can change its place in the order.
+- Antigravity uses the session update time from history timestamps and
+  generation database activity.
+- OpenCode uses the provider's session update time.
+
+Equal times sort by path or session ID. The order does not change which source
+wins. Cursor's source order, Codex's preference for the active copy, and
+OpenCode's preference for SQLite stay the same.
+
+Codex merges active and archived rollouts before it picks each page. This
+includes recently changed files in older date folders. Older continuation
+cursors restart a newest-first sweep. The usual skip and `--force` rules apply
+to sessions that Trajectory already has. A full scan reads all date folders
+within the normal discovery limit.
+
+With a page limit of zero, Codex shares one discovery limit across all pages
+in the run. If a later scan reaches that limit, the error keeps the progress
+so far and a continuation cursor. A new run can then resume.
+
+Other discovery limits still apply. The order covers only the sessions that
+discovery found. An incomplete scan can miss history.
 
 ## Claude Code
 
-Setup writes a local Claude Code marketplace under
-`~/.trajectory/claude-marketplace`, registers it through Claude's plugin
-manager, and installs or repairs `trajectory@trajectory` at user scope. Claude
-Code caches installed plugins by plugin version, so setup generates the
-marketplace and plugin manifest with Trajectory's bundled version rather than
-copying the development manifest verbatim. Setup, binary update, and MCP startup
-validate the exact `trajectory@trajectory` registry entry and cache ownership
-root, materialize the current versioned payload, and atomically repoint only
-that user-scope entry. Setup refreshes after enabled module hooks are injected,
-and background repair restores preserved `hook-dispatch` entries after a
-same-version Claude cache refresh. Project and local scope entries remain
-unchanged. The old generation remains available to an active Claude process.
-Trajectory does not add, merge, or delete Claude settings itself. Explicit
-setup invokes Claude's plugin manager to install or repair the plugin and
-restores the exact pre-command settings snapshot if any existing value is lost
-or changed. Autonomous repair never invokes Claude; it reconciles only the
-owned registry entry and cache payload. Unknown paths, symlinks, malformed
-registries, and ambiguous ownership fail closed.
+### Setup and the Claude plugin
 
-The plugin ships Claude `hooks/hooks.json`, which Claude Code loads
-automatically from that standard path. Every lifecycle entry is a command hook
-that runs the staged `capture-with-serve.sh` helper and then `trajectory
-capture-hook`. The helper keeps one delivery ID across bounded ensure/retry, so
-an EOF or reset during serve retirement cannot require a blind non-idempotent
-POST. Session shutdown keeps stdin attached long enough to spool the terminal
-event before delegating final delivery to a background worker. That worker
-triggers the normal final publish metrics path through `trajectory serve`. The
-plugin manifest intentionally omits a `hooks` entry for
-`hooks/hooks.json` to avoid duplicate hook-file loading. It also omits inline
-MCP configuration. Normally the plugin root `.mcp.json` is the only MCP
-declaration. When read-only inspection finds a released explicit user
-`mcpServers.trajectory` entry, the staged compatibility plugin omits its MCP
-file and leaves that entry authoritative and byte-for-byte unchanged. The
-plugin carries skills including `/incognito`.
+Setup writes a local Claude Code marketplace in
+`~/.trajectory/claude-marketplace`. It registers the marketplace through
+Claude's plugin manager. It then installs or repairs `trajectory@trajectory`
+at user scope.
 
-All transcript/session-history fallback consumers share one root resolver.
-`CLAUDE_CONFIG_DIR` exclusively selects `$CLAUDE_CONFIG_DIR/projects`; when it
-is empty, the resolver selects `~/.claude/projects`. Setup backfill, CLI
-backfill and token accounting, doctor, Stop reconciliation, ingest
-reconciliation, resume placement lookup, and reconstructed Claude placement all
-use that resolver. Hook-provided exact `transcript_path` values still win. The
-resolver is deliberately not used for plugin, settings, credential, or legacy
-cleanup paths, and it does not merge or probe alternative roots.
+Claude Code caches plugins by version. Setup therefore writes the marketplace
+and plugin manifest with Trajectory's own release version. Setup, binary
+updates, and MCP startup check the `trajectory@trajectory` registry entry and
+its cache folder. They write the current plugin version and point only that
+user-scope entry at it. A running Claude process can keep using the older
+version until it restarts.
 
-Trajectory can relay Claude Code native OTLP logs, metrics, and traces when
-Claude Code is explicitly configured to send those signals to local
-`trajectory serve`. The `trajectory claude` wrapper injects this configuration
-into the Claude child process environment for that one launch:
+Managed settings can enable the plugin, which makes Claude record the entry
+at managed scope. Trajectory manages that entry in the same way. Setup does
+not change project-scope or local-scope entries.
+
+Trajectory does not add, merge, or delete Claude settings itself:
+
+- Explicit setup calls Claude's plugin manager to install or repair the plugin.
+  If the command loses or changes an existing setting, setup restores the
+  settings file as it was before.
+- Background repair never runs Claude. It fixes only the registry entry and
+  cached plugin that Trajectory owns.
+- Unknown paths, links, malformed registries, and unclear ownership stop the
+  repair without changes.
+
+Setup can run before or after another installer that writes Claude OTel
+settings. In either order, and on repeated runs, setup keeps these settings:
+
+- the other installer's OTel keys
+- Trajectory's plugin and marketplace keys
+- unrelated user settings
+
+No capture path is installed twice.
+
+### Removing the Claude plugin
+
+Uninstrumenting Claude keeps the Claude plugin registration and the local
+marketplace. It points the Trajectory entry at an empty plugin version. That
+version declares no hooks, MCP server, commands, or skills, so nothing in it
+calls the Trajectory binary. Claude's marketplace and plugin update commands
+then do not fail on a missing path or turn capture back on.
+
+When you remove Trajectory itself (`uninstrument --for-uninstall`), cleanup
+also does the following:
+
+- It runs `claude plugin uninstall trajectory@trajectory --scope user`, with
+  the settings protection described above.
+- It deletes every cached plugin version that no registry entry names.
+- An older plugin version whose hooks run scripts directly keeps only those
+  scripts. They become stubs that exit 0, for Claude sessions that are still
+  open.
+- If the `claude` CLI cannot run, the empty version stays registered. Claude
+  then reports no failed MCP server after the binary is removed.
+
+If Agent Security is set up, removing Trajectory also removes it, in the same
+way as `trajectory plugins security disable --remove-hooks`. Cleanup
+uninstalls the `trajectory-security` plugin with each client's own CLI. For
+Claude Code, that is `claude plugin uninstall trajectory-security@trajectory
+--scope user`, with the same settings protection. Cleanup then deletes the
+copies that Claude Code and Codex cached, and it removes Cursor's Agent
+Security hooks. A project install stays. If a client's CLI cannot run, cleanup
+prints a warning with the command to run and continues. A plain
+`trajectory uninstrument` keeps Agent Security.
+
+You can uninstall the plugin or remove the marketplace through Claude. This
+does not damage Trajectory. Run `trajectory setup --clients cc` to restore
+either one.
+
+### Hooks
+
+The plugin ships Claude's `hooks/hooks.json`. Claude Code loads it
+automatically from that standard path. The plugin manifest has no `hooks`
+entry for that file, so Claude does not load it twice. The manifest also has
+no inline MCP configuration. The plugin's root `.mcp.json` is normally the
+only MCP declaration.
+
+You might already have an explicit `mcpServers.trajectory` entry from an
+earlier release. In that case setup stages a plugin without an MCP file. Your
+entry stays exactly as it was, and Claude uses it. The plugin also carries
+skills, including `/incognito`.
+
+Trajectory registers 17 Claude events:
+
+`SessionStart`, `UserPromptSubmit`, `MessageDisplay`, `PreToolUse`,
+`PostToolUse`, `PostToolUseFailure`, `Stop`, `StopFailure`, `PreCompact`,
+`PostCompact`, `PermissionRequest`, `PermissionDenied`, `Elicitation`,
+`ElicitationResult`, `SubagentStart`, `SubagentStop`, and `SessionEnd`.
+
+The events produce these records:
+
+- MCP `Elicitation` and `ElicitationResult` produce metadata-only
+  `elicitation_start` and `elicitation_result` events. They record the server
+  name, elicitation ID, tool use ID, and the `accept`, `decline`, or `cancel`
+  action. They count as user input, not as permission decisions.
+- Trajectory groups `MessageDisplay` batches and writes one `agent_message`
+  when the message is final. Claude's display and turn IDs never become
+  Trajectory IDs.
+- `StopFailure` writes a failed `turn_end` when Claude cannot send `Stop`.
+
+Trajectory leaves out the other hooks that Claude documents:
+
+- `Setup` carries no session data.
+- `InstructionsLoaded`, `ConfigChange`, `CwdChanged`, `DirectoryAdded`, and
+  `FileChanged` have no matching Trajectory event.
+- `UserPromptExpansion`, `PostToolBatch`, and `Notification` repeat data from
+  registered hooks.
+- The Task tool already records `TaskCreated` and `TaskCompleted`.
+- `TeammateIdle` does not start or end anything.
+- Worktree hooks would replace Claude's own behavior.
+
+### Hook delivery and time limits
+
+On macOS and Linux, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`, and
+streaming `MessageDisplay` use Claude's native HTTP hooks on the loopback
+address. Windows uses command hooks instead, because native HTTP delivery is
+not reliable there. Background processes on that path open no console window.
+Setup accepts an HTTP hook only for known events, paths, plugin versions,
+timeouts, and headers.
+
+The other lifecycle hooks run the `capture-with-serve.sh` helper, then
+`trajectory capture-hook`. `PermissionRequest` also uses this path. It marks
+the start of the wait for the user, so Trajectory must record it before the
+outcome arrives.
+
+Every command hook passes `--background-after-read`. Delivery works as
+follows:
+
+1. The hook reads Claude's input. For most events, it makes one POST to the
+   running capture server, with a 250 ms limit.
+2. If the server records the event, the hook returns.
+3. Otherwise, a background worker takes the event with the same delivery ID.
+   This covers no server, a refusal, an error, or the time limit. If the
+   first POST did succeed, the server's receipt turns the retry into a no-op.
+4. After a POST reaches the time limit, the next 30 seconds of hooks go
+   straight to a worker. A session with an event still waiting in a worker
+   also skips the POST. Events therefore stay in order.
+
+`SessionStart` and `SessionEnd` go to a worker at once, because their server
+handlers wait for session cleanup. To hand off an event, the hook saves
+Claude's input to a private file, starts the worker, and returns.
+
+A slow or missing capture server therefore delays your prompt or turn by at
+most 250 ms. The worker starts the server if needed and retries with the same
+delivery ID. A dropped connection while the server restarts cannot cause a
+duplicate event. At session end, the worker starts the normal final publish
+through `trajectory serve`.
+
+Each hook stops on its own deadline before Claude Code would kill it. The
+deadline is the hook's Claude Code timeout minus 500 ms. This includes the
+foreground fallback when the handoff fails. Setup and `capture-hook` read all
+capture timeouts from the same table.
+
+`trajectory claude skills sync` adds capture hooks to skill front matter.
+Those hooks follow the same rules. They pass `--background-after-read`, and
+their deadline comes from the skill hook timeout. The
+`claude skills sync --hook UserPromptSubmit` hook reads its input, starts a
+background `--hook-worker` sync, and returns. A sync rewrites skill files
+under a lock and cannot stop safely partway.
+
+The Claude capture wrapper sets a five-second default for
+`TRAJECTORY_SERVE_RESTART_WAIT`. The background capture worker uses it to wait
+for a restarting server. Trajectory reads the value as a Go duration. An
+invalid or non-positive value falls back to five seconds and does not drop the
+event. An explicit `--ensure-serve-wait` flag wins and keeps the normal flag
+checks. Other clients do not use this Claude wrapper setting.
+
+### Turns, sessions, and permissions
+
+At `SessionEnd`, Trajectory adds a missing final `turn_end` for the latest
+prompted turn, even when earlier turns completed. It takes the turn identity
+from the session JSONL. It does not repair an older session generation or add
+a turn after a resume with no prompt. The repair leaves token usage pending.
+Corrections from Claude's transcript set the token totals when they are
+available.
+
+Claude sends `SessionStart` with `source: "clear"` only after a full context
+reset succeeds. Trajectory then treats the reset as a new logical session:
+
+- It closes the earlier session and schedules its normal final publish.
+- It maps the reused Claude session ID to a new, stable logical ID for the
+  empty context.
+- The hook delivery ID makes a retried reset safe. The mapping survives a
+  capture server restart.
+
+The text `/clear` in a prompt does not start a new session. Neither do
+`PreCompact` and `PostCompact`.
+
+Claude has a `PermissionRequest` hook and a `PermissionDenied` hook for its
+automatic mode. It has no general hook for manual permission decisions.
+Trajectory records each request with a generated ID. A matching post-tool
+hook shows that the request was allowed. That hook's `duration_ms` leaves out
+the wait for the user, so Trajectory can estimate the decision time.
+
+Trajectory can repair a manual denial from Claude's transcript, but only for a
+request it already recorded. The repair keeps the original request ID. It
+records the result source, `inferred` or `user`. Permission wait and outcome
+metrics therefore do not depend on event types that only Claude has.
+
+### Transcript location
+
+Every feature that reads Claude transcripts finds them the same way:
+
+- If `CLAUDE_CONFIG_DIR` is set, Trajectory reads only
+  `$CLAUDE_CONFIG_DIR/projects`.
+- Otherwise, it reads `~/.claude/projects`.
+- A `transcript_path` value from a hook always wins.
+
+This applies to setup backfill, CLI backfill and token accounting,
+`trajectory doctor`, `Stop` and ingest reconciliation, and resume lookup.
+Trajectory does not use this rule for plugin, settings, credential, or legacy
+cleanup paths. It does not merge or search other folders.
+
+### Native OTLP and the `trajectory claude` wrapper
+
+Trajectory can relay Claude Code's native OTLP logs, metrics, and traces.
+Claude Code must send those signals to local `trajectory serve`. The
+`trajectory claude` wrapper sets this up in the Claude process environment for
+one launch:
 
 ```text
 OTEL_EXPORTER_OTLP_LOGS_ENDPOINT=http://localhost:<port>/v1/logs
@@ -273,36 +557,70 @@ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://localhost:<port>/v1/metrics
 OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:<port>/v1/traces
 ```
 
-It also enables Claude's enhanced telemetry beta, user and assistant content,
-tool details and content, and raw API-body events in that child environment.
-The wrapper preload independently records the complete parsed Anthropic request
-and response bodies on each canonical `llm_call`. The LLM Obs mapper exposes
-those bodies as the real inference span's `meta.input.value` and
-`meta.output.value`, so system blocks, conversation messages, tool names,
-descriptions, input schemas, tool calls, thinking, and response content remain
-available in Datadog and local-ui/Lapdog detail views.
+For that process, the wrapper also turns on these Claude telemetry options:
 
-The `/v1/logs` endpoint keeps only native `skill_activated` records, converts
-them into bounded local `Skill` tool activations, and drops other logs after
-capture. If `server.otlp_proxy.endpoint` is configured, `trajectory serve` also
-forwards OTLP log, metric, and trace payloads to that upstream collector.
-Metrics are decoded and re-encoded in the original OTLP protocol so Trajectory
-can add
-Datadog-visible datapoint attributes: canonical identity tags,
-`trajectory.proxy.source:serve-otlp`,
-`trajectory.cost_role:client_telemetry`, and
-`trajectory.cost_source:claude_native_otlp`. The forwarder prefers session
-identity already present in the OTLP payload, then a single active local
-session, then fresh heartbeat state on disk; if no unambiguous session is
-available, the identity tags fall back to `unknown`. Trace payloads are
-forwarded unchanged to the upstream collector. Trajectory also stores safe
-normalized local trace summaries under
-`~/.trajectory/state/otlp-proxy/traces/`, retaining span IDs, parent IDs,
-timing, names, and allowlisted skill/tool/session attributes rather than raw
-OTLP bodies or tool inputs. Those local records let skill complexity metrics
-prefer native Claude tool spans over whole-turn fallback attribution.
-Use this when Claude should continue sending native telemetry to Datadog or an
-OpenTelemetry collector through Trajectory:
+- the enhanced telemetry beta
+- user and assistant content
+- tool details and content
+- raw API-body events
+
+The wrapper also records the complete Anthropic request and response bodies
+on each `llm_call`. Before Trajectory stores them, the capture redaction
+replaces secrets and personal data in them, as it does in captured prompts.
+The LLM Observability span for each model call shows them as
+`meta.input.value` and `meta.output.value`. You can then see system blocks,
+messages, tool names, descriptions, input schemas, tool calls, thinking, and
+response content. They appear in Datadog and in the local viewer (Lapdog).
+
+Use `trajectory claude` for complete request and response capture and native
+OTLP routing in one Claude process. It does not change
+`~/.claude/settings.json`. Complete capture is on by default, because running
+the wrapper is the opt-in. No second content setting exists.
+
+The wrapper works as follows:
+
+- It reads your effective Claude settings.
+- It points the Claude process at local `/v1/logs`, `/v1/metrics`, and
+  `/v1/traces`.
+- When it starts a new shared `trajectory serve`, it passes the original
+  upstream endpoint to that server. A server that is already running keeps its
+  current relay settings.
+- When your Claude settings name an upstream, the wrapper runs a relay for
+  that launch with the same isolation. The running server then needs no
+  upstream settings.
+- Each launch carries a private correlation ID. Trajectory uses it to match
+  model requests to the right Claude session when several Claude processes
+  run.
+
+The Claude, Copilot CLI, and cursor-agent wrappers find and repair the
+capture server in the background. A busy port, a stale server, damaged
+coordination state, a read-only state folder, or a missing optional asset can
+reduce telemetry. None of these delays or blocks the client start. Each
+wrapper process runs at most one repair for each client and port. It limits
+how often it shows you a failure notice.
+
+Running `trajectory claude` is the opt-in to the wrapper's OTLP setup, so no
+feature flag controls it.
+
+Each signal keeps its own protocol. Trajectory picks it in this order:
+
+1. the setting for that signal
+2. `OTEL_EXPORTER_OTLP_PROTOCOL`
+3. Trajectory's default, `http/json`
+
+If managed settings name `http/protobuf`, Claude sends protobuf to the local
+relay, and Trajectory forwards protobuf upstream. If no setting names a
+protocol, the wrapper sets `http/json` for each signal.
+
+### What the OTLP relay does
+
+The `/v1/logs` endpoint keeps only native `skill_activated` records. It turns
+them into local `Skill` tool activations and drops other logs after capture.
+
+If you set `server.otlp_proxy.endpoint`, `trajectory serve` also forwards OTLP
+logs, metrics, and traces to that upstream collector. Use this when Claude
+should keep sending native telemetry to Datadog or an OpenTelemetry collector
+through Trajectory:
 
 ```yaml
 server:
@@ -310,92 +628,109 @@ server:
     enabled: true
     endpoint: https://otlp.datadoghq.com
     api_key_ref: dd-api-key
-    capture_enabled: true # optional: write local comparison records
 ```
 
-The forwarder is fail-open for Claude: local capture requests still return 200
-when no upstream is configured, enrichment fails, or the upstream request fails.
-It does not correct native client cost values, drop invalid datapoints, or make
-client telemetry part of Trajectory's attribution cost stream. Datadog direct
-intake uses `api_key_ref` and sends the resolved key as `dd-api-key`;
-non-Datadog collectors can use the
-`TRAJECTORY_OTLP_PROXY_HEADERS` process environment for additional headers.
-When `server.otlp_proxy.capture_enabled` or
-`TRAJECTORY_OTLP_PROXY_CAPTURE_ENABLED=1` is set, `/v1/metrics` also writes
-normalized inbound-vs-forwarded comparison records under
-`~/.trajectory/state/otlp-proxy/metrics/`. These records store payload hashes,
-metric names, datapoint values, and attributes, not raw OTLP bodies. Inspect
-them with:
+Trajectory decodes forwarded metrics and encodes them again in the original
+OTLP protocol. It adds these datapoint attributes:
 
-```bash
-trajectory otlp metrics compare --session <session-id>
-```
+- session identity tags
+- `trajectory.proxy.source:serve-otlp`
+- `trajectory.cost_role:client_telemetry`
+- `trajectory.cost_source:claude_native_otlp`
+- cost-overlap tags
 
-Use this local comparison to prove that Trajectory preserved native Claude
-metric values while adding `trajectory.cost_role:client_telemetry`,
-`trajectory.cost_source:claude_native_otlp`, and cost-overlap tags. Use
-Datadog readback separately to prove the upstream collector indexed those tags.
+To find the session, the forwarder tries these sources in order:
 
-Skill complexity metrics carry `skill_attribution`:
-`span_tool_attribute` when native Claude tool spans carry the skill name,
-`span_temporal` when one high-confidence skill signal can be matched to
-same-turn native Claude tool spans by time, and `turn_assisted` when Trajectory
-falls back to materialized same-turn tool rows.
+1. the session identity in the OTLP payload
+2. the only active local session
+3. recent heartbeat state on disk
 
-Setup does not write or overwrite Claude Code user settings for native OTLP.
-When an older Trajectory version injected the exact legacy local OTLP env block
-into `~/.claude/settings.json`, setup may remove only those Trajectory-owned
-user-scope keys; it never cleans project or managed settings.
+If no single session matches, the identity tags fall back to `unknown`.
 
-Use `trajectory claude` when you want complete request and response capture plus
-native OTLP routing for a single launched Claude process without changing
-`~/.claude/settings.json`. Complete capture is on by default because invoking
-the wrapper is the opt-in boundary; there is no second content flag. The
-wrapper reads effective Claude settings, points the child process at local
-`/v1/logs`, `/v1/metrics`, and `/v1/traces`, and passes the original upstream
-endpoint as process configuration when it starts a new shared
-`trajectory serve` owner. An already-running shared owner retains its current
-proxy configuration.
-This process-only interposer is controlled by the
-`claude_native_otlp_interposer` feature flag. It is on by default because
-running `trajectory claude` is the explicit opt-in boundary; disable it with
-`trajectory features disable claude_native_otlp_interposer` or
-`TRAJECTORY_DISABLE_FEATURES=claude_native_otlp_interposer` to keep the wrapper
-from injecting native OTLP environment variables.
-Protocol is preserved per signal: per-signal protocol settings win, then
-`OTEL_EXPORTER_OTLP_PROTOCOL`, then Trajectory's explicit default
-`http/json`. If managed settings specify `http/protobuf`, Claude sends protobuf to
-the local interposer and Trajectory forwards protobuf upstream; if no settings
-specify a protocol, the wrapper emits `http/json` explicitly for each
-signal.
+For Claude-native spans, the trace forwarder makes these changes before it
+sends them upstream:
 
-Because Claude managed settings have higher precedence than user settings,
-enterprise-managed OTel policy remains admin-owned. Trajectory setup
-intentionally leaves `~/.claude/settings.json` unchanged in that case; standard
-hooks still capture, but Trajectory will not see Claude's native OTLP
-skill/usage stream unless the effective Claude settings or the `trajectory
-claude` wrapper route OTLP to local `trajectory serve`.
+- It keeps the raw session ID in `claude_code.session_id`.
+- It replaces `session.id`, `session_id`, and `gen_ai.conversation.id` with a
+  single `session.id` of `claude-native:<session>`.
+- It sets the resource `service.name` to the native ML app. The default is
+  `<export.ml_app>-claude-native`. Set `server.otlp_proxy.native_ml_app` to
+  change it.
+- It adds `trajectory.telemetry_plane:native_client_otlp`.
 
-`trajectory serve` is multi-process-safe: each process reads the same on-disk
-Trajectory config and forwards independently. Restart long-lived serve
-processes after changing `server.otlp_proxy.*` or process environment overrides
-so every process listening with `SO_REUSEPORT` uses the same upstream.
+Native traces then keep their own correlation, ML app, and session. They stay
+apart from Trajectory's LLM Observability session and turn view.
 
-Claude `--print` sessions omit `transcript_path`, so Trajectory marks them as
-headless. Headless coding-agent sessions are collected and published by default
-when export is configured, while sensitivity/classification and segmentation
-always skip headless sessions. The protected Docker live-client CI gate runs a
-real `claude --print` session, requires the plugin hook path to emit `turn_end`,
-and reads Datadog Metrics back with `trajectory.client_source:claude-code`. To
-opt out for all non-internal headless agent sessions:
+Trajectory also saves short local trace summaries in
+`~/.trajectory/state/otlp-proxy/traces/`. The summaries keep span IDs, parent
+IDs, timing, names, and allowed skill, tool, and session attributes. They do
+not keep raw OTLP bodies or tool input. Skill complexity metrics use these
+records to prefer native Claude tool spans over whole-turn attribution.
+
+The same batches give one `native_tool_timing` event for each tool call. It
+records the permission wait, its decision and source, and the run time.
+Trajectory briefly holds the turn's publish for this event. It adds the data
+to the tool span and to a `permission-wait` child span.
+
+Skill complexity metrics carry a `skill_attribution` tag with one of these
+values:
+
+- `span_tool_attribute`: native Claude tool spans carry the skill name.
+- `span_temporal`: Trajectory matched one high-confidence skill signal to
+  native tool spans in the same turn by time.
+- `turn_assisted`: Trajectory fell back to tool rows from the same turn.
+
+The forwarder never blocks Claude. Local capture requests still return 200
+when no upstream is set, when enrichment fails, or when the upstream request
+fails. The forwarder does not correct native cost values or drop invalid
+datapoints. Client telemetry does not join Trajectory's cost attribution data.
+
+Datadog intake uses `api_key_ref` and sends the resolved key as `dd-api-key`.
+Other collectors can read extra headers from the
+`TRAJECTORY_OTLP_PROXY_HEADERS` process environment. Forwarded metrics keep
+Claude's native values. To check that the collector indexed the added tags,
+query the metrics in Datadog.
+
+Each `trajectory serve` process reads the same Trajectory config from disk and
+forwards on its own. After you change `server.otlp_proxy.*` or the process
+environment, restart long-running serve processes. Every process that listens
+with `SO_REUSEPORT` then uses the same upstream.
+
+### Claude settings and managed policy
+
+Setup never writes or overwrites Claude Code user settings for native OTLP.
+An older Trajectory version wrote a legacy local OTLP env block into
+`~/.claude/settings.json`. Setup can remove only those Trajectory keys at user
+scope. It never cleans project or managed settings.
+
+Claude managed settings take precedence over user settings, so admins still
+control managed OTel policy. In that case setup leaves
+`~/.claude/settings.json` unchanged. Standard hooks still capture. Trajectory
+sees Claude's native OTLP skill and usage data only when your effective
+settings or the `trajectory claude` wrapper send OTLP to local
+`trajectory serve`.
+
+When Trajectory reads Claude settings, it accepts any JSON value in `env`. It
+writes numbers and booleans as their JSON text. A managed file such as
+`{"env": {"CLAUDE_CODE_ENABLE_TELEMETRY": 1}}` is therefore not skipped. The
+same managed-first order picks the `apiKeyHelper` for Trajectory's internal
+headless Claude calls.
+
+### Headless sessions
+
+Claude `--print` sessions have no `transcript_path`, so Trajectory marks them
+as headless. When export is set up, Trajectory captures and publishes headless
+coding-agent sessions by default. Task segmentation always skips them. To turn
+off capture for all headless agent sessions that Trajectory did not start
+itself, run:
 
 ```bash
 trajectory config set capture.include_headless_agents false
 ```
 
-Trajectory-owned classifier and segmenter subprocesses remain suppressed.
+Trajectory never captures its own classifier and segmenter processes.
 
-Verify:
+### Verify
 
 ```bash
 claude plugin list
@@ -404,1122 +739,664 @@ trajectory doctor
 
 ## Claude Desktop
 
-Claude Desktop is the macOS GUI app (`/Applications/Claude.app`, bundle id
-`com.anthropic.claudefordesktop`). It has three distinct surfaces ("tabs"), each a
-separate data store with a different capture owner - important because "Claude
-Desktop capture" here means specifically the **Cowork** tab:
+Claude Desktop is the macOS app (`/Applications/Claude.app`, bundle ID
+`com.anthropic.claudefordesktop`). It has three tabs. Each tab keeps its data
+in a different place, and Trajectory treats each one differently:
 
-| Tab | On-disk store | Captured as |
+| Tab | Data on disk | Captured as |
 | --- | --- | --- |
-| **Cowork** (local-agent mode) | `~/Library/Application Support/Claude/local-agent-mode-sessions/**/audit.jsonl` | `client_source=claude-desktop` (this integration) |
-| **Claude Code** (Code tab) | `~/.claude/projects/*.jsonl` (same store as the CLI) | `client_source=claude-code` (existing Claude Code integration) - now surface-attributed via `entrypoint` (see below) |
-| **Chat** | Electron LevelDB | not captured (general chat, out of scope by design) |
+| **Cowork** (local agent mode) | `~/Library/Application Support/Claude/local-agent-mode-sessions/**/audit.jsonl` | `client_source=claude-desktop` (this integration) |
+| **Claude Code** (Code tab) | `~/.claude/projects/*.jsonl` (the same store as the CLI) | `client_source=claude-code` (the Claude Code integration), with an `entrypoint` value |
+| **Chat** | Electron LevelDB | Not captured. General chat is out of scope. |
 
-The **Code tab** runs Claude Code inside the app and writes to the same
-`~/.claude/projects` tree as the terminal CLI, so it is already captured as
-`claude-code`. To distinguish Desktop-app usage from the terminal without
-fragmenting `claude-code` metrics, the converter surfaces the transcript's own
-`entrypoint` field (on user records: `claude-desktop` = Desktop Code tab, `cli` =
-terminal, `sdk`) onto `session_start`, and ddllmobs emits it as a filterable,
-client-agnostic `trajectory.entrypoint:<value>` span tag. This is a facet only -
-`client_source` stays `claude-code`.
+### Code tab
 
-The rest of this section covers the **Cowork** tab. Its local-agent mode persists
-sessions to disk as Claude Code-dialect JSONL, so Trajectory reuses the existing
-Claude transcript converter rather than a new parser.
+The Code tab runs Claude Code inside the app. It writes to the same
+`~/.claude/projects` folder as the terminal CLI, so Trajectory already
+captures it as `claude-code`.
 
-Rollout is governed by the `claude_desktop_capture` feature flag (on by default;
-disabling it is the kill switch), which gates every surface. The currently landed
-pieces are detection reporting, a programmatic backfill entry point, and a
-near-real-time **live watcher**: on macOS (unless the flag is disabled),
-`trajectory serve` runs a poll-based watcher (built on the shared `localtail`
-core) that tails the per-session `audit.jsonl` transcripts and publishes sessions
-to Datadog like CLI
-live sessions (CC redaction applied; not headless). The watcher polls every few
-seconds, holds no file descriptors across polls, re-converts each transcript, and
-emits only the stable, not-yet-emitted turns; it is restart-safe via a persisted
-per-session high-water mark. `fsnotify` is deliberately not used on macOS
-(recursive kqueue silently misses in-place appends and burns a descriptor per
-path), so polling is the correctness path.
+To tell app use apart from terminal use, Trajectory copies the transcript's
+own `entrypoint` field onto `session_start`. The values are `claude-desktop`
+for the Code tab, `cli` for the terminal, and `sdk`. The LLM Observability
+span mapper emits it as the `trajectory.entrypoint:<value>` span tag, which
+you can filter on. `client_source` stays `claude-code`.
 
-**On-disk schema specifics.** Claude Desktop's `audit.jsonl` is Claude Code
-dialect but differs in two fidelity-relevant ways the converter accounts for:
-event time is carried in `_audit_timestamp` (not `timestamp`), which is folded
-into the shared converter at parse time so real conversation times are used
-rather than capture time; and each turn ends with a `result` record carrying an
-authoritative per-turn `total_cost_usd`, which the converter sums into the
-session's `total_cost_usd` (preferred downstream over the token-based
-`session_cost_usd` estimate). The `result` records are per-turn and the schema
-has no reliable session-terminal marker, so the watcher finalizes a session on
-**quiescence** (idle window, default 10m) rather than on any single record.
-That window is tunable via `TRAJECTORY_CLAUDE_DESKTOP_QUIESCENCE` (a Go duration
-such as `60s` or `5m`) to trade materialization latency against finalizing an
-only-briefly-idle session early.
+Trajectory reads `CFBundleShortVersionString` from the app's
+`Contents/Info.plist`. It looks in `/Applications/Claude.app` and
+`~/Applications/Claude.app`. A Code-tab session keeps the Claude Code
+`client_version` and adds the app version as `app_version`. Terminal and SDK
+sessions leave it out. Cowork sessions also add `app_version`. The published
+tag is `trajectory.app_version`. A link, an unusual file, a malformed file, or
+a missing version gives no value instead of a guess.
 
-The flag is **on by default**, so on a macOS host detection reporting, backfill,
-and the live watcher are active out of the box. Disabling it (the kill switch) makes
-Claude Desktop fully inert: it is neither detected/reported, imported, nor watched.
-With the flag disabled, even on a macOS host with `Claude.app` present, Claude
-Desktop is omitted from the inventory snapshot and from session-start
-`installed_agents` metadata, the `Source=claude-desktop` backfill dispatch is a
-no-op that imports nothing, and the live watcher does not start. (The low-level
-`agentdetect` detection routines stay pure - the app bundle is still recognized -
-but the gated surfaces do not report or import it when disabled.)
+### Cowork tab
 
-There is no CLI on `PATH`, so detection keys on macOS filesystem artifacts:
-`/Applications/Claude.app`, `~/Applications/Claude.app`, or the app-support
-directory `~/Library/Application Support/Claude`.
+The rest of this section covers the Cowork tab. Cowork saves sessions as
+Claude Code-style JSONL, so Trajectory reuses its Claude transcript reader.
 
-Transcripts live at:
+Claude Desktop capture is always on for macOS. It needs no feature flag. On a
+Mac with Claude Desktop, Trajectory does the following:
+
+- It reports Claude Desktop in the client inventory.
+- It can import Cowork history.
+- `trajectory serve` runs a live watcher that reads each session's
+  `audit.jsonl` every few seconds.
+
+The watcher publishes sessions to Datadog like live CLI sessions. It applies
+Claude Code redaction, and the sessions are not headless. Each poll emits only
+completed turns that it has not sent yet. The watcher saves its position for
+each session, so a restart does not send turns twice.
+
+Claude Desktop has no CLI on `PATH`. Trajectory detects it from any of these
+paths:
+
+- `/Applications/Claude.app`
+- `~/Applications/Claude.app`
+- `~/Library/Application Support/Claude`
+
+Transcripts are stored here:
 
 ```
 ~/Library/Application Support/Claude/local-agent-mode-sessions/<projectId>/<accountId>/local_<sessionId>/audit.jsonl
 ```
 
-Each line is a JSON object shaped like a Claude Code standard transcript record
-(`type` in `user`, `assistant`, `system`, plus desktop-only `tool_use_summary`,
-`rate_limit_event`, and `result` records that are tolerated and ignored when not
-understood). Session IDs are derived from the `local_<sessionId>` directory name
-and validated for path-safety; invalid or unreadable entries are skipped. An
-optional metadata sidecar may exist at
-`~/Library/Application Support/Claude/claude-code-sessions/<projectId>/<accountId>/local_<sessionId>.json`.
+Trajectory does not rely on the `<projectId>/<accountId>` folders for
+identity. Live capture and backfill accept added, removed, or reordered
+folders at that level. Both require `audit.jsonl` to sit directly in a valid
+`local_<sessionId>` folder. They skip worktree and cache content below it.
 
-Backfill emits trajectory events with `client_source=claude-desktop`. The
-programmatic entry points are `setup.FindClaudeDesktopSessions` and
-`setup.BackfillFromClaudeDesktopSessions`, dispatched through
-`backfill.ReconstructLocal` with `Source=claude-desktop`, and exposed on the CLI
-as `trajectory backfill --from-claude-desktop [--session ID | --since DATE]
-[--force]`.
+Each line looks like a Claude Code transcript record. Its `type` is `user`,
+`assistant`, or `system`. Cowork also writes `tool_use_summary`,
+`rate_limit_event`, and `result` records. Trajectory ignores these when it
+does not understand them. The session ID comes from the `local_<sessionId>`
+folder name. Trajectory checks that the ID is safe to use as a path and skips
+invalid or unreadable entries.
 
-Live `trajectory serve` filesystem watching (darwin-only, poll-based),
-setup-wizard registration (`trajectory setup --clients claude-desktop` - passive:
-capture is watcher-delivered, so register only verifies the flag + prerequisites
-and writes no client-side artifact), and incognito enforcement on the live
-watcher lane are all wired. If a Cowork process ever emits native OTLP tagged
-`trajectory.client_source=claude-desktop`, serve attributes the derived
-metrics/logs to `claude-desktop` (serve-side attribution is ready). Managed
-deployments can enable the integration through the same feature flag and
-`trajectory setup --clients claude-desktop` contract.
+Cowork transcripts differ from Claude Code transcripts in two ways:
 
-Session metadata (project_dir/cwd, git_branch, model) is enriched onto
-`session_start` for the claude-desktop lane from the standard Claude Code-dialect
-per-record `cwd`/`gitBranch` fields, with the optional
-`claude-code-sessions/<projectId>/<accountId>/local_<sessionId>.json` metadata
-sidecar as a best-effort fallback (records-first; every field is optional and
-fail-safe). `git_branch` is emitted as the `trajectory.git_branch` span tag. The
-enrichment is scoped to claude-desktop so claude-code backfill stays byte-identical.
+- The event time is in `_audit_timestamp`, not `timestamp`. Trajectory uses it
+  so that events keep their real times.
+- Each turn ends with a `result` record that holds `total_cost_usd` for that
+  turn. Trajectory adds these up into the session's `total_cost_usd`. Later
+  steps prefer this value over the token-based `session_cost_usd` estimate.
 
-Remaining follow-ups: a **client-side** native-OTLP injector and an MCP config
-writer are blocked on Claude Desktop app support - an Electron GUI launched from
-Finder does not inherit shell `OTEL_*` env, and there is no verified
-`claude_desktop_config.json` `mcpServers` ingestion path.
+No record marks the end of a session. The watcher therefore ends a session
+after it has been idle for one hour. Completed turns publish without waiting.
+Only the final session record waits for the idle window. To change the
+window, set `TRAJECTORY_CLAUDE_DESKTOP_QUIESCENCE` to a Go duration such as
+`60s` or `5m`. A shorter window publishes the session end sooner. It can also
+end a session that was only idle for a short time.
+
+Trajectory adds the project folder, working directory, Git branch, and model
+to `session_start` for Cowork sessions. It reads them from the `cwd` and
+`gitBranch` fields on each record. If those are missing, it reads an optional
+metadata file:
+
+```
+~/Library/Application Support/Claude/claude-code-sessions/<projectId>/<accountId>/local_<sessionId>.json
+```
+
+Every field in that file is optional. `git_branch` is published as the
+`trajectory.git_branch` span tag. This enrichment applies only to Cowork, so
+Claude Code backfill does not change.
+
+Backfill writes events with `client_source=claude-desktop`. To run it:
+
+```bash
+trajectory session import claude-desktop [--session ID | --since DATE] [--force]
+```
+
+`trajectory setup --clients claude-desktop` checks the requirements only.
+Capture comes from the watcher, so setup writes no file for the client. The
+live watcher honors incognito. If a Cowork process sends native OTLP with
+`trajectory.client_source=claude-desktop`, the capture server credits the
+metrics and logs to `claude-desktop`.
+
+Trajectory does not add native OTLP settings or an MCP entry to Claude
+Desktop. An app opened from Finder does not inherit shell `OTEL_*` variables.
+No checked `claude_desktop_config.json` `mcpServers` path exists yet.
 
 ## Codex CLI
 
-Setup writes a local Codex marketplace under `~/.trajectory/codex-marketplace`
-and registers it with Codex. The plugin provides command hooks, MCP
-configuration, and the `/incognito` skill. `codex_boundary_capture` is on by
-default and activates `SessionStart`, `UserPromptSubmit`, `Stop`, and
-`SessionEnd` plus paired Bash-only `PreToolUse` and `PostToolUse` evidence
-hooks. The same installed hook contract applies when Codex Desktop runs the
-plugin. Disabling it activates all eleven events supported by current Codex and is the
-full-hook compatibility path.
+### Setup and hooks
 
-Setup extracts a same-platform minimal hook helper and, on Darwin, native relay
-assets from the single installed Trajectory binary. It verifies each asset's
-digest, protocol, platform, executable mode, and self-check before committing
-an immutable generation. A stable selector under `~/.trajectory/bin/codex-hook`
-chooses that generation, so startup and update repair can replace the runtime
-without changing the command identity Codex trusted. The command also retains
-the stable installed Trajectory binary path and resolves an inherited capture
-port only when the hook runs. Hook JSON and per-hook enabled states are
-reconciled under the same transaction lock. On setup, Codex's app server enumerates the
-exact installed-cache hooks and supplies their current hashes; Trajectory
-validates the `trajectory@trajectory` ownership, asks Codex to persist those
-hashes, and requires a trusted readback. Later repair preserves that
-Codex-owned trust and leaves hook JSON byte-identical when only the runtime
-generation changes. A failed state commit restores the prior hook JSON; a failed
-asset install commits a full-binary fallback that setup must authorize from
-Codex's installed-cache readback.
-Setup, explicit feature/config reconciliation, and doctor use the full
-definition transaction. Background auto-update, MCP startup, and owner startup
-verify and activate only the immutable runtime generation; they never rewrite
-the trusted hook definition. Background repair does not create plugin config
-for a user who has not configured Codex. If an update lands while the existing
-definition is still on full-hook compatibility mode, explicit setup or feature
-reconciliation selects paired boundary mode after the current owner advertises
-support for the same Trajectory home.
+Setup writes a local Codex marketplace in `~/.trajectory/codex-marketplace` and
+registers it with Codex. The plugin provides command hooks, MCP settings, and
+the `/incognito` skill. Codex Desktop runs the same installed hooks.
 
-Codex hooks use `type: "command"`; current Codex does not support a Trajectory
-HTTP hook variant. The full
-`trajectory capture-hook --client codex --ensure-serve` path remains the
-definite-unavailability and compatibility fallback.
+The plugin defines handlers for 11 Codex events. Setup picks one of two modes:
 
-Codex is a hybrid capture integration, not a simple hook-to-JSONL integration.
-There are two upstream Codex streams:
+- **Boundary mode** turns on `SessionStart`, `UserPromptSubmit`, `Stop`, and
+  `SessionEnd`, plus a `PreToolUse` and `PostToolUse` pair for Bash only. The
+  Bash pair writes no events of its own.
+- **Full-hook mode** also turns on all tool, permission, compaction, and
+  subagent events. Codex waits for each command.
 
-- **Command hook payloads** cover the four default lifecycle/turn boundaries
-  plus paired Bash-only before/after evidence. The paired tool hooks do not
-  emit canonical events. Full-hook compatibility additionally activates all
-  tool, permission, compaction, and subagent events. Codex waits for each command.
-- **Codex rollout JSONL** under `$CODEX_HOME/sessions/` (normally
-  `~/.codex/sessions/`) contains checkpoint data
-  used for assistant messages, reasoning blocks, tools, permissions, compaction
-  records, subagent activity, model details, token snapshots, structured
-  `<skill>` activation envelopes, and `shutdown_complete`.
+Setup uses boundary mode when the running capture server supports it.
+Otherwise, for example with an older capture server, it uses full-hook mode.
+After an update, explicit setup or feature reconciliation moves to boundary
+mode once the current server supports it.
 
-The live Codex watcher is account-scoped: it follows the configured
-`CODEX_HOME`/`CODEX_SESSIONS_DIR` rollout root for every project in that
-account. `TRAJECTORY_PROJECT_ROOT` may still describe the current invocation
-for hook context and privacy tooling, but it is not a live-watcher boundary;
-CLI and Desktop sessions can share one rollout root while using different
-working directories.
+Codex hooks use `type: "command"`. Current Codex has no HTTP hook type for
+Trajectory. The full `trajectory capture-hook --client codex --ensure-serve`
+command remains the fallback when the fast helper is unavailable.
 
-If a future scoped watcher observes a rollout outside its project filter, the
-instrumentation-health stream records `capture.gap{reason:scope_filtered}`.
-When a later native `token_count` arrives from that excluded rollout, it also
-records `capture.gap{reason:usage_unregistered}` so source usage without a
-canonical registration is visible before a cost report is missing.
+Setup extracts a small hook helper for your platform from the installed
+Trajectory binary. On macOS it also extracts native relay files. It checks
+each file before use. A stable selector at `~/.trajectory/bin/codex-hook`
+picks the active version. Startup and update repair can then replace the
+helper without changing the command that Codex trusts. A mode change updates
+`codex-hook/policy-v1` instead of rewriting the trusted hook definition.
 
-`trajectory codex` is the explicit provider-call wrapper. Every complete
-Responses API exchange routed through it retains the full request and response
-by default, including instructions, conversation input, tool results, complete
-tool descriptions and parameter schemas, reasoning, tool calls, and assistant
-output. Streaming responses are stored as the complete ordered JSON event
-sequence. These bodies populate the real LLM span input and output in Datadog
-LLM Observability and local-ui/Lapdog.
+### Hook trust
 
-Manual and opt-in startup repair additionally discover flat rollout JSONL under
-`$CODEX_HOME/archived_sessions/`. Startup repair processes a bounded page and
-persists its continuation for the next maintenance lease. Historical discovery
-prefers an active copy by `session_meta.id`, ignores symlinked rollout files,
-and keeps `CODEX_SESSIONS_DIR` as an exclusive exact-root override. The live
-watcher remains attached only to `sessions/` so a provider move into the archive
-cannot replay an already captured session.
+On setup, Codex lists the installed handlers for the 11 events with their
+current hashes. Trajectory checks that they belong to `trajectory@trajectory`.
+It asks Codex to save those hashes, then reads them back to confirm that Codex
+trusts them. Trajectory never computes trust from the editable local
+marketplace. Codex runs and hashes its installed plugin cache.
 
-The JSONL under `~/.trajectory/trajectories/` is the normalized result of
-merging those streams. At each boundary, `trajectory serve` reads the rollout
-forward, derives canonical tool phases in one ordered durable batch, applies
-token/model enrichment, and then dispatches the boundary event. Every watcher
-event becomes a reconciliation wake while hooks are active. Hook-delivered
-`SessionEnd` and watcher-seen `shutdown_complete` converge on one final drain
-and exact-once `session_end`.
-Boundary mode never fast-forwards a large unread rollout suffix. Its source
-cursor is committed only after the derived canonical events are persisted; a
-write failure leaves the source checkpoint retryable.
+Some supported Codex versions leave `SessionEnd` out of hook discovery.
+Trajectory accepts that one gap, because the rollout's `shutdown_complete`
+record also ends the session. Later repairs keep the trust that Codex
+recorded. They leave the hook JSON unchanged when the helper version, capture
+mode, or CPU pacing changes.
 
-Because Codex starts the command shell before a hook command runs, replacing
-the helper with `curl` would not remove the dominant shell-launch cost and
-would add a child process. A direct append would also bypass canonicalization,
-hook-active sentinel updates, rollout cursor advancement, token patching, and
-duplicate suppression.
+Setup changes the hook helper, hook commands, and enabled states in one step.
+If that step fails, setup restores the earlier hook JSON and policy. If the
+helper files fail to install, setup falls back to the full binary. Setup must
+then authorize the fallback with the hashes it reads back from Codex.
 
-When `capture-hook --ensure-serve` runs for Codex, it ensures a
-watcher-capable rescue `serve` process is present so the rollout fallback stays
-available. For that rescue process only, it overrides Codex watcher-disable
-environment variables and suppresses unrelated client watchers;
-`trajectory config capture disable` and `TRAJECTORY_DISABLED=1` still suppress all capture.
-The durable user-scoped command also suppresses an already-running watcher.
-Hook-active sentinels under `~/.trajectory/state/codex-hook-active/` route
-watcher activity through the shared reconciler. They do not authorize dropping
-a watcher fact that a hook missed.
+Setup, explicit feature or config reconciliation, and `trajectory doctor` run
+this full step. Background updates, MCP startup, and server startup only check
+and switch the helper version. They never rewrite the trusted hook definition.
+Background repair never sets up Codex for a user who has not run setup.
 
-`codex exec --ephemeral` does not write a rollout. Default boundary mode
-therefore cannot derive tool, permission, compaction, or subagent detail for an
-explicit ephemeral run. Disable `codex_boundary_capture` before starting a new
-ephemeral session when direct per-tool fidelity is required. Existing Codex
-sessions retain the hook snapshot loaded at startup.
+When managed policy denies Codex capture, `trajectory doctor --json` reports
+the host as not ready. It names the user or managed-policy action that fixes
+it.
 
-Setup-generated commands carry their reconciled capture mode to the server, so
-a feature flip cannot be interpreted using a stale server config snapshot. A
-long-running server still needs `trajectory config reload --yes` to converge
-its process-wide feature state and performance settings.
+### Hook time limits
 
-When changing Codex capture behavior, preserve these invariants: every accepted
-canonical event is durable before acknowledgement; boundary, full-hook,
-watcher, and backfill paths materialize the same available evidence; rollout
-cursors advance through the server merge path; and feature/setup repair keeps
-hook commands and enabled states in one recoverable transaction while
-preserving Codex-owned trust hashes. Never compute trust from the mutable local
-marketplace: Codex executes and hashes its installed plugin cache.
-Uninstall removes Trajectory-owned hook state and cached plugin references
-before runtime assets, and leaves those assets intact if either cleanup cannot
-be committed.
+Codex gives each command hook three seconds. Trajectory sets `timeout: 3` on
+every handler. It limits the foreground helper to 2.3 seconds and waits at
+most 100 ms for a response. If the server is slow or missing, a background
+worker takes the fallback and any pending automatic update. It uses the same
+delivery ID. A request that was fully sent is not sent again just because its
+response was late.
 
-Verify:
+A hook signals that a session is ending, but it is not the only way the end
+is recorded. The rollout's `shutdown_complete` record can also end the
+session. Either path writes `session_end` once. An interrupted update stays
+pending for a later hook.
+
+### Hooks and rollout files
+
+Codex capture combines two sources from Codex:
+
+- **Command hook payloads** cover the session and turn boundaries, plus the
+  Bash tool pair.
+- **Rollout JSONL** in `$CODEX_HOME/sessions/`, normally `~/.codex/sessions/`.
+  It holds assistant messages, reasoning, tools, permissions, compaction,
+  subagent activity, model details, token snapshots, `<skill>` activation
+  blocks, and `shutdown_complete`.
+
+The session JSONL in `~/.trajectory/trajectories/` merges both sources. At
+each boundary, `trajectory serve` reads the rollout forward. It writes the tool
+events in order, adds token and model data, and then writes the boundary
+event. Each rollout change also wakes the merge while hooks are active.
+Trajectory appends a fact only when the hook path did not already save it.
+
+A hook `SessionEnd` and a rollout `shutdown_complete` lead to one final read
+and one `session_end`. Trajectory never skips a large unread part of the
+rollout. It moves its read position forward only after it saves the events. If
+a save fails, it retries from the same point.
+
+The merge still reads prompt and completed-turn records when the matching
+hooks are expected. A tool hook cannot confirm past a prompt or completion
+that Trajectory never saved. Late hooks reuse the turn number already
+recorded. They cannot close a newer turn.
+
+Before `SessionEnd` ends a session, Trajectory waits until the rollout file
+stops changing. New hook or watcher activity restarts that wait. If activity
+never stops, Trajectory writes no end event, and the watcher can still end the
+session later.
+
+New CLI and Desktop sessions both use `client_source="codex"`. Trajectory
+reads `session_meta.originator` and `session_meta.source` to find the launch
+type. It records `entrypoint` on spans and `client_surface` on metrics. The
+values are `desktop`, `cli`, `ide`, or `exec`. Session JSONL from older
+Trajectory versions can still contain `client_source="codex-app"`. Trajectory
+treats that value as Codex.
+
+### The rollout watcher
+
+The live Codex watcher covers your whole account. It follows the `CODEX_HOME`
+or `CODEX_SESSIONS_DIR` rollout folder for every project. CLI and Desktop
+sessions can share one rollout folder while they use different working
+directories. `TRAJECTORY_PROJECT_ROOT` can still describe the current run for
+hook context and privacy tools. It does not limit the watcher.
+
+Manual repair and optional startup repair also find flat rollout JSONL in
+`$CODEX_HOME/archived_sessions/`. Startup repair handles one page at a time
+and saves its place for the next maintenance run. History discovery follows
+these rules:
+
+- It prefers the active copy of a session by `session_meta.id`.
+- It ignores rollout files that are links.
+- `CODEX_SESSIONS_DIR` replaces the default folder. Trajectory then reads only
+  that folder.
+
+The live watcher reads only `sessions/`. When Codex moves a session to the
+archive, the session is therefore not captured twice.
+
+`codex exec --ephemeral` writes no rollout. In boundary mode, Trajectory
+therefore has no tool, permission, compaction, or subagent detail for an
+ephemeral run.
+
+When `capture-hook --ensure-serve` runs for Codex, it makes sure a capture
+server with the watcher is running. Then the rollout fallback stays
+available. For that rescue server only, it ignores the Codex watcher disable
+variables and does not start other clients' watchers. These settings still
+stop all capture:
+
+- `trajectory config capture disable`
+- `TRAJECTORY_DISABLED=1`
+
+The user-level disable command also stops a watcher that is already running.
+Files in `~/.trajectory/state/codex-hook-active/` route watcher activity
+through the shared merge while hooks are active. They hold no transcript
+data. Trajectory still keeps a watcher fact that a hook missed.
+
+Setup-written hook commands pass the current capture mode to the server, so a
+feature change does not use a stale server config. A long-running server still
+needs `trajectory config reload --yes` to pick up feature and performance
+settings.
+
+### Token counts
+
+Trajectory keeps track of whether Codex reported each token count:
+
+- An explicit whole number of zero or more is a reported value, including
+  zero.
+- A missing, null, negative, fractional, or invalid count is unavailable.
+- Uncached input needs both the input and the cached-input values.
+- An explicit zero for one request never falls back to a session total.
+
+Live capture and history import use the same rules. They record which token
+parts Codex reported. An older zero value without that record might not mean
+that Codex reported zero. Trajectory does not rewrite metrics that it already
+published because of these rules.
+
+### The `trajectory codex` wrapper
+
+`trajectory codex` is an explicit wrapper for model calls. It keeps the
+request and response for every Responses API exchange by default. This
+includes instructions, conversation input, tool results, tool descriptions and
+parameter schemas, reasoning, tool calls, and assistant output. Streaming
+responses are stored as the ordered list of JSON events. Before Trajectory
+stores a body, the capture redaction replaces secrets and personal data in it,
+as it does in captured prompts. In a streamed response, a redacted text goes
+in the first event of its block and the block's later events are left empty.
+These bodies fill the model span's input and output in Datadog LLM
+Observability and in the local viewer.
+
+The wrapper works as follows:
+
+- It keeps Codex's built-in `openai` provider and normal OpenAI sign-in.
+- It points that provider's `openai_base_url` at a private local proxy.
+- It turns off Codex's request compression for that launch.
+- The proxy answers Codex's WebSocket attempt with `426 Upgrade Required`.
+  Codex then uses HTTP without retrying.
+- The proxy forwards each JSON request unchanged, so Trajectory can read the
+  user messages.
+
+Codex saves the provider ID with each session and uses it again on resume.
+The wrapper never picks a provider ID that plain Codex lacks. You can resume
+a session with or without the wrapper, whichever way it started.
+
+### Model calls without a turn ID
+
+This rule applies to model calls that a Trajectory proxy intercepts, such as
+calls through `trajectory codex`. Some calls arrive without a turn ID. Trajectory
+places each one by comparing its start time with the prompt and turn-end
+records in the session JSONL. It does not use the turn counter at the time
+of delivery, because a delayed call can arrive after its turn ends.
+
+Calls with an explicit turn ID keep it. Claude background-task notifications
+settle their temporary IDs through a separate path.
+
+If Trajectory cannot place a call yet, the call waits in a small local
+queue. Trajectory checks again at later turn boundaries. A prompt that
+arrives after its model call can still claim that call. Claude also checks the
+queue after it writes a prompt. Trajectory never emits a call as a model span
+when it cannot find the call's turn.
+
+### Removing Codex
+
+Uninstall removes Trajectory's hook state and cached plugin references first.
+Then it removes the helper files. If either cleanup step fails, the helper
+files stay in place.
+
+### Verify
 
 ```bash
 codex mcp list
 trajectory doctor
 ```
 
-## Hermes Agent
-
-Setup installs a user plugin at `$HERMES_HOME/plugins/trajectory` and updates
-`$HERMES_HOME/config.yaml` with both `plugins.enabled: [trajectory]` and
-`mcp_servers.trajectory`. Hermes discovers plugins with a `plugin.yaml` and
-`__init__.py register(ctx)` entrypoint, so Trajectory uses that native observer
-surface rather than hook JSON or shell shims.
-When `HERMES_HOME` is unset, Trajectory follows Hermes's platform default:
-`~/.hermes` on macOS and Linux and `%LOCALAPPDATA%\hermes` on Windows.
-
-The plugin registers read-only observer hooks:
-
-- `on_session_start` -> `SessionStart`
-- `pre_llm_call` -> `UserPromptSubmit`
-- `post_api_request` -> `AgentMessage` plus `llm_call` derivation in Go
-- `post_llm_call` -> `Stop`
-- `pre_tool_call` / `post_tool_call` -> tool events
-- approval hooks -> permission events
-- subagent hooks -> subagent events
-- `on_session_finalize` -> `SessionEnd`
-
-The plugin posts to `http://127.0.0.1:19222/capture/hermes/<event>` with a
-bounded timeout and swallows delivery errors so Hermes behavior is unaffected.
-The Go capture runtime records `client_source=hermes`, stores Hermes observer
-turn IDs as `observer_turn_id`, and uses native Hermes `usage` payloads for
-token and cost fields when present.
-
-Durable history uses a separate default-off read-only path:
-
-```bash
-trajectory features enable hermes_durable_history
-trajectory backfill --from-hermes
-trajectory backfill --from-hermes --session <provider-session-id>
-trajectory backfill --from-hermes --force
-```
-
-Trajectory follows the provider's single literal `HERMES_HOME`, opens
-`state.db` read-only with WAL visibility, and reads active messages by their
-autoincrement IDs. It preserves provider IDs, tool lifecycles, lineage, and
-terminal state. Current stores also preserve tool-result effect disposition and
-the bounded `session_model_usage` breakdown as provider diagnostics. Session
-token categories and cost remain session aggregates;
-the importer does not assign them to turns or synthesize historical LLM calls.
-While `trajectory serve` runs, the feature also reconciles `state.db`, its WAL,
-and its shared-memory sidecar in bounded passes. Native observer events remain
-authoritative; provider facts enrich or replace only earlier provider-derived
-facts under the canonical JSONL lock. Native terminal hooks request an exact
-same-session refresh, while polling and a rotating full fingerprint cover
-missed notifications and same-stat rewrites. Provider deletion is diagnostic
-and never deletes an already materialized local trace. The cursor contains
-only bounded provider identities and fingerprints, not transcript content or
-workspace paths. An active final turn remains open until Hermes records its
-provider boundary. The explicit `--force` command remains the bulk-history and
-repair path.
-
-Verify:
-
-```bash
-trajectory setup --clients hermes
-trajectory features enable hermes_durable_history
-trajectory backfill --from-hermes
-trajectory doctor
-```
-
-## Amp Code
-
-Setup writes a system plugin at `~/.config/amp/plugins/trajectory.ts` or
-`$AMP_CONFIG_DIR/plugins/trajectory.ts`, and updates
-`~/.config/amp/settings.json` with `amp.mcpServers.trajectory`.
-
-Amp's plugin lifecycle provides `session.start`, `agent.start`, `tool.call`,
-`tool.result`, and `agent.end`. The Trajectory plugin starts or reuses
-`trajectory serve`, normalizes those events into Pi-compatible payloads, and
-POSTs to `http://127.0.0.1:19222/capture/amp/<event>`. The Go runtime records
-`client_source=amp`. `tool.call` returns an explicit allow decision so capture
-never blocks the tool. The current plugin event types expose thread identity,
-prompts, assistant messages, tool calls/results, and agent status, but not
-model, token, cost, duration, or terminal-session fields; Trajectory leaves
-those fields absent instead of inferring them.
-
-Amp does not expose a session-end plugin event today, so Trajectory does not
-synthesize one. Current CI coverage is fixture-only because Trajectory does not
-have a usable Amp subscription token for `AMP_API_KEY` headless execution.
-
-The default-off `amp_durable_history` feature adds bounded read-only
-reconciliation of top-level `T-*.json` files under
-`~/.local/share/amp/threads` or `$XDG_DATA_HOME/amp/threads`. The provider
-thread ID is also the live plugin session ID: any native event preserves the
-complete trace, while watcher-owned JSONL can be atomically rebuilt after a
-provider rewrite. Current per-message usage and legacy usage-ledger events
-provide exact model and token components. Legacy ledger rows correlate only by
-exact `toMessageId`; provider credits remain a separate native-credit field,
-not USD cost. Passive history never registers a session active and never
-invents terminal lifecycle. Provider deletion retains the local trace as a
-source tombstone. `TRAJECTORY_DISABLE_AMP_HISTORY_WATCHER=1` disables only this
-fallback. `ccusage` remains an independent usage-schema cross-check.
-
-Verify:
-
-```bash
-trajectory setup --clients amp
-trajectory features enable amp_durable_history
-trajectory config reload --yes
-trajectory doctor
-```
-
-## Goose
-
-Setup installs Goose Open Plugins command hooks under
-`~/.agents/plugins/trajectory`, or the equivalent root beneath
-`GOOSE_PATH_ROOT`. Setup resolves a relative override once against setup's
-working directory and embeds that canonical absolute root in every installed
-hook, so a later Goose working directory cannot retarget provider discovery.
-The hook conveys the same authorized absolute root to the long-running server.
-Fresh setup uses the current generic tool-hook family only:
-`PreToolUse`, `PostToolUse`, and `PostToolUseFailure`. The adapter continues to
-accept the older shell/file-specific hooks and suppresses the duplicate pair
-when both families are still installed. It canonicalizes current names such as
-`developer__shell` while preserving `native_tool_name`.
-Because the current generic payload has no provider tool-call ID, simultaneous
-same-name live calls can only use best-effort pre/post correlation. Generic
-post-tool payloads also omit the provider result or error body. Durable message
-history supplies exact request/result IDs and result payloads only when
-Trajectory materializes a provider-owned passive trace; it is not merged back
-into existing native tool events.
-
-Goose hook payloads establish lifecycle, prompts, assistant text, tools, and
-exact session identity, but not authoritative provider usage or invocation
-mode. Lifecycle and prompt HookContext payloads also omit a working directory;
-`capture-hook` therefore conveys its own process cwd with
-`cwd_provenance=hook_process_working_dir` when Goose did not supply one. That
-is invocation-cwd evidence. The durable store is authoritative for the working
-directory on provider-owned passive traces, but usage reconciliation does not
-replace the hook-derived directory on an existing native trace. Because current
-hooks cannot distinguish interactive from headless execution, all Goose hook
-sessions use `source_mode=unknown` and are conservatively headless for
-sensitivity and segmentation.
-
-The default-off `goose_durable_history` feature reads the current
-`sessions`/`messages`/`usage_ledger` schema from `sessions.db`, including its
-WAL/SHM state. Platform discovery follows Goose's current Block/goose data root
-and exact `GOOSE_PATH_ROOT/data/sessions` override, with legacy roots retained
-for migrated installations only when setup has not registered an explicit
-root. A setup-registered root is exclusive, so a stale default-store copy with
-the same session ID cannot override it. Discovery rejects symlink databases and
-caps sessions, rows, row size, fanout, and per-pass reconciliation.
-An aggregate 64 MiB provider-snapshot bound and a 96 MiB materialized-output
-bound prevent individually valid rows from accumulating into an unbounded
-session.
-
-The message parser honors Goose's `userVisible=false` gate for every content
-and tool block while retaining only non-content usage/model evidence. Text and
-thinking remain available for user-visible messages. Image bytes and redacted
-thinking are never retained; system notifications, tool confirmations, and
-action/elicitation variants become typed, metadata-only boundaries labeled
-`provider_structured_content_fidelity=metadata_only` rather than silently
-disappearing or leaking their schemas, arguments, or response payloads.
-
-The provider session ID is also the Open Plugins ID. Watcher-only sessions are
-atomically materialized as incomplete passive history. In those provider-owned
-passive traces, the SQLite snapshot is authoritative for session/parent
-identity, working directory, messages, model/provider, and exact tool
-request/result IDs and payloads. For a native-owned JSONL, only exact per-turn
-usage corrections carrying validated model/token/cache/cost fields and
-metric-ineligible usage observations are appended. Reconciliation does not
-replace hook-derived session metadata, repair best-effort tool IDs, or add
-omitted tool result/error bodies; native content and lifecycle remain
-authoritative. Source revisions deduplicate
-retries, per-turn fingerprints append only new or changed corrections, and
-replacement/clearing corrections are applied in file order. Periodic
-reconciliation keeps SQLite work off the Stop request path and caps the full
-native correction transaction, including ownership/index scans, at two
-seconds. All setup-managed Goose hooks remain foreground through bounded
-server acceptance so provider emission order is preserved; final SessionEnd
-publish and live-state cleanup continue asynchronously only after the durable
-terminal record is committed. A local canonical fallback preserves lifecycle
-when serve is unavailable and, when durable history is enabled, uses the same
-indexed exact-source reconcile before committing SessionEnd. SessionEnd
-attempts one bounded exact pre-terminal reconcile before preserving the
-terminal event. A provider read or lock failure emits an explicit fidelity
-diagnostic instead of discarding SessionEnd. A persisted safe-tail index makes native correction
-reconciliation linear in newly appended JSONL bytes and invalidates on
-same-size rewrites. The index relies on Trajectory's canonical JSONL
-append-only contract: shrink, same-size replacement, or a changed trailing
-boundary resets it, while a historical mutation outside that boundary followed
-by an append is outside the writer contract and requires an explicit backfill
-repair. Provider deletion emits a tombstone diagnostic and never fabricates
-completion. `ccusage` independently corroborates an override plus some default
-roots and the aggregate input/output/total/model shape. It does not cover all
-current platform roots and is not an authority for cache or native cost
-provenance; the current Goose source and ledger are authoritative for those
-fields and for compaction. Only `provider_reported` USD enters attributed cost;
-`estimated`, mixed, or carried-forward amounts remain raw provider observations
-with unavailable attribution. Nullable, partial, negative, or internally
-contradictory token vectors likewise remain raw observations with
-`tokens_status=unavailable`; they never become canonical turn usage. If a hook
-POST may have been accepted but the response is lost, capture skips the
-competing local fallback rather than racing SessionEnd ahead of reconciliation.
-Current Goose does not emit another SessionStart when a non-empty conversation
-is reopened. The first authoritative post-terminal hook therefore creates an
-explicit `resume_evidence=post_terminal_hook` generation boundary before the
-new event, reopens enrichment, and restores sequence allocation above the
-existing JSONL maximum.
-
-```bash
-trajectory setup --clients goose
-trajectory features enable goose_durable_history
-trajectory config reload --yes
-trajectory doctor
-```
-
-## Cline CLI
-
-Setup writes Trajectory-owned file hooks under `~/.cline/hooks` or
-`$CLINE_DIR/hooks`, plus a verification manifest at
-`~/.cline/hooks/.trajectory-cline-hooks.json`. The Cline MCP settings live at
-`~/.cline/data/settings/cline_mcp_settings.json`, or the path selected by
-`CLINE_DATA_DIR` or `CLINE_MCP_SETTINGS_PATH`.
-
-Cline loads one hook script per hook file name. Trajectory installs fail-open
-scripts for `TaskStart`, `TaskResume`, `UserPromptSubmit`, `PreToolUse`,
-`PostToolUse`, `TaskComplete`, `TaskCancel`, `TaskError`, and
-`SessionShutdown`. Existing user hook files are preserved: if `TaskStart.sh`
-already exists and is not Trajectory-managed, setup chooses the next supported
-suffix such as `TaskStart.bash`.
-
-The scripts invoke `trajectory capture-hook --client cline --ensure-serve` and
-send stdin payloads to `/capture/cline/<event>`. The Go runtime accepts both the
-file names and Cline's native payload hook names such as `agent_start`,
-`prompt_submit`, `tool_call`, `tool_result`, `agent_end`, and
-`session_shutdown`. Captured rows use `client_source=cline` and
-`source_dialect=cline.cli.hooks.v1`.
-
-Current Cline hooks expose lifecycle, prompt, tool, assistant summary, and
-shutdown payloads, but not stable token/cost usage. Trajectory therefore emits
-`turn_end.tokens_status=unavailable` until Cline exposes provider usage
-metadata or a transcript backfill path is added.
-
-Verify:
-
-```bash
-trajectory setup --clients cline
-trajectory doctor
-```
-
-## Qwen Code
-
-Setup merges Trajectory-owned settings into `~/.qwen/settings.json` or
-`$QWEN_HOME/settings.json`. It preserves existing provider and user hook
-configuration, adds `mcpServers.trajectory`, appends
-`security.allowedHttpHookUrls` for
-`http://127.0.0.1:19222/capture/qwen/*`, and registers native HTTP hooks that
-POST directly to `/capture/qwen/<event>`.
-
-Registered emitting events include `SessionStart`, `UserPromptSubmit`,
-`PreToolUse`, `PostToolUse`, `PostToolUseFailure`, `PermissionRequest`,
-`PermissionDenied`, `SubagentStart`, `SubagentStop`, `PreCompact`,
-`PostCompact`, `Notification`, `Stop`, `StopFailure`, and `SessionEnd`.
-Qwen-only enrichment hooks such as `TodoCreated` and `InstructionsLoaded` are
-accepted as no-op capture signals so setup can stay aligned with upstream hook
-names without fabricating user-visible events.
-
-The Go capture runtime records `client_source=qwen`. It maps Qwen
-`usageMetadata` fields (`promptTokenCount`, `candidatesTokenCount`,
-`thoughtsTokenCount`, and `cachedContentTokenCount`) into Trajectory token
-fields and emits provider-call `llm_call` rows when a model and token usage are
-available with both prompt and total counters. `cachedContentTokenCount` is a
-subset of `promptTokenCount`; `candidatesTokenCount` can overlap
-`thoughtsTokenCount`. The runtime uses `totalTokenCount` to form strict,
-disjoint uncached-input, cache-read, visible-output, and reasoning categories.
-Without the total anchor, it preserves the raw candidate/thought counters,
-labels the derived split partial, and does not emit a strict `llm_call` or
-estimated cost. Malformed counters or contradictions such as cached tokens
-exceeding prompt tokens receive the same partial, unpriced treatment; the
-provider's numeric counters remain attached as evidence instead of being
-silently clamped into an apparently strict result. When stop payloads omit
-usage, the runtime reads the Qwen chat JSONL transcript referenced by
-`transcript_path`. That fallback applies the same strict counter contract,
-reads only a
-newline-aligned 256 KiB tail, inspects at most 128 records, and refuses records
-larger than 192 KiB. `qwen_transcript_status` and
-`qwen_transcript_truncated` disclose unavailable or partial fallback evidence;
-the reader never returns older usage after the newest matching assistant record
-omits usage.
-
-Default-off durable-history reconciliation and manual repair use:
-
-```bash
-trajectory features enable qwen_durable_history
-trajectory backfill --from-qwen-sessions [--session ID] [--force]
-```
-
-Runtime-root resolution matches current Qwen Code: process and user-level
-`.env` overrides are applied first; `QWEN_RUNTIME_DIR` wins; otherwise
-`advanced.runtimeOutputDir` is merged in system-default, user, trusted-workspace,
-then system-override order; `QWEN_HOME` or `~/.qwen` is the fallback. Relative
-paths are working-directory relative. This source contract was audited against
-Qwen Code 0.19.11 at `c56ae42fed50aad97b51b856ee721984d5916618`;
-0.19.2 remains the version covered by live CI. The importer reads at most 256 MiB from
-regular, non-symlink `projects/*/chats/*.jsonl` and
-`projects/*/chats/archive/*.jsonl` sources. A session found in both stores or
-at multiple paths is reported as ambiguous rather than guessed.
-
-The importer reconstructs the physical tail's active `parentUuid` chain,
-coalesces same-UUID fragments in append order, and keeps the latest physical
-custom title even when title re-anchoring is outside the active branch. Native
-hooks remain authoritative for observed lifecycle and tool timing; retained
-history is authoritative for its per-request assistant usage because Qwen's
-Stop hook exposes only the terminal request. Prompt plus total counters produce
-strict disjoint tokens and `llm_call` events. Without total, raw
-candidate/thought counters are retained with partial fidelity and no strict
-cost. Invalid, overflowing, or contradictory counters likewise retain numeric
-provider evidence but cannot emit strict calls or estimated cost. Canonical replacement
-uses the same JSONL lock as native capture. Since the transcript has no durable terminal marker, the importer emits
-turn boundaries but never fabricates `session_end`.
-
-While the flag is enabled, `trajectory serve` also runs a bounded watcher. Its
-first pass pages existing active and archived sources by source count and
-bytes; later passes combine filesystem notifications, cheap signatures, and
-rotating full hashes so
-same-size/same-mtime rewrites are eventually detected. A crash-safe cursor
-retries unacknowledged materialization and local-UI ingest. Native Stop and
-SessionEnd hooks request exact reconciliation, and their `transcript_path`
-teaches the watcher about workspace-specific runtime roots. Provider deletion
-is a tombstone only: retained Trajectory history remains and no lifecycle end
-is inferred. Rebuilt canonical snapshots also replace their local-UI
-materialization, so spans removed by a provider rewrite do not linger.
-Canonical replacement uses the same per-JSONL lock as native capture, so a
-concurrent hook append is merged rather than lost.
-
-A valid terminal-hook transcript path also starts discovery when Qwen was not
-visible to the serve process at startup. If another serve process currently
-owns the watcher lease, the receiving process performs the exact reconciliation
-once while retaining that root for watcher handoff.
-
-Automatic discovery begins with the serve process's effective Qwen runtime
-root and roots observed in native transcript paths. Historical roots that were
-selected only by another workspace's settings before Trajectory was enabled
-cannot be enumerated globally; run the explicit backfill command from that
-workspace as the complete-history repair path.
-
-Verify:
-
-```bash
-trajectory setup --clients qwen
-trajectory doctor
-```
-
-## Kiro CLI
-
-Setup writes Trajectory-owned Kiro agent configuration into
-`~/.kiro/agents/trajectory.json` or `$KIRO_HOME/agents/trajectory.json`, and
-merges `mcpServers.trajectory` into `~/.kiro/settings/mcp.json`.
-Stable Kiro 2.x loads those embedded hooks when the setup-owned agent is
-selected with `--agent trajectory`; setup does not replace the user's default
-agent.
-
-Kiro CLI exposes command hooks from agent configuration. Trajectory registers
-fail-open command hooks for `agentSpawn`, `userPromptSubmit`, `preToolUse`,
-`postToolUse`, and `stop`; Kiro passes each payload as JSON on stdin, and the
-hook command invokes:
-
-```bash
-trajectory capture-hook --client kiro --ensure-serve --ensure-serve-wait 2s <event>
-```
-
-The Go capture runtime records `client_source=kiro` and
-`source_dialect=kiro.cli.hooks.v1`. `stop` payloads include
-`assistant_response`, so Trajectory writes an `agent_message` followed by
-`turn_end`. Current documented Kiro hook payloads do not expose stable token or
-cost fields, so turn records use `tokens_status=unavailable`.
-
-The optional `kiro_durable_history` feature adds bounded passive reconciliation
-of `$KIRO_HOME/sessions/cli/*.jsonl` plus companion metadata and the macOS or
-Linux `kiro-cli/data.sqlite3` `conversations_v2` and legacy `conversations`
-stores:
-
-```bash
-trajectory features enable kiro_durable_history
-```
-
-Provider files are opened read-only, symlinks are rejected, discovery and each
-pass are bounded, SQLite uses query-only mode with WAL visibility, and an
-in-flight cursor makes delivery retryable after a process crash. Initialization
-errors retry with bounded backoff. The exact provider session ID forms one
-source across JSONL, SQLite, and hooks. JSONL is the content authority; SQLite
-enriches only an exact provider message ID. No ordinal join is allowed. Native
-hook content owns any mixed Trajectory JSONL. Deletion creates a diagnostic
-tombstone without removing local history or inventing `session_end`. A stable
-Windows SQLite location is not documented, so Trajectory does not guess one;
-the JSONL contract remains available through `KIRO_HOME`.
-
-The durable schema exposes exact messages, model IDs, tool IDs/results, CWD,
-and timestamps but no native token or cost vector. Trajectory does not convert
-`response_size` bytes or predecessor local usage estimates into tokens. ccusage
-has no Kiro adapter, which supports leaving usage unavailable but is not a
-schema authority. Kiro 3.0 early-access session storage is incompatible with
-stable 2.x and is not claimed by this watcher.
-
-Kiro's current docs use `includeMcpJson` in agent config; the older
-Amazon Q Developer CLI repository used `useLegacyMcpJson`, which is retained
-only as predecessor context and not written by Trajectory.
-
-Verify:
-
-```bash
-trajectory setup --clients kiro
-trajectory features enable kiro_durable_history
-trajectory config reload --yes
-trajectory doctor
-```
-
-## Grok Build
-
-Grok Build instrumentation is a default-off hybrid integration:
-
-```bash
-trajectory features enable grok_build_instrumentation
-trajectory setup --clients grok
-```
-
-Setup owns `$GROK_HOME/hooks/trajectory.json` (default
-`~/.grok/hooks/trajectory.json`),
-`$GROK_HOME/skills/trajectory-incognito/SKILL.md`, and
-`~/.trajectory/bin/grok-incognito`. Global hooks are provider-supported and do
-not depend on project trust. Setup writes one separate owned hook file, and
-uninstall never edits or removes sibling user hook files.
-
-All documented native events route through
-`trajectory capture-hook --client grok`: `SessionStart`,
-`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`,
-`PermissionDenied`, `Stop`, `StopFailure`, `Notification`, `SubagentStart`,
-`SubagentStop`, `PreCompact`, `PostCompact`, and `SessionEnd`. Camel-case
-provider fields are normalized without discarding the raw payload. Native
-session IDs and `transcriptPath` values wake only the matching durable source.
-
-The watcher reads provider-owned session directories from
-`$GROK_HOME/sessions` or `~/.grok/sessions`, the `GROK_DIR` compatibility
-override, and explicit `TRAJECTORY_GROK_HISTORY_DIRS`. A logical fingerprint
-covers summary, update log, chat history, signals, and root/child metadata.
-Cold history drains in bounded passes; exact notifications are serialized with
-periodic scans; delivery is persisted before materialization and acknowledged
-after canonical and local-UI ingestion. Same-stat rewrites, restart replay,
-corrupt cursor failure, source mutation, and tombstones are part of the tested
-contract. `TRAJECTORY_DISABLE_GROK_HISTORY_WATCHER=1` disables only this
-watcher; the global watcher disable and feature policy also win.
-
-Durable history supplies prompt, assistant/reasoning, tool, model, workspace,
-Git, and relationship evidence. Native capture remains authoritative.
-Provider-snapshot time is not terminal evidence, and source deletion does not
-create `session_end`. `signals.json` token-like counters are session-scoped
-diagnostics only because the provider does not link them to calls or turns;
-Trajectory emits no canonical token total or cost from them.
-
-Fixture, setup, detector, inventory, watcher, backfill, canonical JSONL,
-SQLite, and local-UI contracts run without credentials. An official 0.2.103
-binary was probed without authentication for version, help, inspect output,
-and its unauthenticated failure path. A dedicated authenticated identity is
-still required for a live native-hook and mutation pilot.
-
-## Devin CLI
-
-Devin support is a preview and defaults off. Enable it before setup:
-
-```bash
-trajectory features enable devin_cli_instrumentation
-trajectory setup --clients devin
-```
-
-Setup preserves unrelated user configuration while merging only
-Trajectory-owned entries into the platform config (`~/.config/devin/config.json`
-on macOS/Linux or `%APPDATA%\devin\config.json` on Windows):
-
-- fail-open `SessionStart`, `Stop`, `PostCompaction`, and `SessionEnd` hooks used
-  only to wake source reconciliation
-- `mcpServers.trajectory` for the incognito control tool
-- a `skills/incognito/SKILL.md` below that platform config root for the global
-  `/incognito` UX
-
-When `devin_cli_instrumentation` is disabled, setup must not mutate Devin
-configuration or install those assets, and runtime reconciliation must remain
-off. Uninstall removes only Trajectory-owned entries and files.
-
-Devin's documented hook schemas do not include a stable `session_id`, including
-the lifecycle hooks Trajectory uses as wakes. Raw hook payloads therefore
-must not be mapped directly to canonical Trajectory records. They are wake
-hints that tell the watcher to reconcile active or changed source identities:
-
-- macOS: `~/Library/Application Support/devin/cli/sessions.db` with transcripts
-  under the adjacent `transcripts/` directory
-- Linux: `~/.local/share/devin/cli/sessions.db` with transcripts under the
-  adjacent `transcripts/` directory
-- Windows: `%APPDATA%\devin\cli\sessions.db` with transcripts under the
-  adjacent `transcripts\` directory
-
-The reconciler prefers `transcripts/<session-id>.json` and falls back to
-`message_nodes.chat_message` in `sessions.db`. Each database/session pair is a
-separate source identity and fingerprint, so concurrent sessions are processed
-without selecting the newest session for a working directory.
-
-The source parser records `client_source=devin` and keeps the original
-database/session provenance in source metadata while mapping it to a
-Trajectory-safe session identifier. Transcript and fallback rows can provide
-prompts, assistant/thinking content, tool calls/results, model identity, and
-per-step prompt, completion, and cache metrics. Final-only aggregate
-`Snapshot.Usage` is parsed but is not yet emitted or materialized. If a
-supported source exposes native cost, it must stay distinct from estimates.
-
-There is no user-invoked bulk historical backfill/import. The source runtime is
-limited to active or changed sources. Durable cursor/delivery recovery, bounded
-fanout continuation, and resumable bounded replacement after an upstream
-mutation are covered. A replacement can span several delivery budgets without
-restarting from page zero. Staging remains side-effect free until canonical
-replacement, is globally bounded to eight directories and 256 MiB with a
-24-hour age limit, and is discarded if any payload is a symlink. Replacement
-atomically refreshes canonical JSONL, then commits prepared live-state,
-delivery, and publish projections and queues a bounded local-UI snapshot
-refresh. If any post-canonical boundary fails or the bounded work queue is full,
-the provider cursor remains unacknowledged and the idempotent projection repair
-retries. Completed-turn and mutation-snapshot work is retained durably before
-source acknowledgement and retries in-process or after restart until local-UI
-ingestion succeeds and turn publication succeeds or is durably queued. Durable
-provider turn identity pairs prompts and Stops across separate deltas without
-scheduling assistant-only history. Monotonic requested/completed snapshot
-generations prevent an in-flight refresh from erasing a newer mutation.
-Canonical terminal rows retain a provider snapshot fingerprint, so
-rediscovering an unchanged completed source is a no-op even after its bounded
-cursor row has expired; a changed fingerprint triggers replacement. A
-correction to a finalized source retains exactly one terminal event, and
-rebuilt token/cost
-observations are marked ineligible for additive metric replay.
-Terminal intents are versioned by provider snapshot and finalization holds the
-same cross-process delivery fence as canonical repair, so an older worker or a
-new watcher owner cannot acknowledge or concurrently finalize a correction.
-Transient terminal failures remain in the durable outbox and retry in-process
-with bounded exponential backoff; restart recovery is not required to resume
-them.
-Active-projection recovery is sequence-fenced across crashes. The cursor holds
-at most 8,192 resident plus completed rows and 16 MiB, preserving a
-completed-source window as large as the production resident limit. Indexed
-cursor migration leaves a fail-closed rollback guard and preserves the prior v1
-cursor as a recovery backup rather than letting an older binary replay every
-visible source. Delivery-state TTL cleanup removes at most 4,096 expired rows per maintenance
-pass and continues on a bounded cadence while the watcher remains active.
-An already-published remote row that the provider later removes cannot be
-retracted from the destination.
-
-Free-form session titles, prompts, assistant, thinking, tool input, and tool
-response fields are redacted before either canonical JSONL or the
-crash-recovery ledger is written.
-Enabling incognito also writes conservative provider-reconciliation evidence.
-Delayed source reads remain private after an explicit disable; terminal
-completion removes that auxiliary evidence only after canonical event markers
-are durable. A source that never proves authoritative terminal completion keeps
-the evidence indefinitely as a fail-closed privacy record. Mutation repair
-carries those markers forward, so recovery and later corrections cannot drop
-publish suppression.
-
-The observed database/transcript schema has no authoritative interactive versus
-headless field. Conservatively mark every source-reconciled Devin session
-headless/unknown and skip sensitivity classification and segmentation until a
-supported mode signal exists. Emit terminal closure only after proving the
-database-message to finalized-transcript transition for that exact source
-identity. Without that transition, do not synthesize `session_end`; report
-terminal closure and final-session metrics as unsupported gaps. Devin source
-sessions are provider-terminal-authoritative: generic server shutdown and
-orphan recovery must not synthesize closure for them, but crash recovery does
-finalize an already-written authoritative provider terminal. The terminal
-outbox keeps cleanup and recovery rows until both are acknowledged. If the
-process exits after external finalization succeeds but before its effect marker
-is durable, finalization may be retried; destination publish receipts remain
-the deduplication authority and local cleanup is idempotent.
-
-Devin reads Claude hook configuration by default. Do not change that user
-preference. Imported Trajectory Claude hooks must be ignored or reattributed
-when `DEVIN_PROJECT_DIR` identifies a Devin process, preventing duplicate
-Claude/Devin records for one action.
-
-Verification is fixture-first: use sanitized current-format database and
-transcript fixtures, a database-only fallback fixture, and separate concurrent
-source identities. Devin now documents `devin --print` as a stable headless
-execution mode and stores a persistent token in `credentials.toml`, but the
-protected CI environment does not yet provision a dedicated Devin identity or
-that credential file. Do not infer a `DEVIN_API_KEY`; add a live gate only after
-the dedicated credential and pilot are available. The pinned ccusage comparison
-also declines to claim Devin usage because it found no generally reliable local
-history; Trajectory therefore emits only explicit per-step metrics present in a
-source record and does not infer missing aggregate usage.
-
-Verify the enabled setup surface with:
-
-```bash
-trajectory features enable devin_cli_instrumentation
-trajectory setup --clients devin
-trajectory doctor
-```
-
-## gptme
-
-gptme 0.32 support is default-off and hybrid:
-
-```bash
-trajectory features enable gptme_instrumentation
-trajectory setup --clients gptme
-```
-
-Setup writes the actual gptme user config consumed by v0.32,
-`~/.config/gptme/config.toml`, on every OS. It installs the
-`trajectory_gptme` folder plugin, enables a named `trajectory` MCP server, and
-registers `/incognito`. Writes are ownership-aware and fail before mutation
-when higher-priority local/project configuration would hide the integration.
-
-The plugin sends metadata-only `SessionStart`, `UserPromptSubmit`,
-`PreToolUse`, `PostToolUse`, `Stop`, and `SessionEnd` wake/lifecycle events.
-It never duplicates prompt, assistant, or tool content. The server correlates
-the raw provider session ID exactly, scans only that source, and uses the
-plugin's terminal event without selecting a newest same-project session.
-
-The authoritative source is the composite of `conversation.jsonl`,
-`events.jsonl`, and `config.toml` below `GPTME_LOGS_HOME` or gptme's current
-data roots. Fingerprints include all three files. Event replay recovers partial
-conversation writes and edit/undo replacements; the durable cursor contains
-only hashes and IDs. Cold start, changed-path fanout, polling, fsnotify,
-replacement, and tombstones are bounded.
-
-Preserve native per-message token categories and aggregate all provider calls
-within the user turn. Preserve recorded cost as computed provenance. Treat
-naive local timestamps as timezone-unknown. Only explicit
-`--non-interactive` is authoritative headless evidence; absent mode remains
-headless/unknown for privacy-derived features.
-
-Default CI installs gptme 0.32.0, runs `mock/echo`, and requires a native
-plugin `SessionEnd`. Synthetic current-schema fixtures cover mutation and
-positive non-headless privacy behavior, and the local-ui contract covers list,
-trace, fetch, and scalar readback. Do not enable gptme's optional native OTLP
-until hook/store/OTLP deduplication has a deterministic contract.
-
-## CodeWhale
-
-CodeWhale 0.9.0 support is a default-off, watcher-first preview:
-
-```bash
-trajectory features enable codewhale_instrumentation
-trajectory setup --clients codewhale
-```
-
-Setup owns only its user-level hook entries, MCP registration, and incognito
-skill. The native `session_start`, `message_submit`, tool, `turn_end`, error,
-subagent, and `session_end` hooks are wake hints: CodeWhale generates an
-independent `sess_*` hook identifier rather than exposing the UUID in the saved
-session. Trajectory therefore never treats hook identity or hook content as the
-authoritative transcript. The installed `/incognito` workflow is model-mediated
-through the `trajectory_incognito` MCP tool; it is not a native deterministic
-CodeWhale toggle.
-
-Saved sessions are schema-v1 JSON files under `$CODEWHALE_HOME/sessions` when
-that variable is explicitly set. Otherwise CodeWhale uses
-`~/.codewhale/sessions`, relocating or merging missing files from the legacy
-`~/.deepseek/sessions` root without overwriting current data. Trajectory watches
-direct saved-session files, hashes content so same-size atomic replacement is
-visible, treats `checkpoints/latest.json` as the same in-flight logical session,
-and excludes `checkpoints/offline_queue.json`. The similarly named
-`DEEPSEEK_TUI_SESSIONS_DIR` is not a current CodeWhale runtime setting.
-
-The runtime API and background task manager also persist schema-v2 records under
-`$DEEPSEEK_RUNTIME_DIR` or the selected task root's `runtime` directory:
-`threads/<id>.json`, `turns/<id>.json`, `items/<id>.json`,
-`events/<thread>.jsonl`, and `state.json`. Runtime thread, turn, and item files
-are atomic replacements; the event file is append-only and globally sequenced.
-Trajectory reconciles terminal records after restart and uses events only for
-lower-latency wakeup. A runtime thread's optional `session_id` links it to the
-saved UUID; linked stores materialize one CodeWhale session, not duplicate
-traces. Unlinked runtime threads keep their own stable identity until such a
-link appears.
-
-Runtime turns preserve exact input, output, cache-hit, cache-miss, reasoning,
-and reasoning-replay usage plus effective provider/model, timing, status, and
-error. Saved messages have no native per-message timestamp, model, or usage, so
-their ordering time is synthetic. Saved `metadata.total_tokens` and cost are
-session-only facts; cost is CodeWhale-computed, not provider billing. In
-headless exec persistence, `model_provider` reflects the explicit provider
-selection. Trajectory still prefers exact runtime provenance for per-turn
-provider and model attribution when it is available.
-
-`codewhale exec` does not execute native hooks. Plain one-shot exec also writes
-no saved session unless it resumes an existing session. `--output-format
-stream-json` persists a saved session and emits exact terminal input/output
-tokens, but does not expose cache, reasoning, or cost categories. Setup does not
-install a wrapper. The default credential-free gate validates the checked-in
-native dialect, installs the published CodeWhale 0.9.0 wrapper and binary, and
-runs its real stream-JSON exec against a loopback OpenAI-compatible server.
-It then reconciles the native saved session through the worktree Trajectory
-binary and requires one canonical turn, synthetic timestamp provenance, and
-the unchanged native session-token aggregate in local-UI storage. Installation,
-binary-version, durable schema-v1, provider-selection, exact terminal-token,
-canonical replay, and materialization assertions fail closed.
-
-Until a source exposes an authoritative interaction mode, sensitivity scanning
-and task segmentation skip the session. Positive non-headless privacy behavior
-remains fixture-backed. The independent ccusage adapter census currently has no
-CodeWhale adapter, so it is retained as a negative cross-check rather than used
-to validate CodeWhale token or cost derivation.
-
-## ForgeCode
-
-ForgeCode is a default-off passive-history integration:
-
-```bash
-trajectory features enable forgecode_instrumentation
-trajectory setup --clients forgecode
-```
-
-The provider package scans `.forge.db` under `FORGE_CONFIG` when set, otherwise
-under an existing legacy `~/forge` root or the current `~/.forge` root. It
-opens SQLite read-only, includes WAL and SHM changes in freshness, and creates
-one path-safe logical session per canonical database and provider conversation
-ID. Cold-start discovery, changed-path fanout, and reconciliation are bounded.
-The durable cursor stores full content fingerprints, so
-same-size/same-mtime row rewrites are eventually detected even when cheap
-SQLite file metadata does not change.
-
-The conversation context is authoritative for messages, raw content, model,
-reasoning, tool arguments/results, failure state, native usage precision,
-provider cost, and child-conversation IDs. The system message is also the
-authoritative CWD source when it carries ForgeCode's
-`current_working_directory` tag. Tool results that name an AI child
-conversation create exact parent/child events; no temporal or workspace join is
-used.
-
-Message rows have provider order but no native timestamps. The adapter anchors
-their deterministic synthetic ordering at `conversation.created_at` and marks
-both ordering and timestamp provenance. Actual token components use native
-token fields. Approximate or mixed components use estimated fields and retain
-the provider usage object, preventing them from becoming strict provider-call
-usage. Provider cost remains provider-reported.
-
-The watcher never treats a durable row as active or complete. It emits no
-`session_end`, does not register a passive session as active, preserves the
-local archive after tombstones, and rebuilds only derived JSONL on mutation.
-Missing interaction mode is conservatively marked headless so sensitivity and
-segmentation skip rather than infer an interactive session.
-Setup writes no launcher shim or shell configuration. Product detection requires
-the read-only `forge config path` signature ending in `.forge.toml`, avoiding a
-collision with unrelated binaries named `forge`.
-
-Setup merges only the owned `mcpServers.trajectory` entry in `.mcp.json` and
-writes owned skill/command assets. Incognito requires an exact session selected
-from `trajectory status --json`; passive history never guesses a conversation
-by recency or workspace. Fixture coverage materializes the sanitized upstream
-schema in a WAL-mode SQLite database and exercises parser, mutation, watcher,
-setup, marker, and Lapdog list/trace/fetch/scalar behavior. Live CLI persistence
-and model-mediated incognito remain explicit follow-ups.
-
-## Warp/Oz CLI
-
-Warp/Oz support is default-off and limited to local provider-owned stores:
-
-```bash
-trajectory features enable warp_oz_instrumentation
-trajectory setup --clients warp
-```
-
-Setup owns only `mcpServers.trajectory` in `~/.warp/.mcp.json` and the
-`~/.warp/skills/trajectory-incognito/SKILL.md` file. The capture server watches
-bounded stable, preview, legacy, and TUI roots for `warp.sqlite`, `-wal`, and
-`-shm` changes. `WARP_DIR` is the explicit override. The source maps each
-canonical database/conversation pair to one stable Trajectory identity.
-
-Prefer rich `agent_tasks` rows decoded with public Warp protobuf commit
-`248f5f62663e`. Preserve task and parent-task IDs as canonical subagent links.
-If no rich messages decode, fall back to user prompts in `ai_queries`; do not
-synthesize assistant text, tool calls, token splits, or cost. Emit
-`warp.source.protobuf_decode_incomplete` with the schema pin whenever any rich
-row cannot be decoded. Conversation token usage is aggregate-only and must stay
-separate from per-message input/output usage. It remains diagnostic source
-metadata and is not materialized or published as canonical token usage.
-
-No local store field currently proves invocation mode or terminal closure, so
-source sessions are headless/unknown and no terminal event is synthesized.
-`oz agent run-cloud` is outside the supported contract.
-
 ## GitHub Copilot CLI
 
-Setup writes a local Copilot marketplace under
-`~/.trajectory/copilot-marketplace`, registers it, and installs
-`trajectory@trajectory`. The plugin includes command hooks, `.mcp.json`, and an
-incognito skill.
+### Setup and hooks
 
-Every command hook invokes `trajectory capture-hook --client copilot
---ensure-serve`, preserving one delivery ID across retirement resets and
-duplicate suppression.
+Setup writes a local Copilot marketplace in `~/.trajectory/copilot-marketplace`.
+It registers the marketplace and installs `trajectory@trajectory`. The plugin
+includes command hooks, `.mcp.json`, and an incognito skill.
 
-Provider-owned local history is available through
-`trajectory backfill --from-copilot-sessions [--session ID] [--force]`.
-`COPILOT_HOME` replaces the complete default `~/.copilot` root. The importer
-reads current `session-state/<id>/events.jsonl` plus `workspace.yaml` and legacy
-flat `<id>.jsonl`, with bounded read-only discovery and current-layout
-precedence. It merges into native hook JSONL without replacing native events,
-keeps shutdown usage session-scoped, separates fresh input from cache reads and
-writes, and does not reinterpret provider request units as USD.
+Every command hook runs `trajectory capture-hook --client copilot
+--ensure-serve`. The hook keeps one delivery ID across server restarts, so
+retries do not create duplicates.
 
-Enable automatic reconciliation for newly created or changed session-state
-sources with:
+Copilot hook payloads have no tool call ID. Trajectory names a hook
+`tool_use` with a hash of the tool name and input. Provider history names the
+same call with Copilot's call ID. When Trajectory merges history, it joins the
+two records. The hook record stays and gains Copilot's call ID as
+`source_tool_use_id`. Identical calls pair up in order.
+
+Copilot CLI 1.0.91 sends the first `UserPromptSubmit` of a process before
+`SessionStart`. A resume `SessionStart` keeps the turn that the prompt
+opened. In the merged session file, each `session_start` comes first in its
+generation. The first one is the first record in the file. A resume start
+follows the `session_end` that closed the generation before it.
+
+### Session history
+
+To import past sessions, turn on `copilot_durable_history` and run:
 
 ```bash
-trajectory features enable copilot_cli_durable_history
+trajectory session import copilot [--session ID] [--force]
+```
+
+`COPILOT_HOME` replaces the whole default `~/.copilot` folder. The importer
+reads these files without changing them:
+
+- the current `session-state/<id>/events.jsonl` and `workspace.yaml`
+- legacy flat `<id>.jsonl` files
+
+The current layout wins when both exist. The importer merges history into the
+hook JSONL without replacing hook events. It keeps shutdown usage at session
+level. It separates fresh input from cache reads and cache writes. It does not
+treat Copilot request units as USD.
+
+To pick up new and changed session-state files automatically, run:
+
+```bash
+trajectory config features enable copilot_cli_durable_history
 trajectory config reload --yes
 ```
 
-The default-off watcher uses the same central `COPILOT_HOME` resolver and exact
-source materializer as manual backfill. Startup establishes a content-free
-baseline and does not replay old history. Exact file notifications and bounded
-polling detect current/legacy creation, append, replacement, same-stat rewrite,
-sidecar change, and deletion. One machine-wide lease owns delivery; a
-content-free cursor persists per-source fingerprints and in-flight work across
-restart. Provider files remain read-only, native hook facts win during atomic
-merge, active/resumed tails remain open, and deletion is a source tombstone-not
-a fabricated `session_end`. The explicit backfill command remains the bulk
-historical import and repair surface.
+This watcher is off by default. It uses the same `COPILOT_HOME` rules and
+reader as the manual import. It works as follows:
 
-Request-grain native usage is available through an explicit transparent
-launcher:
+- On startup it records a baseline and does not replay old history.
+- It notices new files, appends, replaced files, and deleted files in the
+  current and legacy layouts, plus `workspace.yaml` changes.
+- One process on the machine delivers events. It saves its progress, without
+  content, across restarts.
+- It never changes Copilot's files. Hook facts win when both sources have the
+  same fact.
+- Active and resumed sessions stay open. A deleted file is recorded as
+  deleted. Trajectory does not write a `session_end` for it.
+
+Use the import command for bulk history and repair.
+
+### Usage and cost
+
+Copilot reports usage at shutdown and in native OTel, never in hooks. What a
+session records depends on which sources are on:
+
+| Sources | Tokens | Model | Cost |
+| --- | --- | --- | --- |
+| Hooks only (the default) | None. `turn_end` stays `tokens_status=pending` | None | None |
+| Hooks and `copilot_cli_durable_history` | The session total on `session_end` (`total_token_usage`, `tokens_status=session_aggregate_only`). Each `turn_end` is `session_aggregate_only` with no vector | Each turn and the session | None per turn. The session total can be priced once for the session |
+| Hooks, `copilot_cli_native_otel` and the launcher | Each request (`llm_call.tokens`) and each turn (`turn_end.token_usage`, `tokens_status=real`). The session total is the one history held at the last trace export | Each request, each turn and the session | Each request (`cost_nanodollars`) and each turn |
+| All three | Each request, each turn and the session total | The same | The same |
+
+A model with no rate in the rate card records tokens and no cost.
+
+`session_end` carries the shutdown `modelMetrics` total in
+`total_token_usage`, `total_input_tokens`, and `total_output_tokens`. The
+merge drops the totals that the `SessionEnd` hook computes. Copilot writes its
+usage after that hook returns, so those totals miss at least the last turn.
+
+Copilot CLI 1.0.91 appends `session.resume` when a second process continues a
+session. The session then stays open until the next `session.shutdown`. The
+shutdown counts add up across resumes.
+
+### Native OTel
+
+For per-request usage, use the launcher:
 
 ```bash
 trajectory setup --clients copilot --install-client-shims
-trajectory features enable copilot_cli_native_otel
+trajectory config features enable copilot_cli_native_otel
 trajectory config reload --yes
 ```
 
-When enabled, the launcher injects content-disabled OTLP endpoints only for a
-Copilot process that has no external exporter, custom OTel scope, file
-exporter, or explicit telemetry disable. `trajectory serve` accepts only
-first-party `service.name=github-copilot` / `github.copilot` spans. It retains
-split-batch ancestry until the top-level default-agent root proves the provider
-session, maps nested agent calls from span ancestry, joins the service request
-ID to provider history for the resolved model and durable user interaction,
-and acknowledges deduplication only after the canonical JSONL merge succeeds.
-Copilot's cache-inclusive input count is converted to exclusive input,
-cache-read, and cache-creation categories. The shared model rate card produces
-labeled estimated USD; premium-request multipliers and nano-AIU remain
-separate provider diagnostics.
+The launcher sets OTLP endpoints with content turned off. It does this only
+for a Copilot process that has none of these:
 
-## Gemini CLI
+- an external exporter
+- a custom OTel scope
+- a file exporter
+- telemetry turned off on purpose
 
-Setup writes:
+`trajectory serve` accepts only first-party spans with
+`service.name=github-copilot` or `github.copilot`. It works as follows:
 
-```text
-<effective-home>/.gemini/settings.json
-<effective-home>/.gemini/hooks/hooks.json
-<effective-home>/.gemini/skills/incognito/SKILL.md
-<effective-home>/.gemini/commands/incognito.toml
+- It holds spans from split batches until the top-level span names the
+  session.
+- It maps nested agent calls from span parents.
+- It joins each request to provider history for the model and user prompt.
+- It confirms a span only after the merge into session JSONL succeeds.
+
+The top-level span is the `invoke_agent` span with no parent. Up to Copilot
+CLI 1.0.73 it carries `gen_ai.agent.id=github.copilot.default`. In 1.0.91 it
+has no agent ID. The history join uses the service request ID. When history
+has none, as in 1.0.91, it uses the span's `gen_ai.response.id`. That value
+equals the message's `apiCallId`. History also has an output-only `llm_call`
+for the same response. Trajectory merges it into the native request, so each
+request is recorded once.
+
+Copilot counts cached tokens inside its input count. Trajectory splits that
+count into input, cache-read, and cache-creation parts. Reasoning tokens are
+part of the output count and are priced once. The shared model rate card gives
+labeled estimated USD. Premium-request multipliers and nano-AIU stay separate
+provider diagnostics.
+
+Each `turn_end` carries these values:
+
+- the sum of its requests in `token_usage`
+- the model that served the most tokens
+- the sum of its request costs in `estimated_cost_usd`
+
+A turn can mix models and include a request with no rate. Trajectory then
+marks the turn unpriced. It does not price the turn at one model's rate.
+Copilot names Claude models with a dotted version, such as
+`claude-sonnet-5.5`. The rate card accepts that spelling for the same model.
+
+## VS Code Copilot Chat
+
+VS Code Copilot Chat support is a preview behind the
+`vscode_copilot_instrumentation` flag:
+
+```bash
+trajectory config features enable vscode_copilot_instrumentation
+trajectory setup --clients vscode-copilot
 ```
 
-`<effective-home>` is the non-empty `GEMINI_CLI_HOME` value or the operating-
-system home. The override replaces the home exclusively; it is not the
-`.gemini` directory itself. Transcript/token backfill, subagent artifact
-lookup, setup diagnostics, inventory, update refresh, and resume placement use
-the same resolver and scan `<effective-home>/.gemini/tmp` for history.
+The history reader covers Code, Code - Insiders, and VSCodium. It reads
+workspace, empty-window, and transferred chat-session stores. JSONL operation
+logs win over the JSON fallback. A change to `workspace.json` makes Trajectory
+read the sessions below that workspace again.
 
-`settings.json` registers Trajectory MCP. `hooks.json` uses receipt-backed
-`trajectory capture-hook --client gemini --ensure-serve` command hooks for
-supported Gemini events. The skill and command expose `/incognito` with an MCP
-path and HTTP fallback.
+Native `/v1/traces` capture accepts a span only when all of these hold:
+
+- The service is the first-party `copilot-chat` service.
+- The provider is `github`.
+- The operation is `invoke_agent`.
+- The span has a Copilot session attribute and a non-empty agent name.
+
+Agent names can differ for top-level modes and participants. A nested
+subagent span cannot replace or repeat the top-level session. Trace
+attribution and pending child spans survive split requests for a limited
+time. Saved source IDs prevent a replay after a restart.
+
+Native facts can arrive after provider history. Trajectory then upgrades the
+matching token or tool fact in the same atomic write that adds the native
+data. Unrelated history text and unmatched tools stay as they were. Content
+stays off unless the provider sent it. Setup always writes
+`github.copilot.chat.otel.captureContent=false` when no one else owns that key.
+
+Tests use fixtures for the current file format. Trajectory has not yet been
+tested in the real VS Code app or with incognito.
+
+## Cursor
+
+Cursor has two capture paths: Cursor Desktop hooks, and a watcher for
+cursor-agent transcripts.
+
+### Cursor Desktop hooks
+
+Setup manages `~/.cursor/hooks.json` and `~/.cursor/mcp.json`. Command hooks
+run Trajectory's capture helper and send Cursor payloads to
+`/capture/cursor/...`. Before capture starts, `preToolUse`, `postToolUse` and
+`postToolUseFailure` print `{}`. Trajectory states no permission decision, so
+Cursor's own approval stays in charge. Only an enabled module that blocks a
+call answers with a permission (`deny`).
+
+If Cursor stops a slow capture at its timeout, it already has the answer.
+
+Cursor documents 21 hook events: 18 Agent hooks, two inline Tab hooks, and
+`workspaceOpen`. Setup writes all 18 Agent events. It leaves out the Tab hooks
+because inline completion is not an agent session. It leaves out
+`workspaceOpen` because the editor sends it without a conversation ID.
+
+Cursor offers command and prompt hooks but no native HTTP hooks. Prompt hooks
+call another model, so they cannot carry telemetry without loss. If Claude
+Code is not installed, setup also writes `~/.cursor/skills/incognito/SKILL.md`.
+
+The generic `preToolUse`, `postToolUse`, and `postToolUseFailure` hooks record
+the tool's start and end. Shell, MCP, read, and edit hooks add gate,
+permission, or operation details. They do not add a second tool event.
+
+### cursor-agent transcripts
+
+The current cursor-agent can send the same hook payloads as Desktop.
+Trajectory's `capture-hook` handles them. When no hooks fire, a watcher and
+backfill read the same files under `~/.cursor/projects/`:
+
+- main sessions at `*/agent-transcripts/<session>/<session>.jsonl`
+- nested child and side-chat files at
+  `*/agent-transcripts/<parent>/subagents/<child>.jsonl`
+- CLI Task children written next to the main transcripts
+- legacy flat JSONL files
+
+Trajectory keeps the raw and provider IDs. It adds a project-scoped session ID
+that is safe as a path. Child sessions link to their exact parent.
+
+The watcher is off by default:
+
+```bash
+trajectory config features enable cursor_agent_durable_history
+trajectory config reload --yes
+```
+
+A config reload starts or stops the watcher without restarting
+`trajectory serve`. An enabled watcher waits if the Cursor folder does not
+exist yet. When the flag is off, disabled by managed policy or the
+environment, or when all watchers are off, Trajectory creates no cursor or
+transcript state.
+
+The watcher emits only what the files contain: text, thinking, tool requests,
+tool results, and `turn_ended` records. Current files have no provider
+timestamps, model, token or cost usage, tool results, or session end.
+Trajectory marks timestamps that come from file order as derived. It does not
+invent a model, token estimate, cost, successful tool result, or session end.
+A skill-file read therefore shows that the agent meant to use the skill. It
+does not show a finished skill use.
+
+When Cursor changes or deletes a transcript, Trajectory rebuilds or clears the
+watcher's own session JSONL and local viewer data. Hook traces stay. The
+watcher does not guess whether a session came from Desktop or the headless
+CLI. Missing token data shows as zero in the local viewer.
+
+One CLI Task parent can write several children as sibling main transcripts,
+with no parent field. Trajectory links them only when the prompt matches
+exactly and exactly one project folder holds the parent. Unclear parent IDs
+are not linked. Legacy text transcripts are not supported.
+
+### Side chats in Cursor Desktop 3.11
+
+Cursor Desktop 3.11 marks interactive side chats in its global `state.vscdb`
+composer headers. Trajectory reads only the `composerHeaders` table or the
+legacy `composer.composerHeaders` key, within strict size limits. It uses
+these fields:
+
+- `parentComposerId` and `subagentTypeName: side-chat` tell an interactive
+  side chat apart from a background subagent.
+- `sideChatSeedTurnCount` lets Trajectory leave copied parent turns out of the
+  side chat.
+
+A child started from a side chat links to that side chat, not to the main
+chat. Trajectory skips rows that conflict, loop, are too large, or do not
+match each other. It never uses other chat-store data. Child transcripts wait
+while the metadata database is unreadable and retry later. If late metadata
+changes how a session was classified, Trajectory rebuilds the watcher's
+session. Copied and live activity then never mix. Tests cover this with a
+Desktop 3.11.25 fixture. A live test in the 3.11 app is still to do.
+
+### Watcher polling
+
+On macOS, some source watchers poll and do not use file system
+notifications. Folder notifications on macOS can hold one file handle for each
+file. These watchers poll on macOS: Cursor Agent, Warp, Antigravity, gptme,
+CodeWhale, Kimi, Copilot, Devin, ForgeCode, Hermes, OMP, OpenCode, Qoder, Qwen,
+and Zed. Other
+platforms keep optional notifications alongside polling.
+
+Trajectory checks active Cursor transcripts every minute and looks for new
+paths every 30 seconds. A new event can wait for both checks. Changed files
+are read at once. Unchanged files are checked from time to time, because file
+change times can collide. Large files continue across polls.
+
+### Cloud agents
+
+Cursor cloud agents do not load the user-level hooks that Desktop setup
+installs. They support only some project, team, and enterprise command hooks.
+They leave out session lifecycle, MCP execution, Tab, and workspace hooks.
+Cloud agents therefore need their own managed or project-level setup.
+
+### Cursor usage and pricing
+
+For both paths, Trajectory publishes Cursor's input, output, cache-read, and
+cache-write tokens when all four are present. Live pricing is a separate
+setting that applies only going forward:
+
+- `pricing.cursor.mode` is `off`, `shadow`, or `emit`.
+- `pricing.cursor.source` is `org_file` or `datadog_reference_table`.
+- The `org_file` source reads `~/.trajectory/org/pricing.yaml`.
+- The Reference Table source currently emits `pricing_source_unavailable` and
+  no USD.
+
+Some records never get a generic cost estimate. These include records with
+missing, partial, invalid, or conflicting tokens, records with a missing or
+mismatched model, and watcher-only records. Managed backfill can republish
+retained cost under the live metric names with the original timestamps.
 
 ## Antigravity CLI
 
-Setup writes:
+Setup writes these files:
 
 ```text
 ~/.gemini/antigravity-cli/settings.json
@@ -1529,499 +1406,1402 @@ Setup writes:
 ~/.gemini/config/plugins/trajectory/commands/incognito.toml
 ```
 
-`settings.json` registers Trajectory MCP. The root-level named hook definition
-uses Antigravity's current `PreToolUse`, `PostToolUse`, `PreInvocation`,
-`PostInvocation`, and `Stop` events and invokes the receipt-backed `trajectory
-capture-hook --client agy --ensure-serve`. The adapter
-normalizes camelCase identity and workspace fields while preserving
-`client_source=agy`. `stepIdx` provides deterministic pre/post tool correlation;
-the current PostToolUse payload supplies completion/error status but not tool
-output. The hook surface does not expose prompt, assistant, authoritative
-provider model, token, cost, or terminal conversation data. Its `modelName`
-value can be a selector such as `auto` or a concrete-looking name, so Trajectory
-preserves it as `model_label` without treating it as provider identity or using
-it for cost. The other unavailable fields are not manufactured.
-Enable the default-off durable prompt-history supplement with:
+`settings.json` registers Trajectory MCP. The named hook definition uses
+Antigravity's `PreToolUse`, `PostToolUse`, `PreInvocation`, `PostInvocation`,
+and `Stop` events. Each hook runs
+`trajectory capture-hook --client agy --ensure-serve`.
+
+Each command prints its answer first: `{"decision":"allow"}` for
+`PreToolUse`, and `{}` for the others. If Antigravity stops a slow capture at
+its timeout, it already has the answer.
+
+Trajectory reads Antigravity's camelCase identity and workspace fields and
+records `client_source=agy`. `stepIdx` pairs each tool's start and end. Hooks
+provide the following data:
+
+- `PostToolUse` reports completion or error status, but not tool output.
+- Hooks carry no prompt, assistant text, provider model, tokens, cost, or
+  session end. Trajectory does not invent them.
+- `modelName` can be a selector such as `auto` or a model-like name.
+  Trajectory keeps it as `model_label`. It does not treat it as the provider
+  model or use it for cost.
+
+### Prompt history and usage
+
+To add prompt history, run:
 
 ```bash
-trajectory features enable antigravity_durable_history
+trajectory config features enable antigravity_durable_history
 trajectory config reload --yes
 ```
 
-The watcher reads `~/.gemini/antigravity-cli/history.jsonl` and current
-schema-v1 `~/.gemini/antigravity-cli/conversations/<uuid>.db` files. A
-Trajectory/reference compatibility override, `ANTIGRAVITY_CLI_DIR`, supports
-isolated roots; current upstream Antigravity CLI does not expose it as a
-provider variable. The watcher promotes only exact scoped
-`conversationId`, `display`, `timestamp`, and `workspace` fields. It baselines
-existing rows on first enable, then reconciles subsequent appends and sessions,
-including changes missed while `trajectory serve` was stopped. It uses the
-same conversation ID as native hooks and deduplicates stable source-event IDs,
-so prompt rows complement rather than replace current hook traces. Provider
-deletion or rewrite never removes local history or fabricates lifecycle.
-Provider-typed slash-command and unknown typed history rows are not promoted as
-model prompts.
+This watcher is off by default. It reads
+`~/.gemini/antigravity-cli/history.jsonl` and the current schema-v1
+`~/.gemini/antigravity-cli/conversations/<uuid>.db` files.
+`ANTIGRAVITY_CLI_DIR` points Trajectory at another folder. Current
+Antigravity CLI does not use that variable itself.
 
-For the pinned current schema, Trajectory opens SQLite with `mode=ro` and
-`query_only`, validates schema version and file identity, and decodes only the
-bounded `gen_metadata` usage block. It preserves the provider model plus exact
-uncached-input, total-output, and cache-read counts. Output already includes
-thinking; no separate reasoning count is available. Database or WAL
-modification time is marked synthetic because this table has no reliable
-per-generation timestamp. These facts materialize as token-only LLM spans and
-may receive Trajectory rate-card cost, but are never labeled provider-billed
-cost. Unknown schemas, undecodable rows, rewrites, and removals fail closed.
-Trajectory still does not decode private step transcript payloads or claim
-assistant/thinking text, tool payloads, `turn_end`, or `session_end`. Manual
-replay of history that predates the first watcher baseline is not implemented.
+The watcher works as follows:
 
-## Cursor
+- It uses only the `conversationId`, `display`, `timestamp`, and `workspace`
+  fields.
+- On first use it records a baseline of existing rows. It then picks up new
+  rows and sessions, including changes made while `trajectory serve` was
+  stopped.
+- It uses the same conversation ID as the hooks and removes duplicates. Prompt
+  rows add to hook traces and do not replace them.
+- Deleted or rewritten history never removes local history or invents a
+  session end.
+- Slash-command rows and unknown typed rows are not treated as model prompts.
 
-Cursor has two distinct capture paths.
+For the current database schema, Trajectory opens SQLite read-only. It checks
+the schema version and file identity. It reads only the `gen_metadata` usage
+block. It keeps the provider model and the uncached input, total output, and
+cache-read counts. Output already includes thinking, and no separate
+reasoning count exists.
 
-Cursor Desktop uses setup-managed `~/.cursor/hooks.json` and
-`~/.cursor/mcp.json`. Command hooks use Trajectory's durable capture helper and
-invoke `trajectory capture-hook --client cursor --ensure-serve`, preserving one
-delivery ID across retirement resets.
-Cursor does not accept every Claude lifecycle hook name, so setup writes only
-the supported Cursor event set. If Claude Code is not installed, setup also
-writes `~/.cursor/skills/incognito/SKILL.md`.
+These counts become token-only model spans. They can get a cost from
+Trajectory's rate card, but never count as provider-billed cost. The table has
+no time for each generation, so Trajectory marks the database file time as
+synthetic. Unknown schemas, unreadable rows, rewrites, and removals are
+skipped.
 
-The current cursor-agent bundle can serialize the same native terminal payload
-shape as Desktop. Trajectory's capture-hook executable normalizes that trusted
-CLI surface. When native delivery is absent, one shared passive source contract
-drives both watcher and backfill under `~/.cursor/projects/`: current main files
-at `*/agent-transcripts/<session>/<session>.jsonl`, nested child and side-chat
-files at `*/agent-transcripts/<parent>/subagents/<child>.jsonl`, CLI Task
-children written as sibling main transcripts, and legacy flat JSONL.
-It preserves exact raw/provider IDs, adds a project-scoped path-safe identity,
-and links child sessions to the exact parent identity.
+Trajectory does not read private step transcripts. It records no assistant or
+thinking text, tool payloads, `turn_end`, or `session_end` from them.
+Trajectory cannot replay history from before the first watcher baseline.
 
-Cursor Desktop 3.11 identifies interactive side chats in its global
-`state.vscdb` composer headers. Trajectory reads only the typed
-`composerHeaders` table or the exact legacy `composer.composerHeaders` key,
-under strict row and byte limits. It uses `parentComposerId` and
-`subagentTypeName: side-chat` to distinguish an interactive side chat from a
-background subagent and uses `sideChatSeedTurnCount` to omit copied parent turns
-from side-chat activity. A child launched from a side chat links to that side
-chat rather than directly to the main chat. Conflicting, cyclic, oversized, or
-internally inconsistent canonical rows fail closed, and unrelated chat-store
-metadata is never promoted. Child transcripts also remain uncommitted while
-the metadata database is unreadable and retry on a bounded cadence. The watcher stores
-only a content-private semantic fingerprint; if late metadata changes a prior
-classification, it replacement-rebuilds the watcher-owned session rather than
-mixing copied and live activity.
+## Gemini CLI (retired)
 
-The background source is default-off:
+Trajectory no longer launches, sets up, captures, imports, or resumes Gemini
+CLI. It no longer marks Gemini CLI sessions as headless. Setup and update
+remove only Trajectory's own Gemini hooks, MCP entry, and incognito files.
+They do not touch user settings, retained history, or Antigravity state under
+`.gemini`.
+
+Trajectory records no new Gemini CLI activity. An older release might have
+installed a Gemini CLI hook that cleanup has not removed yet. That hook does
+nothing:
+
+- `trajectory capture-hook --client gemini` exits successfully with no output.
+- The capture server answers `/capture/gemini/...` with an empty response.
+- Neither one records an event, starts `trajectory serve`, or prints into the
+  Gemini CLI terminal.
+- An inherited `GEMINI_SESSION_ID` no longer labels another client's events
+  as Gemini or replaces their session ID.
+
+Each dropped hook leaves a note with no hook content. Support can then tell
+that the hook file is still installed:
+
+- The command appends a line with
+  `client=gemini delivery_result=retired_client` to `logs/capture-hook.log`.
+- The capture server writes a `serve.capture.retired_client_hook_dropped`
+  event with a drop count. It goes to `logs/serve-diag.ndjson` and the
+  operational log, at most once a minute.
+
+To remove the hook, run `trajectory setup` or `trajectory update`.
+
+Sessions captured before retirement stay readable in the viewer, cost reports,
+and exports. Backfill and replay still publish them, with the same values as
+earlier releases. For these sessions, `gen_ai.usage.input_tokens` includes
+cache reads, because Gemini CLI reported a prompt count that included them.
+`gen_ai.usage.cache_read_tokens` reports the same cache reads again.
+
+Trajectory does not change those published values. A different value for a
+point already sent conflicts with the stored row, so backfill skips it.
+Subtract cache reads when you compare Gemini CLI input tokens with other
+clients.
+
+Use `trajectory setup --clients agy` for Antigravity. The history-import SDK
+keeps its Gemini history converter for other programs that use it. Gemini
+models used through other supported clients are not affected.
+
+## Goose
+
+### Setup and hooks
+
+Setup installs Goose Open Plugins command hooks in
+`~/.agents/plugins/trajectory`. If `GOOSE_PATH_ROOT` is set, setup uses the
+same path under that root. Setup turns a relative root into an absolute path
+once, against its own working directory. It writes that path into every hook.
+A later Goose working directory therefore cannot change where Trajectory looks.
+
+New installs use the generic tool hooks: `PreToolUse`, `PostToolUse`, and
+`PostToolUseFailure`. Trajectory still accepts the older shell and file hooks.
+When both sets are installed, it drops the duplicate pair. It records current
+names such as `developer__shell` and keeps `native_tool_name`.
+
+Goose hooks carry lifecycle, prompts, assistant text, tools, and the session
+ID. They have some gaps:
+
+- They carry no reliable provider usage or launch mode.
+- The generic tool payload has no tool call ID. Two calls to the same tool at
+  the same time can be paired wrongly.
+- Post-tool payloads leave out the tool result or error text.
+- Lifecycle and prompt payloads have no working directory. `capture-hook` then
+  adds its own directory with `cwd_provenance=hook_process_working_dir`.
+
+Hooks cannot tell interactive runs from headless runs. All Goose hook sessions
+therefore use `source_mode=unknown`. Task segmentation treats them as
+headless.
+
+All Goose hooks wait in the foreground until the server accepts the event,
+so events keep Goose's order. If the server is unavailable, a local fallback
+keeps the lifecycle. If a hook POST might have succeeded but the response was
+lost, capture skips the fallback. This avoids writing `SessionEnd` before the
+history merge.
+
+Goose does not send another `SessionStart` when you reopen a conversation that
+has content. The first hook after the session end therefore starts a new
+session generation, marked `resume_evidence=post_terminal_hook`.
+
+### Session history
+
+The `goose_durable_history` feature is on by default. It reads the
+`sessions`, `messages`, and `usage_ledger` tables from `sessions.db`,
+including its WAL and SHM files. Trajectory finds the database as follows:
+
+- It follows Goose's current data folder, or `GOOSE_PATH_ROOT/data/sessions`
+  when set.
+- It also checks legacy folders for migrated installs, unless setup
+  registered an explicit root.
+- A root that setup registered is the only one used. A stale copy of the same
+  session elsewhere cannot override it.
+- It rejects databases that are links, and it limits how much it reads.
+
+The reader honors Goose's `userVisible=false` setting for every content and
+tool block. It keeps only usage and model metadata from hidden blocks. It
+keeps text and thinking for visible messages. It never keeps image bytes or
+redacted thinking. System notices, tool confirmations, and elicitation blocks
+become metadata-only records labeled
+`provider_structured_content_fidelity=metadata_only`.
+
+The provider session ID is also the Open Plugins ID. How history combines with
+hooks depends on who started the session:
+
+- **History-only sessions** become incomplete sessions owned by the history
+  reader. The database wins for session and parent IDs, working directory,
+  messages, model, and tool request and result IDs and payloads.
+- **Hook sessions** get only exact per-turn usage corrections from history.
+  History does not replace hook session data, repair tool IDs, or add missing
+  tool result text. Hook content and lifecycle win.
+
+Trajectory reads the database on a schedule, not while Goose waits for a
+`Stop` hook. `SessionEnd` tries one history read before Trajectory saves the
+end event. If the read fails, Trajectory records a diagnostic and still saves
+`SessionEnd`. Publishing continues after Trajectory saves the end event.
+
+Cost follows these rules:
+
+- Only `provider_reported` USD counts toward attributed cost.
+- `estimated`, mixed, or carried-forward amounts stay raw provider data, with
+  no attribution.
+- Token counts that are null, partial, negative, or that contradict each
+  other stay raw data with `tokens_status=unavailable`. They never become turn
+  usage.
+
+A deleted provider session leaves a deletion record. Trajectory never invents
+a session end for it.
+
+### Verify
 
 ```bash
-trajectory features enable cursor_agent_durable_history
-trajectory config reload --yes
+trajectory setup --clients goose
+trajectory doctor
 ```
 
-Runtime reload starts or stops the watcher without restarting `trajectory
-serve`. An enabled watcher starts dormant when the provider root does not yet
-exist, while default-off, managed-disabled, environment-disabled, and global
-watcher-disabled states create no cursor or transcript state.
+## Cline CLI
 
-The passive source emits only provider-authored text, thinking, tool requests,
-tool results, and `turn_ended` evidence that is actually present. Current
-fixtures do not expose provider timestamps, model, token/cost usage, tool
-results, or SessionEnd. Observation/file-order timestamps are marked derived;
-no model, token estimate, cost, successful tool result, or SessionEnd is
-manufactured. A skill-file Read therefore proves invocation intent and emits a
-pre event, not a fabricated completion. The watcher checkpoints only after a
-durable idempotent batch append and detects exact-notification same-stat file
-replacement. Provider mutation or deletion atomically rebuilds or clears
-watcher-owned canonical JSONL and local readback while preserving native hook traces. Passive source
-mode is unknown rather than guessed as Desktop or headless CLI. Lapdog
-list/trace/fetch/scalar tests preserve missing token evidence as zero. ccusage
-has no Cursor adapter, so it is not independent evidence
-for Cursor token or cost recovery. A sanitized cursor-agent
-`2026.07.16-899851b` fixture proves that one CLI Task parent can write multiple
-children as sibling main transcripts with no provider parent field. Synthesis
-therefore requires exact prompt evidence and exactly one project tree containing
-the parent. It links to the same project-scoped logical child IDs used by passive
-sessions while retaining raw and provider child identity; ambiguous copied parent
-IDs fail closed. A source-verified sanitized Desktop 3.11.25 fixture proves the
-main-to-side-to-child relationship, copied-prefix omission, and strict metadata
-allowlist. A live 3.11 GUI pilot remains a follow-up rather than a storage-schema
-claim. Legacy text transcript import remains unsupported.
+Setup writes Trajectory hooks in `~/.cline/hooks`, or `$CLINE_DIR/hooks`. It
+also writes a manifest at `~/.cline/hooks/.trajectory-cline-hooks.json`. The
+Cline MCP settings are in `~/.cline/data/settings/cline_mcp_settings.json`.
+`CLINE_DATA_DIR` or `CLINE_MCP_SETTINGS_PATH` can change that path.
 
-For both surfaces, managed `cursor_native_token_usage` enables canonical
-publication of the exact input/output/cache-read/cache-write quartet. Pricing
-is a separate forward-only decision: `pricing.cursor.mode` is
-`off|shadow|emit`, and `pricing.cursor.source` is `org_file` or
-`datadog_reference_table`. The organization-file source reads
-`~/.trajectory/org/pricing.yaml`; the Reference Table adapter currently emits
-`pricing_source_unavailable` and no USD. Missing/partial/invalid/conflicting
-tokens, missing or mismatched models, and watcher-only records never fall
-through to generic estimation. Historical Cursor monetary records are not
-replayed.
+Cline loads one script for each hook file name. Trajectory installs scripts
+that never block Cline for these hooks: `TaskStart`, `TaskResume`,
+`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `TaskComplete`, `TaskCancel`,
+`TaskError`, and `SessionShutdown`. Setup keeps your own hook files. If
+`TaskStart.sh` exists and Trajectory does not manage it, setup picks the next
+supported name, such as `TaskStart.bash`.
+
+The scripts run `trajectory capture-hook --client cline --ensure-serve`. They
+send their input to `/capture/cline/<event>`. Trajectory accepts both the file
+names and Cline's payload hook names, such as `agent_start`, `prompt_submit`,
+`tool_call`, `tool_result`, `agent_end`, and `session_shutdown`. Records use
+`client_source=cline` and `source_dialect=cline.cli.hooks.v1`.
+
+Cline hooks carry lifecycle, prompt, tool, assistant summary, and shutdown
+data. They carry no stable token or cost usage. Trajectory therefore writes
+`turn_end.tokens_status=unavailable`.
+
+```bash
+trajectory setup --clients cline
+trajectory doctor
+```
 
 ## Factory Droid
 
-Setup writes a local Factory marketplace under
-`~/.trajectory/factory-marketplace`, registers it with Droid, and installs
-`trajectory@trajectory`. The plugin includes command hooks, `mcp.json`, and an
-incognito skill.
+Setup writes a local Factory marketplace in
+`~/.trajectory/factory-marketplace`. It registers the marketplace with Droid
+and installs `trajectory@trajectory`. The plugin includes command hooks,
+`mcp.json`, and an incognito skill.
 
-Every Factory command hook invokes `trajectory capture-hook --client droid
---ensure-serve`, preserving one delivery ID across retirement resets.
-
-Capture is beta live CLI capture only. There is no Factory/Droid historical
-backfill or transcript import path.
+Capture is beta and covers live CLI sessions only. Trajectory cannot import
+past Factory or Droid sessions. Every Factory command hook runs
+`trajectory capture-hook --client droid --ensure-serve`. The hook keeps one
+delivery ID across server restarts.
 
 ## Hermes Agent
 
-Setup writes a Hermes observer plugin and config entry so Hermes can notify
-Trajectory about session, model, tool, and API-request lifecycle events.
-Hermes discovers the plugin from its configured plugin roots, and the plugin
-posts observer payloads to the local capture server without blocking normal
-Hermes behavior.
+Setup installs a user plugin in `$HERMES_HOME/plugins/trajectory`. It also
+updates `$HERMES_HOME/config.yaml` with `plugins.enabled: [trajectory]` and
+`mcp_servers.trajectory`. Hermes finds plugins through `plugin.yaml` and an
+`__init__.py register(ctx)` entry point. Trajectory uses that native observer
+plugin instead of hook JSON or shell shims.
 
-The Go capture runtime records `client_source=hermes`, preserves Hermes
-observer turn identifiers, and uses native Hermes `usage` payloads for token
-and cost values when present. Historical Hermes import is not implemented yet.
+When `HERMES_HOME` is not set, Trajectory uses Hermes's default folder:
+`~/.hermes` on macOS and Linux, and `%LOCALAPPDATA%\hermes` on Windows.
+
+The plugin registers read-only observer hooks:
+
+- `on_session_start` -> `SessionStart`
+- `pre_llm_call` -> `UserPromptSubmit`
+- `post_api_request` -> `AgentMessage`, plus an `llm_call` record
+- `post_llm_call` -> `Stop`
+- `pre_tool_call` / `post_tool_call` -> tool events
+- approval hooks -> permission events
+- subagent hooks -> subagent events
+- `on_session_finalize` -> `SessionEnd`
+
+The plugin sends events to `http://127.0.0.1:19222/capture/hermes/<event>` from
+one background sender. A hook never waits for capture, and delivery errors do
+not affect Hermes. The sender works as follows:
+
+- Each send has a time limit. Errors are ignored.
+- When 1,024 events or 32 MiB are already queued, the hook waits up to one
+  send timeout for space. Events stay in order, and memory use stays limited.
+- When Hermes exits, the sender keeps sending for up to 30 seconds. It stops
+  at the first failed send.
+
+Records use `client_source=hermes`. Trajectory stores Hermes observer turn IDs
+as `observer_turn_id`. It uses Hermes `usage` payloads for token and cost
+fields when they are present.
+
+### Session history
+
+Session history is a separate, read-only feature that is off by default:
+
+```bash
+trajectory config features enable hermes_durable_history
+trajectory session import hermes
+trajectory session import hermes --session <provider-session-id>
+trajectory session import hermes --force
+```
+
+Trajectory follows Hermes's `HERMES_HOME` and opens `state.db` read-only. It
+keeps provider IDs, tool lifecycles, parent links, and session end state.
+Current stores also give tool result details and the `session_model_usage`
+breakdown as provider diagnostics. Session token counts and cost stay at
+session level. The importer does not assign them to turns or create past
+model calls.
+
+While `trajectory serve` runs, the feature also reads `state.db` and its WAL
+and shared-memory files from time to time. Hook events win. History adds to or
+replaces only facts that came from history earlier. The `SessionStart`,
+`AgentMessage`, `Stop`, and `SessionEnd` hook events ask for a read of that
+session. Polling catches missed notices and rewrites.
+
+A deleted provider session never deletes a local trace. An active final turn
+stays open until Hermes records its end. Use the `--force` import for bulk
+history and repair.
+
+```bash
+trajectory setup --clients hermes
+trajectory config features enable hermes_durable_history
+trajectory session import hermes
+trajectory doctor
+```
 
 ## Amp Code
 
-Setup writes a system TypeScript plugin plus MCP configuration for Amp Code.
-Amp lifecycle events such as session start, agent start, tool calls, tool
-results, and assistant messages are normalized as `client_source=amp` events.
-Token and cost fields are preserved when Amp exposes them.
+Setup writes a system plugin at `~/.config/amp/plugins/trajectory.ts` or
+`$AMP_CONFIG_DIR/plugins/trajectory.ts`. It adds `amp.mcpServers.trajectory`
+to `~/.config/amp/settings.json`.
 
-Amp does not expose a session-end plugin event today, so live sessions end on
-Trajectory's idle lifecycle handling. Historical Amp thread import is not
-implemented yet.
+Amp's plugin events are `session.start`, `agent.start`, `tool.call`,
+`tool.result`, and `agent.end`. The Trajectory plugin starts or reuses
+`trajectory serve`. It turns these events into Pi-style payloads and sends
+them to `http://127.0.0.1:19222/capture/amp/<event>`. Records use
+`client_source=amp`. `tool.call` returns an allow decision, so capture never
+blocks a tool.
+
+Amp plugin events carry the thread ID, prompts, assistant messages, tool calls
+and results, and agent status. They carry no model, token, cost, duration, or
+session-end fields. Trajectory leaves those fields empty and does not guess
+them. Amp has no session-end plugin event, so Trajectory does not invent one.
+Amp support is tested with fixtures only. It has not been tested headless
+against a live Amp account.
+
+### Thread history
+
+The `amp_durable_history` feature is off by default. It reads top-level
+`T-*.json` files in `~/.local/share/amp/threads` or
+`$XDG_DATA_HOME/amp/threads`. It reads them without changing them.
+
+- The Amp thread ID is also the live plugin session ID. A session with any
+  plugin event keeps its full trace. Trajectory can rebuild a history-only
+  session after Amp rewrites the file.
+- Current per-message usage and legacy usage-ledger events give the model and
+  token counts. Legacy ledger rows match only by exact `toMessageId`.
+- Amp credits stay in a separate field. They are not USD cost.
+- History never marks a session active and never invents a session end.
+- A deleted thread leaves the local trace in place, with a deletion record.
+
+`TRAJECTORY_DISABLE_AMP_HISTORY_WATCHER=1` turns off only this watcher.
+
+```bash
+trajectory setup --clients amp
+trajectory config features enable amp_durable_history
+trajectory config reload --yes
+trajectory doctor
+```
 
 ## Qwen Code
 
-Setup writes Qwen Code settings for Trajectory MCP plus native HTTP hooks.
-Capture uses Qwen's hook transport directly rather than command-line curl
-shims, and Qwen payloads are normalized as `client_source=qwen` events.
+Setup merges Trajectory settings into `~/.qwen/settings.json` or
+`$QWEN_HOME/settings.json`. It keeps your provider and hook settings. It makes
+these changes:
 
-Qwen Code supports OpenAI-compatible providers. Trajectory records Qwen
-`usageMetadata` when present and can read the current chat JSONL transcript as
-a fallback for stop payloads that omit usage. Historical Qwen import is not
-implemented yet.
+- It adds `mcpServers.trajectory`.
+- It adds `http://127.0.0.1:19222/capture/qwen/*` to
+  `security.allowedHttpHookUrls`.
+- It registers native HTTP hooks that send events to
+  `/capture/qwen/<event>`.
 
-## OpenHands
+The registered events that write records are `SessionStart`,
+`UserPromptSubmit`, `PreToolUse`, `PostToolUse`, `PostToolUseFailure`,
+`PermissionRequest`, `PermissionDenied`, `SubagentStart`, `SubagentStop`,
+`PreCompact`, `PostCompact`, `Notification`, `Stop`, `StopFailure`, and
+`SessionEnd`. Qwen-only hooks such as `TodoCreated` and `InstructionsLoaded`
+are accepted but write nothing. Setup then matches Qwen's hook names without
+inventing events.
 
-Setup writes command hooks to `~/.openhands/hooks.json` and a Trajectory MCP
-server entry to `~/.openhands/mcp.json`. The hooks invoke `trajectory
-capture-hook --client openhands --ensure-serve` because OpenHands sends hook
-payload JSON on stdin.
+### Qwen token usage
 
-Current OpenHands command hooks cover session start, prompts, tools, stop, and
-session end. They do not expose assistant messages or token usage today.
+Records use `client_source=qwen`. Trajectory reads these Qwen `usageMetadata`
+fields: `promptTokenCount`, `candidatesTokenCount`, `thoughtsTokenCount`, and
+`cachedContentTokenCount`.
+
+`cachedContentTokenCount` is part of `promptTokenCount`. `candidatesTokenCount`
+can overlap `thoughtsTokenCount`. Trajectory uses `totalTokenCount` to split
+the counts into uncached input, cache read, visible output, and reasoning. It
+writes an `llm_call` record when the model, prompt count, and total count are
+all present.
+
+Without the total, Trajectory keeps the raw candidate and thought counts and
+marks the split as partial. It then writes no `llm_call` and no cost estimate.
+Malformed counts, or cached tokens larger than prompt tokens, get the same
+treatment. Trajectory keeps the provider's numbers and never clamps them.
+
+When a stop payload has no usage, Trajectory reads the end of the Qwen chat
+JSONL named by `transcript_path`. It applies the same rules. It reads only
+recent records and refuses very large ones. `qwen_transcript_status` and
+`qwen_transcript_truncated` report when that usage is missing or partial. The
+reader never returns older usage when the newest assistant record has none.
+
+### Qwen chat history
+
+To turn on the history watcher and manual repair, run:
+
+```bash
+trajectory config features enable qwen_durable_history
+trajectory session import qwen [--session ID] [--force]
+```
+
+Trajectory finds the Qwen runtime folder the way current Qwen Code does:
+
+1. It applies process and user-level `.env` overrides first.
+2. `QWEN_RUNTIME_DIR` wins.
+3. Otherwise it merges `advanced.runtimeOutputDir` from system defaults, user
+   settings, trusted workspace settings, and system overrides, in that order.
+4. `QWEN_HOME` or `~/.qwen` is the fallback.
+
+Relative paths start from the working directory. Trajectory checked this
+against Qwen Code 0.19.11. Live tests still use 0.19.2.
+
+The importer reads regular files only, never links. It reads
+`projects/*/chats/*.jsonl` and `projects/*/chats/archive/*.jsonl`. A session
+found in both places, or at more than one path, is reported as unclear
+instead of guessed.
+
+The importer rebuilds the active branch of each chat from its `parentUuid`
+chain. Hooks win for lifecycle and tool timing. History wins for per-request
+assistant usage, because Qwen's `Stop` hook reports only the last request. The
+same token rules apply as for hooks. The transcript has no session-end marker,
+so the importer writes turn boundaries but never `session_end`.
+
+While the flag is on, `trajectory serve` also runs a watcher. It works as
+follows:
+
+- The first pass reads existing active and archived chats in pages.
+- Later passes use file notices and polling. They catch rewrites that keep
+  the same size and time.
+- Native `Stop` and `SessionEnd` hooks ask for a read of that session. Their
+  `transcript_path` tells the watcher about workspace-specific runtime
+  folders.
+- A deleted chat keeps its local history. Trajectory does not invent a session
+  end.
+- When Qwen rewrites a chat, the local viewer drops spans that no longer
+  exist.
+- History writes share the session file lock with hooks, so a hook event that
+  arrives at the same time is merged.
+
+A hook's transcript path also starts discovery when the server did not see
+Qwen at startup. If another server process runs the watcher, the receiving
+process reads that session once and passes the folder on.
+
+Automatic discovery starts from the server's own Qwen runtime folder and from
+folders seen in hook transcript paths. Trajectory cannot find history in a
+folder that only another workspace's settings chose. To import that history,
+run the import command from that workspace.
+
+```bash
+trajectory setup --clients qwen
+trajectory doctor
+```
+
+## Kiro CLI
+
+Setup writes a Trajectory Kiro agent to `~/.kiro/agents/trajectory.json` or
+`$KIRO_HOME/agents/trajectory.json`. It merges `mcpServers.trajectory` into
+`~/.kiro/settings/mcp.json`. Kiro 2.x loads the agent's hooks when you select
+it with `--agent trajectory`. Setup does not replace your default agent.
+
+Kiro runs command hooks from the agent config. Trajectory registers hooks for
+`agentSpawn`, `userPromptSubmit`, `preToolUse`, `postToolUse`, and `stop`.
+They never block Kiro. Kiro passes each payload as JSON on stdin, and the hook
+runs:
+
+```bash
+trajectory capture-hook --client kiro --ensure-serve --ensure-serve-wait 2s <event>
+```
+
+Records use `client_source=kiro` and `source_dialect=kiro.cli.hooks.v1`. `stop`
+payloads include `assistant_response`, so Trajectory writes an `agent_message`
+and then a `turn_end`. Kiro hooks have no stable token or cost fields, so turn
+records use `tokens_status=unavailable`.
+
+### Kiro session history
+
+The optional `kiro_durable_history` feature reads Kiro's local history:
+
+```bash
+trajectory config features enable kiro_durable_history
+```
+
+It reads these stores:
+
+- `$KIRO_HOME/sessions/cli/*.jsonl` and their metadata files
+- the `conversations_v2` and legacy `conversations` tables in
+  `kiro-cli/data.sqlite3` on macOS and Linux
+
+The watcher opens provider files read-only and rejects links. It saves its
+progress, so delivery resumes after a crash. The Kiro session ID joins JSONL,
+SQLite, and hook records into one session:
+
+- JSONL is the source of truth for content.
+- SQLite adds data only for an exact message ID.
+- Hook content wins in a mixed session.
+- A deleted session leaves a deletion record. Local history stays, and no
+  `session_end` is invented.
+
+Kiro does not document a Windows SQLite location, so Trajectory does not
+guess one. JSONL history still works through `KIRO_HOME`.
+
+The history has messages, model IDs, tool IDs and results, working directory,
+and timestamps. It has no token or cost data. Trajectory does not turn
+`response_size` bytes or older usage estimates into tokens. Kiro 3.0 early
+access stores sessions in a different format, and this watcher does not read
+it.
+
+Kiro's docs use `includeMcpJson` in agent config. The older Amazon Q Developer
+CLI used `useLegacyMcpJson`. Trajectory does not write that older key.
+
+```bash
+trajectory setup --clients kiro
+trajectory config features enable kiro_durable_history
+trajectory config reload --yes
+trajectory doctor
+```
 
 ## Pi
 
-Setup writes `~/.pi/agent/extensions/trajectory/` and points
-`~/.pi/agent/mcp.json` at the extension-local `bin/trajectory mcp` command.
+Setup writes `~/.pi/agent/extensions/trajectory/`. It points
+`~/.pi/agent/mcp.json` at the extension's own `bin/trajectory mcp` command. Pi
+gets Trajectory tools through the extension. It can also use the shared MCP
+catalog where MCP is available. Pi does not get a `hooks.json` file.
 
-The Pi TypeScript extension subscribes to lifecycle events such as session
-start, message end, tool call, tool result, turn end, compaction, model change,
-and session shutdown. Current fork/new transitions arrive through
-`session_start`; Trajectory links them only when the new session header confirms
-the provider's previous-session file. Every captured event is queued through
-`trajectory capture-hook --client pi`; the helper preserves one delivery ID
-across retirement resets.
+The Pi TypeScript extension listens for lifecycle events. Examples are
+session start, message end, tool call, tool result, turn end, compaction,
+model change, and session shutdown. Each event goes through an ordered queue and
+runs `trajectory capture-hook --client pi`. The helper keeps one delivery ID
+across server restarts. Pi waits at most 500 ms for each capture response. A
+single helper stops after 1.5 seconds.
 
-Pi exposes native Trajectory tools through the extension and can use the shared
-MCP catalog when the environment supports MCP. It does not install a
-`hooks.json` file.
+At shutdown, Pi gives the queue a short time to finish. It then hands the
+remaining events to a background worker and exits. Provider history repair
+stays available.
 
-Pi history starts with a session header and stores parentage as a provider-owned
-session-file reference. OhMyPi uses a separate feature-gated integration:
-enable `omp_instrumentation`, then run `trajectory setup --clients omp`.
-Setup resolves the effective OMP profile, installs an OMP-native extension
-declared through `omp.extensions`, merges MCP into that profile's `mcp.json`,
-and sends lifecycle and interaction events to `/capture/omp` with server-owned
-`client_source=omp` attribution.
+### Pi parent links
 
-`trajectory backfill --from-omp-sessions` recursively imports the effective
-profile's v3 history. Current files begin with a `title` metadata slot before
-the session header, and `parentSession` may be an exact provider ID or a file
-reference. Discovery and parent resolution are bounded to the provider-owned
-corpus; conversion preserves exact IDs, nested children, real tool
-results/errors, model changes, native usage, and compaction. With the feature
-enabled, the server also performs bounded crash-safe reconciliation of existing
-and changed files from that same root. Native events remain authoritative,
-passive history never invents session completion or triggers publish, and the
-explicit backfill command remains the complete-history repair path. Sanitized
-v16.5.2 fixtures cover setup, capture, mutation/retry, canonical JSONL, and
-local-UI readback; a real-executable smoke remains pending.
+Pi reports fork and new-session changes through `session_start`. Trajectory
+links two sessions only when the new session header names the previous
+session file.
+
+Trajectory also links subagents:
+
+- The official `pi-subagents` extension starts child processes with
+  `PI_SUBAGENT_CHILD=1` and `PI_SUBAGENT_PARENT_SESSION=<provider-session-id>`.
+  If no fork or new-session parent exists, Trajectory records that parent as
+  a `session_relationship=subagent` link.
+- The Trajectory extension exports its session ID as
+  `TRAJECTORY_PI_PARENT_SESSION`. A child Pi process that inherits it, starts
+  a fresh session, and runs in print or JSON mode gets the same link.
+  Custom tools that run `pi -p` or `pi --mode json` are therefore linked
+  without Pi-specific variables.
+- The `pi-subagents` variables win over the inherited value. TUI and RPC runs
+  never use the inherited value.
+
+The local database stores the link in `sessions.parent_session_id` and in the
+`subagents` relation. Trajectory does not invent a launch tool or call.
+
+### Pi history
+
+Pi history starts with a session header. It stores parent links as a
+reference to the parent's session file. `trajectory session import pi` and
+managed history replay read these files.
+
+The `pi_history_backfill` flag is off by default. It makes the capture server
+find session files in `~/.pi/agent/sessions` that Trajectory has not captured.
+It adds them to the local catalog. It keeps provider IDs and parent links.
+It never rewrites a session that Trajectory already has. It never writes
+`session_end`, active state, or a publish job.
+
+Automatic import follows these rules:
+
+- It waits until a file has not changed for two minutes.
+- It handles up to 64 files or 64 MiB in each batch. It reads more pages in
+  the background, then checks for new files every minute.
+- Each source file can hold up to 8 MiB or 50,000 records.
+- It reads only project files and the `pi-subagents` nested layout. It skips
+  linked children, OMP folders, custom Pi folders, and other nested JSONL.
+- Malformed or incomplete files are retried later.
+- Its saved progress holds only hashed file paths. Damaged progress data
+  stops the import and is reported. It is never reset without notice.
+
+The flag imports history once and does not watch for changes. Trajectory
+does not import a file again after it changes, is deleted, or ages out. The extension captures
+everything after that. Use `trajectory session import pi` for history outside
+the automatic limits. The flag does not change the import command or managed
+replay.
+
+## Oh My Pi
+
+Oh My Pi (OMP) has its own integration behind a feature flag:
+
+```bash
+trajectory config features enable omp_instrumentation
+trajectory setup --clients omp
+```
+
+Setup installs an OMP extension declared through `omp.extensions`. It merges
+MCP into the active profile's `mcp.json`. The extension sends events to
+`/capture/omp`. The server sets `client_source=omp`, and payloads cannot
+change it.
+
+### Profiles and folders
+
+Setup follows OMP's active profile instead of assuming `~/.omp/agent`:
+
+- `OMP_PROFILE` wins over `PI_PROFILE`. An empty value selects the default
+  profile.
+- Named profiles use `~/${PI_CONFIG_DIR:-.omp}/profiles/<name>/agent` and
+  ignore `PI_CODING_AGENT_DIR`.
+- The default profile honors `PI_CODING_AGENT_DIR`.
+- Trajectory uses migrated XDG history only when the matching
+  `$XDG_DATA_HOME/omp` or profile folder exists.
+- Extensions and `mcp.json` stay in the profile's config folder, even when
+  sessions move to XDG data storage.
+
+### Capture
+
+The extension sends lifecycle, prompts, assistant messages, model and usage,
+tool calls and results, compaction, switch, branch, and shutdown events.
+Session start, switch, and branch do not wait for capture, so OMP is never
+blocked. Later events wait for the pending start, so the server still sees
+`SessionStart` first. Only shutdown waits for its `SessionEnd`.
+
+Parent links come only from the current v3 header or the exact previous file
+named by OMP. Resume and switch reasons do not create fork links.
+
+### History
+
+`trajectory session import omp` imports the profile's v3 history, including
+nested folders. Current files start with a `title` metadata slot before the
+session header. `parentSession` can be a provider ID or a file reference. The
+import keeps IDs, nested children, tool results and errors, model changes,
+native usage, and compaction.
+
+While the flag is on, a watcher also reads existing and changed v3 files from
+the same profile folder. It works as follows:
+
+- Its saved progress holds IDs and fingerprints, not paths or content.
+- Extension events win over history for the same data.
+- History never marks a session complete, makes it active, or starts a
+  publish.
+
+Use `trajectory session import omp` to repair complete history.
+
+Automated tests run OMP 17.0.4 with Bun 1.3.14, without credentials. They
+start the real RPC server and run a local command without a model call. They
+check for exactly one start and one end in order, the session and model
+identity, and an unpriced session with no token data. Turns with a real model,
+the interactive UI, and privacy features are not yet tested live.
 
 ## OpenCode
 
-Setup installs the OpenCode plugin under the resolved OpenCode config
-directory, merges the plugin path plus a `trajectory` MCP entry into
-`opencode.json`, and writes the incognito skill into the OpenCode skills
-directory.
+Setup installs the OpenCode plugin in the OpenCode config folder. It adds the
+plugin path and a `trajectory` MCP entry to `opencode.json`. It writes the
+incognito skill to the OpenCode skills folder. OpenCode does not get a
+`hooks.json` file.
 
-The plugin SDK events cover chat messages, tool execution before/after events,
-and lifecycle events. `trajectory backfill --from-opencode` discovers current
-and channel SQLite databases plus retained JSON storage, gives SQLite precedence
-for duplicate provider session IDs, and retains JSON-only sessions. It honors
-`OPENCODE_DB` plus the exclusive comma-separated `OPENCODE_DATA_DIR` override,
-otherwise resolving `XDG_DATA_HOME/opencode` or
-`~/.local/share/opencode`. Historical conversion preserves child and archived
-sessions, native parent and provider IDs, tool call IDs and terminal status,
-reasoning, summed per-call step-finish usage, and native-versus-derived cost
-provenance. OpenCode does not install a `hooks.json` file.
+The plugin SDK events cover chat messages, tool start and end, and lifecycle
+events.
 
-`trajectory features enable opencode_durable_history` enables a default-off
-serve-side watcher for new or changed durable sessions. It watches current and
-channel databases with their WAL/SHM sidecars plus retained session, message,
-and part JSON. Reconciliation uses the provider session ID across source
-transitions, bounded discovery, exact changed-session lookup, and logical
-content fingerprints from the first authoritative content-bearing copy.
-Database and WAL notifications for one database are coalesced after a 200 ms
-quiet window and forced through at a bounded one-second cadence during a
-continuous write storm. SHM coordination notifications fold into an existing
-wake but do not schedule work alone because SQLite readers also update SHM;
-CHMOD-only lock metadata is ignored. At most one full-content fingerprint and
-resulting materialization is attempted per watcher pass; overflow work rotates
-durably through the bounded cursor. Startup is a warm no-op; native plugin
-traces always win, and their ownership
-is checked before provider content hashing as well as under the destination
-lock. Provider deletion records a source tombstone without synthesizing
-lifecycle completion. Full fingerprints and provider transcript loads share
-one non-queueing worker per user across local processes through process-local
-admission plus a crash-safe advisory file lock; the subsequent bounded JSONL
-conversion is serialized by the destination-file lock. Native
-records are capped at 4 MiB, aggregate retained JSON at 16 MiB, messages at
-8192, and parts at 32768; discovery also caps roots, databases, source
-candidates, directory entries, depth, and 4096 pending changed paths. A limit
-or 10 ms admission timeout fails closed so the durable delivery can retry
-without replacing richer or stale history. Existing history still requires
-explicit `backfill --from-opencode`.
+### OpenCode turns
 
-### Nested session topology
+OpenCode keeps one active Trajectory turn for each session during message,
+permission, or tool activity:
 
-OpenCode records the exact immediate `parentID` from native `session.created`
-events on a child session's first `SessionStart`. Immediate ancestry is kept
-separate from semantic Task-launch correlation: an exact parent remains
-navigable even when concurrent or ambiguous Task calls fail closed rather than
-claiming a subagent launch.
+- An idle notice sends the buffered assistant text and usage, then one `Stop`
+  for the active turn. Repeated idle notices do not send another `Stop`.
+- `Stop` closes the turn.
+- Trajectory keeps session state until the session ends, is deleted, or the
+  plugin shuts down. A resumed turn or a later `session.created` event then
+  keeps the same parent links.
 
-The local viewer keeps each child as a separate session with its own trace.
-Parent, breadcrumb, and immediate-child controls navigate by exact session ID;
-children remain directly loadable while being excluded from the normal
-top-level session list. See [SUBAGENT-TRACE-MODEL.md](SUBAGENT-TRACE-MODEL.md)
-for ancestry, launch, and span-link semantics.
+Memory use stays limited. Above 128 sessions, Trajectory evicts idle session
+state. Above 512 sessions, it can evict the oldest state even if it is in
+use. Each session keeps at most eight queued turns
+with full detail. Beyond that, it keeps up to 128 placeholder `Stop`
+boundaries marked `turn_snapshot_dropped`. Further overflow is merged or
+dropped. Detail is lost only under heavy load.
+
+### OpenCode history
+
+`trajectory session import opencode` imports past sessions. It finds the
+current and channel SQLite databases and retained JSON storage. SQLite wins
+for duplicate session IDs. JSON-only sessions are kept. The importer looks in
+these places:
+
+- `OPENCODE_DB`
+- `OPENCODE_DATA_DIR`, a comma-separated list. When set, only these folders
+  are read.
+- Otherwise `XDG_DATA_HOME/opencode` or `~/.local/share/opencode`
+
+The import keeps child and archived sessions, parent and provider IDs, tool
+call IDs and status, and reasoning. It sums usage from each step. It records
+whether cost came from OpenCode or from Trajectory.
+
+To read new and changed sessions automatically, run:
+
+```bash
+trajectory config features enable opencode_durable_history
+```
+
+This watcher is off by default. It reads the current and channel databases,
+their WAL and SHM files, and the retained session, message, and part JSON. It
+works as follows:
+
+- It matches sessions by provider session ID across all sources.
+- It waits for a short quiet period after writes. During long write bursts it
+  still runs about once a second.
+- It starts without replaying old history.
+- Plugin traces always win.
+- A deleted session leaves a deletion record. Trajectory does not invent a
+  session end.
+- If a session is too large or the reader is busy, Trajectory skips it for now
+  and retries. It never replaces richer history.
+
+Existing history still needs `trajectory session import opencode`.
+
+### Nested session topology and local navigation
+
+OpenCode can create a nested child session for delegated work. A child can
+have its own children, several levels deep. Not every delegation creates a
+child session.
+
+For each child session, the plugin records the exact parent ID from
+`session.created` on the child's first `SessionStart`. History import keeps
+the same parent IDs. Events that arrive out of order still lead to one row per
+session, and no launch is invented. The local viewer navigates by this parent
+link. It is separate from the launch matching that counts subagent calls. See
+[reference/SUBAGENT-TRACE-MODEL.md](SUBAGENT-TRACE-MODEL.md) for the
+full rules and expected results for each case.
+
+In the local viewer, each child stays a separate session with its own trace:
+
+- Children do not appear in the top-level session list. You can open every
+  child and grandchild by its session ID.
+- Session detail shows the parent, the `root_session_id`, the list of
+  ancestors in order, and up to 100 direct children.
+- `child_sessions_total` gives the exact number of direct children.
+  `child_sessions_more` says whether that number is larger than the returned
+  `child_sessions` list.
+- Trajectory computes these fields when you open the session, from the parent
+  rows in SQLite. It follows at most 64 ancestors and stops at loops.
+- Parent, breadcrumb, and child links open sessions by ID. They work from
+  SQLite rows even when no child JSONL is available.
+- Subagent cards nest up to eight levels. Below that, the viewer shows an
+  "Open child session" link instead.
+
+Broken chains stay usable. A missing ancestor, a loop, a chain that is too
+deep, or a parent conflict between the JSONL and the cache keeps the direct
+parent. The root is then the current session. The detail reports
+`missing_parent`, `cycle`, `depth_exceeded`, or `parent_conflict`.
+
+When the SQLite cache or the session row is unavailable, detail reports
+`ancestry_status: unavailable`. It keeps a raw parent when one exists and sets
+the root to the current session. The ancestor and child lists are empty. In
+that state, `child_sessions_total: 0` and `child_sessions_more: false` are
+placeholders, not a real child count.
+
+Oh My OpenAgent (OMO) runs on top of OpenCode sessions. It has no setup
+target or capture path of its own, and Trajectory adds nothing for it.
+Delegation shows only when OpenCode creates or reuses a session ID. The OMO
+Sisyphus-Junior worker uses the native Task tool and might create no child
+session to link.
 
 ## Kilo Code
 
-Kilo Code uses an OpenCode-compatible plugin surface. Setup installs the
-Trajectory plugin under the Kilo config directory (`KILO_CONFIG_DIR` when set,
-otherwise `XDG_CONFIG_HOME/kilo` or `~/.config/kilo`), merges the plugin path
-plus a `trajectory` MCP entry into `opencode.json`, and writes the incognito
-skill into the Kilo skills directory.
+Kilo Code uses an OpenCode-compatible plugin. Setup installs the Trajectory
+plugin in the Kilo config folder. That is `KILO_CONFIG_DIR` when set,
+otherwise `XDG_CONFIG_HOME/kilo` or `~/.config/kilo`. Setup adds the plugin
+path and a `trajectory` MCP entry to `opencode.json`. It writes the incognito
+skill to the Kilo skills folder.
 
-Kilo shares the OpenCode nested-session topology and local viewer navigation,
-including exact immediate ancestry on child sessions and separate semantic
-Task-launch correlation.
+The plugin sends events to `/capture/kilo/...`. The server handles them
+through the OpenCode capture path.
 
-The plugin SDK posts events to `/capture/kilo/...`; the server routes those
-events through the OpenCode-compatible capture path. Kilo can also send native
-OpenTelemetry traces and logs to Trajectory's local OTLP relay when the user
-sets `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:19222` and enables Kilo's
-OpenTelemetry export. That relay complements plugin capture and does not
-replace setup-managed plugin events.
+Kilo can also send native OpenTelemetry traces and logs to Trajectory's local
+OTLP relay. To do this, set
+`OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:19222` and turn on Kilo's
+OpenTelemetry export. The relay works alongside the plugin events.
 
-Final assistant accounting is preserved even when Kilo emits completion text
-before usage: the plugin sends one compact `AgentUsage` event after final
-`message.updated`, and Trajectory records one provider call with input, output,
-reasoning, cache-read, cache-write, model, provider, native timestamp, and
-provider-reported cost. A missing Kilo usage event fails closed; Stop processing
-does not query OpenCode's database as a substitute.
+Kilo can send completion text before usage. The plugin therefore sends one
+`AgentUsage` event after the final `message.updated`. Trajectory then records
+one model call with input, output, reasoning, cache-read, and cache-write
+tokens. The call also has the model, provider, native timestamp, and
+provider-reported cost. If the usage event is missing, Trajectory records no
+usage. `Stop` does not read OpenCode's database instead.
 
-Durable history is a separate default-off fallback:
+### Kilo history
+
+History is a separate fallback that is off by default:
 
 ```bash
-trajectory features enable kilo_durable_history
-trajectory backfill --from-kilo          # explicit existing-history repair
+trajectory config features enable kilo_durable_history
+trajectory session import kilo          # repair existing history
 ```
 
-With the feature enabled, `trajectory serve` watches Kilo's official data root:
-`$XDG_DATA_HOME/kilo` when set, `~/Library/Application Support/kilo` on macOS,
-`%LOCALAPPDATA%\kilo` on Windows, and `~/.local/share/kilo` on other systems.
-It reads `KILO_DB` (absolute or relative to the data root), `kilo.db`, current
-`kilo-<channel>.db` files, retained legacy `opencode-<channel>.db` files, and
-the retained `storage/session`, `storage/message`, and `storage/part` JSON tree.
-`KILO_CONFIG_DIR` controls configuration only and is never treated as a data
-root. Native plugin JSONL always wins; watcher startup establishes a warm
-baseline, source deletion is only a tombstone, and active durable sessions do
-not gain a fabricated `session_end`. The Kilo CLI and editor surfaces share the
-same core store, so history alone does not reliably identify the originating
-frontend.
+With the feature on, `trajectory serve` watches Kilo's data folder:
+
+- `$XDG_DATA_HOME/kilo` when set
+- `~/Library/Application Support/kilo` on macOS
+- `%LOCALAPPDATA%\kilo` on Windows
+- `~/.local/share/kilo` on other systems
+
+It reads `KILO_DB` (absolute or relative to the data folder), `kilo.db`,
+current `kilo-<channel>.db` files, and retained legacy `opencode-<channel>.db`
+files. It also reads the retained `storage/session`, `storage/message`, and
+`storage/part` JSON. `KILO_CONFIG_DIR` controls configuration only, never the
+data folder.
+
+Plugin JSONL always wins. The watcher starts without replaying old history. A
+deleted source leaves only a deletion record. Active sessions do not get an
+invented `session_end`. The Kilo CLI and editor share one store, so history
+cannot tell which one started a session.
+
+Kilo uses the same nested session topology and local viewer navigation as
+OpenCode. This includes exact parent links on child sessions, root lookup when
+you open a session, and hiding child sessions from the top-level list.
+
+## OpenClaw
+
+Released Trajectory builds do not capture OpenClaw live. When
+`openclaw_durable_history` is on, a reader imports OpenClaw v2026.7.1
+agent-session JSONL, and `trajectory session import openclaw` repairs it. Resume,
+MCP and incognito controls, and setup-managed install are not available.
+
+## Devin CLI
+
+Devin support is a preview and is off by default. Turn it on before setup:
+
+```bash
+trajectory config features enable devin_cli_instrumentation
+trajectory setup --clients devin
+```
+
+Setup keeps your other settings. It adds only Trajectory entries to the Devin
+config: `~/.config/devin/config.json` on macOS and Linux, or
+`%APPDATA%\devin\config.json` on Windows. It adds these items:
+
+- `SessionStart`, `Stop`, `PostCompaction`, and `SessionEnd` hooks. They never
+  block Devin. They only tell Trajectory to read the session store.
+- `mcpServers.trajectory` for the incognito tool
+- `skills/incognito/SKILL.md` under that config folder, for the global
+  `/incognito` command
+
+When `devin_cli_instrumentation` is off, setup does not change Devin settings,
+and the reader stays off. Uninstall removes only Trajectory entries and files.
+
+### How Devin capture works
+
+Devin hook payloads have no stable `session_id`. Trajectory therefore does not
+turn them into records. Each hook tells Trajectory to read active or changed
+sessions from Devin's store:
+
+- macOS: `~/Library/Application Support/devin/cli/sessions.db`, with
+  transcripts in the `transcripts/` folder next to it
+- Linux: `~/.local/share/devin/cli/sessions.db`, with transcripts in the
+  `transcripts/` folder next to it
+- Windows: `%APPDATA%\devin\cli\sessions.db`, with transcripts in the
+  `transcripts\` folder next to it
+
+The reader prefers `transcripts/<session-id>.json`. It falls back to
+`message_nodes.chat_message` in `sessions.db`. Each database and session pair
+is a separate source, so Trajectory handles concurrent sessions correctly. It
+never picks the newest session for a working directory.
+
+Records use `client_source=devin`. Transcripts and database rows can give
+prompts, assistant and thinking text, tool calls and results, the model, and
+per-step prompt, completion, and cache counts. Trajectory reads the final
+`Snapshot.Usage` total but does not emit it yet.
+
+Trajectory cannot import past Devin sessions in bulk. It reads only active or
+changed sessions. Each event carries a delivery ID, so a crash or a retry does
+not create duplicates. A session that crosses midnight UTC keeps one session
+file.
+
+Earlier releases kept a Devin delivery database at
+`state/devin-delivery.sqlite`. Trajectory no longer uses it. You can delete
+the file, with or without a `.retired` suffix. Trajectory cannot retract a
+row that it already published when Devin later removes the source.
+
+### Devin session end and privacy
+
+Devin's store has no reliable field for interactive or headless mode.
+Trajectory marks every Devin session as headless or unknown. Task segmentation
+skips them.
+
+Only Devin can end a Devin session. Trajectory writes `session_end` only after
+it sees the session move from database messages to a finished transcript.
+Without that change, it writes no session end. Session end and final session
+metrics are reported as gaps. Server shutdown and orphan recovery never end a
+Devin session. Crash recovery does finish an end record that is already
+written.
+
+Trajectory redacts session titles, prompts, assistant and thinking text, tool
+input, and tool output before it writes session JSONL. Turning on incognito
+also writes a privacy record at `state/provider-incognito-<session>`. It
+works as follows:
+
+- An enable before the first `session_start` writes the record.
+- An explicit disable never removes it.
+- Every event is marked incognito while the record exists. An unreadable
+  record counts as present.
+- Trajectory removes the record only after the session's final publish
+  succeeds. A session that never ends keeps the record, and its events stay
+  incognito.
+
+Devin reads Claude hook settings by default. Do not change that setting.
+Trajectory ignores or reassigns its imported Claude hooks when
+`DEVIN_PROJECT_DIR` identifies a Devin process. This prevents duplicate Claude
+and Devin records for one action.
+
+Tests use sanitized database and transcript fixtures. Trajectory has not yet
+tested Devin live with a signed-in account. It does not infer a
+`DEVIN_API_KEY`. It emits only per-step counts that a source record holds. It
+does not infer missing totals.
+
+```bash
+trajectory config features enable devin_cli_instrumentation
+trajectory setup --clients devin
+trajectory doctor
+```
+
+## Grok Build
+
+Grok Build support is off by default:
+
+```bash
+trajectory config features enable grok_build_instrumentation
+trajectory setup --clients grok
+```
+
+Setup owns these files:
+
+- `$GROK_HOME/hooks/trajectory.json` (default `~/.grok/hooks/trajectory.json`)
+- `$GROK_HOME/skills/trajectory-incognito/SKILL.md`
+- `~/.trajectory/bin/grok-incognito`
+
+Grok supports global hooks, which do not depend on project trust. Setup writes
+one hook file of its own. Uninstall never edits or removes your other hook
+files.
+
+Every Grok hook event runs `trajectory capture-hook --client grok`:
+`SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
+`PostToolUseFailure`, `PermissionDenied`, `Stop`, `StopFailure`,
+`Notification`, `SubagentStart`, `SubagentStop`, `PreCompact`, `PostCompact`,
+and `SessionEnd`. Trajectory reads Grok's camelCase fields and keeps the raw
+payload. A hook's session ID and `transcriptPath` wake only the matching
+session.
+
+### Grok session files
+
+The watcher reads Grok's session folders from these places:
+
+- `$GROK_HOME/sessions` or `~/.grok/sessions`
+- the `GROK_DIR` compatibility override
+- folders listed in `TRAJECTORY_GROK_HISTORY_DIRS`
+
+It reads the summary, update log, chat history, signals, and parent and child
+metadata. It imports old history in batches.
+`TRAJECTORY_DISABLE_GROK_HISTORY_WATCHER=1` turns off only this watcher. The
+global watcher setting and the feature flag also turn it off.
+
+Session files give prompts, assistant text and reasoning, tools, the model,
+workspace, Git, and parent links. Hook data wins. A provider snapshot time
+does not end a session, and a deleted file does not create `session_end`.
+`signals.json` has token-like counts for the whole session. Grok does not tie
+them to calls or turns, so Trajectory emits no token total or cost from them.
+
+Setup, detection, the watcher, backfill, and the local viewer are tested
+without credentials. Version 0.2.103 was checked without sign-in. Hooks and
+file changes have not yet been tested live with a signed-in account.
 
 ## Qoder CLI
 
-Qoder instrumentation is preview-gated and source-first:
+Qoder support is a preview behind a feature flag:
 
 ```bash
-trajectory features enable qoder_cli_instrumentation
+trajectory config features enable qoder_cli_instrumentation
 trajectory setup --clients qoder
 ```
 
-Setup stages `~/.trajectory/plugins/qoder/trajectory` with a
-`.qoder-plugin/plugin.json`, `hooks/hooks.json`, `.mcp.json`, incognito skill,
-and command, then delegates validation/install/uninstall to `qodercli plugins`.
-Hooks use `capture-hook --client qoder --ensure-serve` and carry the native
-`transcript_path`, allowing an exact-source scan. Bounded fsnotify is a latency
-optimization; bounded polling and a rotating full-content hash are the
-correctness fallback.
+Setup stages a plugin in `~/.trajectory/plugins/qoder/trajectory`. It holds
+`.qoder-plugin/plugin.json`, `hooks/hooks.json`, `.mcp.json`, an incognito
+skill, and a command. Setup then uses `qodercli plugins` to check, install,
+and uninstall it.
 
-Source root precedence is `QODER_PROJECTS_DIR`, then
-`QODER_CONFIG_DIR/projects`, then `~/.qoder/projects`. Parse main JSONL,
-`-session.json` metadata, and parent `subagents/agent-*.jsonl`; do not merge
-QoderWork. Repeated assistant IDs are replacement snapshots, not extra model
-calls. A changed emitted prefix triggers a full rebuild of only Trajectory's
-derived session JSONL and sequence clock before replaying the current provider
-snapshot. Provider source files are read-only.
+Hooks run
+`capture-hook --client qoder --ensure-serve --ensure-serve-wait 2s`. They
+discard output and always exit 0. They finish at least two seconds before
+Qoder's eight-second hook timeout. Each hook passes Qoder's `transcript_path`,
+so Trajectory reads only that session. File notices make capture faster.
+Polling catches anything they miss.
 
-Keep both identities: path-safe canonical IDs are `qoder-<id>` and
-`qoder-<parent>-subagent-<agent>`, while the exact provider identities
-`qoder:<id>` and `qoder:<parent>:subagent:<agent>` are recorded in provider ID
-fields. This mapping is required because canonical IDs are cross-platform file
-names and the shared validator rejects colons.
+On startup, Trajectory records a baseline of existing transcripts and does
+not import old history. Automatic capture starts only after that baseline is
+complete. New sessions are limited to 4,096 by default. When that limit is
+reached, sessions already tracked continue, but new ones wait. Sessions left
+out because the limit was full at startup stay out of automatic capture, even
+after space frees up. A hook for one of those sessions can still add it when
+space is free. Missing or damaged data stops the read
+without moving its position or changing Qoder's files.
 
-Fixture tests cover native token/cache fields, tools, thinking, sidecars,
-subagents, replacement snapshots, same-stat rewrites, mutation rebuilds,
-tombstones, feature precedence, and plugin CLI invocation. Live PAT validation
-and native interactive/headless discrimination remain follow-ups.
+Trajectory looks for transcripts in this order:
+
+1. `QODER_PROJECTS_DIR`
+2. `QODER_CONFIG_DIR/projects`
+3. `~/.qoder/projects`
+
+It reads the main JSONL, `-session.json` metadata, and the parent's
+`subagents/agent-*.jsonl`. It does not merge QoderWork. Repeated assistant
+IDs replace earlier snapshots and do not count as extra model calls. When
+Qoder changes earlier content, Trajectory rebuilds only its own session JSONL.
+It never changes Qoder's files.
+
+Trajectory keeps two IDs for each session:
+
+- Session IDs that are safe as file names: `qoder-<id>` and
+  `qoder-<parent>-subagent-<agent>`
+- Qoder's own IDs in the provider ID fields: `qoder:<id>` and
+  `qoder:<parent>:subagent:<agent>`
+
+Session IDs are file names on every platform, so they cannot contain colons.
+
+Fixture tests cover token and cache fields, tools, thinking, metadata files,
+subagents, snapshots, rewrites, deletions, and the plugin CLI. Live tests and
+telling interactive runs from headless runs are still to do.
 
 ## ZCode
 
-ZCode instrumentation is a default-off, SQLite-authoritative preview:
+ZCode support is a preview that is off by default. Its SQLite database is the
+source of truth:
 
 ```bash
-trajectory features enable zcode_instrumentation
+trajectory config features enable zcode_instrumentation
 trajectory setup --clients zcode
-trajectory backfill --from-zcode
+trajectory session import zcode
 ```
 
-Setup mutates only the current user config at `~/.zcode/cli/config.json`. It
-adds process hooks for `SessionStart`, `UserPromptSubmit`, `PostToolUse`,
-`PostToolUseFailure`, and `Stop`. Each hook invokes the absolute Trajectory
-binary with `capture-hook --client zcode --ensure-serve` and emits no canonical
-event itself. Pre-tool and permission hooks are intentionally omitted because
-the corresponding database mutation can lag the hook event.
-The MCP registration carries an explicit Trajectory ownership marker, and
-uninstall removes only marked MCP, hook, and staged-skill assets.
+Setup changes only `~/.zcode/cli/config.json`. It adds hooks for
+`SessionStart`, `UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`, and
+`Stop`. Each hook runs the Trajectory binary with
+`capture-hook --client zcode --ensure-serve`. Hooks write no records
+themselves. Setup leaves out pre-tool and permission hooks, because the
+database might not have the matching change yet. The MCP entry carries a
+Trajectory marker. Uninstall removes only marked MCP, hook, and skill files.
 
-Resolve sources from `~/.zcode/cli/db`, `ZCODE_STORAGE_DIR/cli/db`,
-`storage.sessionDbPath`, `ZCODE_SESSION_DB_PATH`, and `ZCODE_SESSION_DB`.
-Accept `db.sqlite` even though its filename does not end in `.db`, and treat its
-WAL and SHM files as changes to the same logical source. Bounded discovery,
-exact lookup, content fingerprints, cursors, and the canonical session lock are
-shared with the OpenCode-compatible source framework, but attribution remains
+Trajectory finds the database from these settings:
+
+- `~/.zcode/cli/db`
+- `ZCODE_STORAGE_DIR/cli/db`
+- `storage.sessionDbPath`
+- `ZCODE_SESSION_DB_PATH`
+- `ZCODE_SESSION_DB`
+
+It accepts `db.sqlite`, even though the name does not end in `.db`. Changes to
+its WAL and SHM files count as changes to the database. Records use
 `client_source=zcode` and `source_dialect=zcode_sqlite_v3`.
 
-Use `session`, `message`, and `part` for identity, content, tools, and
-relationships. If `model_usage` exists, discard legacy message-derived usage
-and preserve each terminal attempt (`completed`, `error`, or `cancelled`) as a
-separate `llm_call` with logical-request and retry metadata. Aggregate its
-provider-observed token categories into the owning turn. The table has no
-native USD field; compute cost only through an available Trajectory rate card
-and label it `token_derived:zcode_model_usage`. Unknown models remain
-`unavailable:price_unknown`.
+Trajectory reads the `session`, `message`, and `part` tables for IDs,
+content, tools, and parent links. Usage works as follows:
 
-Do not map `session.time_updated` to `session_end`; it is current activity.
-Only `time_archived` is terminal durable evidence. Provider deletion remains a
-diagnostic tombstone and does not erase retained local history. Automatic
-reconciliation is bounded and repairable with `backfill --from-zcode`.
-`TRAJECTORY_DISABLE_ZCODE_WATCHER=1`, the global client-watcher disable,
-managed feature policy, and `TRAJECTORY_DISABLE_FEATURES` all keep the watcher
-off. The independent usage-reference census has no ZCode adapter, so it is a
-negative cross-check rather than token or pricing authority.
+- If a `model_usage` table exists, Trajectory ignores older usage from
+  messages.
+- Each finished attempt (`completed`, `error`, or `cancelled`) becomes its own
+  `llm_call`, with request and retry details.
+- Token counts add up into the turn that owns them.
+- The table has no USD field. Trajectory computes cost only from its rate
+  card, labeled `token_derived:zcode_model_usage`. Unknown models stay
+  `unavailable:price_unknown`.
+
+`session.time_updated` shows current activity and never ends a session. Only
+`time_archived` marks a session as ended. A deleted session leaves a deletion
+record and keeps local history. Use `trajectory session import zcode` to
+repair history.
+
+These settings keep the watcher off:
+
+- `TRAJECTORY_DISABLE_ZCODE_WATCHER=1`
+- the global client watcher setting
+- managed feature policy
+- `TRAJECTORY_DISABLE_FEATURES`
 
 ## CommandCode
 
-CommandCode instrumentation is a default-off, watcher-first preview:
+CommandCode support is a preview that is off by default:
 
 ```bash
-trajectory features enable commandcode_instrumentation
+trajectory config features enable commandcode_instrumentation
 trajectory setup --clients commandcode
 ```
 
-Setup merges only Trajectory-owned `SessionStart`, `PreToolUse`,
-`PostToolUse`, and `Stop` command hooks into
-`~/.commandcode/settings.json`, adds the user-scoped MCP entry in
-`~/.commandcode/mcp.json`, and installs owned incognito skill and command
-files. The generic `cmd` alias is deliberately excluded from detection;
-`command-code` and `commandcode` are used on all platforms; `cmdc` is a
-collision-safer Windows identity.
-No launcher wrapper is installed.
+Setup makes these changes:
 
-The authoritative source is
-`~/.commandcode/projects/<project>/<session>.jsonl` plus the optional
-`<session>.meta.json` sidecar. Checkpoint, prompt, share, and file-history
-sidecars are excluded. Current saves atomically rewrite the full transcript,
-regenerate message IDs, and can regenerate headless timestamps. Reconciliation
-therefore uses provider order, semantic content, and tool-call IDs. A changed
-emitted prefix rebuilds only Trajectory's derived JSONL; provider files remain
-read-only. Hook delivery accelerates an exact eligible transcript scan, while
-bounded polling covers plan/headless modes and missed hooks.
+- It merges `SessionStart`, `PreToolUse`, `PostToolUse`, and `Stop` command
+  hooks into `~/.commandcode/settings.json`.
+- It adds the user MCP entry in `~/.commandcode/mcp.json`.
+- It installs incognito skill and command files.
+- It installs no launcher wrapper.
 
-Native hooks supply exact CWD when present and native Stop proves a turn
-boundary; hook presence alone does not prove interactive mode. Sessions remain
-conservatively `is_headless=true` and `source_mode=unknown` until an
-authoritative mode signal exists. The source has no authoritative SessionEnd
-and does not reliably persist native model, token, or cost data, so Trajectory does not invent
-those fields. Downstream text-based estimates may still appear with estimated
-provenance. The ccusage adapter set has no CommandCode source, so it remains a
-negative usage-authority cross-check rather than a token/cost oracle.
+Detection uses the `command-code`, `commandcode`, and `cmdc` commands on all
+platforms. It ignores the generic `cmd` alias.
 
-Sanitized current-format fixtures cover recursive bounded discovery, sidecar
-filtering, regenerated IDs/timestamps, exact-source wakeups, mutation rebuilds,
-explicit versus unknown tool failures, canonical JSONL, and Lapdog
-list/trace/fetch readback. A live authenticated CLI and incognito UX pilot
-remain follow-ups.
+The source of truth is `~/.commandcode/projects/<project>/<session>.jsonl` and
+the optional `<session>.meta.json` file. Trajectory skips checkpoint, prompt,
+share, and file-history files. CommandCode rewrites the whole transcript on
+each save. It creates new message IDs and can change headless timestamps.
+Trajectory therefore matches records by order, content, and tool call ID.
+
+When CommandCode changes earlier content, Trajectory rebuilds only its own
+session JSONL. It never changes CommandCode's files. Hooks make Trajectory
+read that transcript sooner. Polling covers plan mode, headless mode, and
+missed hooks.
+
+Hooks give the working directory when present. A `Stop` hook marks a turn
+boundary. Trajectory does not treat hooks as a sign of interactive mode.
+Sessions stay `is_headless=true` and `source_mode=unknown` until a reliable
+mode signal exists. CommandCode has no reliable session end and does not save
+model, token, or cost data reliably. Trajectory does not invent them. Later
+steps may still show text-based estimates, labeled as estimated.
+
+Tests use sanitized fixtures of the current format. Live tests with a
+signed-in CLI and the incognito command are still to do.
+
+## gptme
+
+gptme 0.32 support is off by default:
+
+```bash
+trajectory config features enable gptme_instrumentation
+trajectory setup --clients gptme
+```
+
+Setup writes the user config that gptme 0.32 reads,
+`~/.config/gptme/config.toml`, on every OS. It installs the
+`trajectory_gptme` folder plugin, turns on a `trajectory` MCP server, and
+registers `/incognito`. Setup stops before it changes anything if a local or
+project config with higher priority would hide the integration.
+
+The plugin sends metadata-only `SessionStart`, `UserPromptSubmit`,
+`PreToolUse`, `PostToolUse`, `Stop`, and `SessionEnd` events. They tell
+Trajectory to read the session, and they never repeat prompt, assistant, or
+tool content. The plugin uses one background sender, so gptme never waits for
+capture:
+
+- When 1,024 events are already queued, the hook waits up to one send timeout
+  for space. Events stay in order.
+- When gptme exits, the sender keeps sending for up to 30 seconds. It stops at
+  the first failed send.
+
+The server matches the gptme session ID exactly and reads only that session.
+It uses the plugin's end event and never picks the newest session in the same
+project. An end notice cannot discard the launch mode that a start notice
+reported.
+
+The source of truth is `conversation.jsonl`, `events.jsonl`, and
+`config.toml`. Trajectory finds them under `GPTME_LOGS_HOME` or gptme's
+current data folders. A change to any of the three files triggers a read.
+Event replay recovers partial writes and edit or undo changes. Saved progress
+holds only hashes and IDs.
+
+Trajectory keeps gptme's token counts for each message and adds up all model
+calls in the user turn. It keeps recorded cost, labeled as computed. It treats
+local timestamps with no time zone as unknown. Only an explicit
+`--non-interactive` marks a session as headless. When the mode is missing,
+privacy features still treat the session as headless or unknown.
+
+Tests install gptme 0.32.0, run `mock/echo`, and check for a plugin
+`SessionEnd`. Trajectory does not turn on gptme's optional native OTLP. It
+cannot yet remove duplicates across hooks, the session store, and OTLP.
+
+## CodeWhale
+
+CodeWhale 0.9.0 support is a preview that is off by default. It reads saved
+files first:
+
+```bash
+trajectory config features enable codewhale_instrumentation
+trajectory setup --clients codewhale
+```
+
+Setup owns only its user-level hook entries, the MCP entry, and the incognito
+skill. CodeWhale's `session_start`, `message_submit`, tool, `turn_end`, error,
+subagent, and `session_end` hooks only wake the reader. CodeWhale gives hooks
+a separate `sess_*` ID instead of the saved session's UUID. Trajectory
+therefore never uses hook data as the transcript. The `/incognito` workflow
+asks the model to call the `trajectory_incognito` MCP tool. CodeWhale has no
+built-in incognito switch.
+
+### CodeWhale files
+
+Saved sessions are schema-v1 JSON files. Trajectory finds them as follows:
+
+- If `CODEWHALE_HOME` is set, it reads `$CODEWHALE_HOME/sessions`.
+- Otherwise it reads `~/.codewhale/sessions`. CodeWhale moves missing files
+  there from the legacy `~/.deepseek/sessions` folder without overwriting
+  current data.
+- It treats `checkpoints/latest.json` as the same session in progress.
+- It skips `checkpoints/offline_queue.json`.
+- `DEEPSEEK_TUI_SESSIONS_DIR` is not a current CodeWhale setting.
+
+The runtime API and task manager also save schema-v2 records. They are in
+`$DEEPSEEK_RUNTIME_DIR`, or the `runtime` folder of the selected task root:
+`threads/<id>.json`, `turns/<id>.json`, `items/<id>.json`,
+`events/<thread>.jsonl`, and `state.json`. Trajectory reads finished records
+after a restart. It uses the event file only to wake up sooner.
+
+A runtime thread's optional `session_id` links it to the saved session's
+UUID. Linked stores become one CodeWhale session, not two. A thread without a
+link keeps its own ID until a link appears.
+
+### CodeWhale usage
+
+Runtime turns keep input, output, cache-hit, cache-miss, reasoning, and
+reasoning-replay tokens. They also keep the provider and model, timing,
+status, and errors.
+
+Saved messages have no timestamp, model, or usage of their own. Trajectory
+gives them an ordering time and marks it synthetic. Saved
+`metadata.total_tokens` and cost cover the whole session only. CodeWhale
+computes that cost. The provider did not bill it. In headless `exec` runs,
+`model_provider` shows the provider you chose. Trajectory still prefers the
+runtime record for each turn's provider and model.
+
+`codewhale exec` does not run hooks. A plain one-shot `exec` saves no session
+unless it resumes one. `--output-format stream-json` saves a session and
+reports input and output tokens at the end. It does not report cache,
+reasoning, or cost. Setup installs no wrapper.
+
+Tests run without credentials. They install the published CodeWhale 0.9.0 and
+run a real stream-JSON `exec` against a local test server. Task segmentation
+skips CodeWhale sessions until a source reports a reliable launch mode.
+
+## ForgeCode
+
+ForgeCode support reads saved history and is off by default:
+
+```bash
+trajectory config features enable forgecode_instrumentation
+trajectory setup --clients forgecode
+```
+
+Trajectory reads `.forge.db` under `FORGE_CONFIG` when set. Otherwise it uses
+an existing legacy `~/forge` folder or the current `~/.forge` folder. It opens
+SQLite read-only, and changes to the WAL and SHM files count as changes. Each
+database and conversation ID becomes one session. Saved progress holds full
+content fingerprints, so Trajectory catches rewrites that do not change the
+file's size or time.
+
+The conversation context is the source of truth for most data. This
+includes messages, raw content, model, reasoning, tool arguments and results,
+failure state, usage, provider cost, and child conversation IDs. When the system message has ForgeCode's
+`current_working_directory` tag, it sets the working directory. Tool results
+that name a child conversation create exact parent and child links. Trajectory
+never links sessions by time or workspace.
+
+Messages have an order but no timestamps. Trajectory gives them synthetic
+times, starting at `conversation.created_at`, and labels them as such. Exact
+token counts use the native token fields. Approximate or mixed counts use the
+estimated fields and keep the provider's usage object. Provider cost stays
+labeled provider-reported.
+
+History never marks a session active or complete. Trajectory writes no
+`session_end` and keeps local history after a deletion. When ForgeCode changes
+a conversation, Trajectory rebuilds only its own session JSONL. Sessions
+without a launch mode are marked headless, so task segmentation skips them.
+
+Setup writes no launcher shim or shell config. It detects ForgeCode only when
+the read-only `forge config path` command prints a path that ends in
+`.forge.toml`. This avoids other programs named `forge`. Setup merges only the
+`mcpServers.trajectory` entry in `.mcp.json` and writes its skill and command
+files.
+
+Incognito needs an exact session ID from `trajectory status --json`. History
+never guesses a conversation by recency or workspace. Tests use a sanitized
+copy of ForgeCode's schema. Live CLI tests and the incognito command are still
+to do.
+
+## Warp/Oz CLI
+
+Warp/Oz support is off by default and reads only local stores:
+
+```bash
+trajectory config features enable warp_oz_instrumentation
+trajectory setup --clients warp
+```
+
+Setup owns only `mcpServers.trajectory` in `~/.warp/.mcp.json` and the
+`~/.warp/skills/trajectory-incognito/SKILL.md` file. The capture server
+watches the stable, preview, legacy, and TUI folders for changes to
+`warp.sqlite` and its `-wal` and `-shm` files. `WARP_DIR` overrides the
+folder. Each database and conversation pair becomes one session.
+
+Trajectory reads data as follows:
+
+- It prefers `agent_tasks` rows, decoded with public Warp protobuf commit
+  `248f5f62663e`.
+- It keeps task and parent task IDs as subagent links.
+- If no rich messages decode, it falls back to user prompts in `ai_queries`.
+- It never invents assistant text, tool calls, token splits, or cost.
+- When any rich row fails to decode, it emits
+  `warp.source.protobuf_decode_incomplete` with the schema commit.
+
+Conversation token usage covers the whole conversation. Trajectory keeps it as
+source metadata only. It does not publish it as token usage, and it never
+mixes it with per-message usage.
+
+No local field records the launch mode or the session end. Sessions are
+therefore headless or unknown, and Trajectory writes no session end.
+`oz agent run-cloud` is not supported.
 
 ## Zed
 
-Zed is a default-off passive-history preview:
+Zed support is a preview that reads saved history and is off by default:
 
 ```bash
-trajectory features enable zed_passive_history
+trajectory config features enable zed_passive_history
 trajectory setup --clients zed
 ```
 
-Read `threads/threads.db` beneath the platform Zed data directory or explicit
-`ZED_DIR` with SQLite `mode=ro`. Include WAL/SHM changes in fingerprints, bound
-database fanout and watched directories, persist no provider content in the
-cursor, emit tombstones, and keep bounded polling active when filesystem
-notifications are unavailable or missed.
+Trajectory reads `threads/threads.db` in Zed's data folder, or in `ZED_DIR`
+when set. It opens SQLite read-only. Changes to the WAL and SHM files count as
+changes. Saved progress holds no Zed content. Polling continues when file
+notices are unavailable or missed. A deleted thread leaves a deletion record.
 
-Decode both JSON and zstd row payloads. Preserve exact `zed:<id>` provider IDs
-alongside path-safe `zed-<id>` session IDs. A non-empty `parent_id` is a real
-subagent session, not a discovery filter; retain parent identities and emit
-`relationship=subagent`. Recover prompt, assistant, thinking, tool call/result,
-model, and the first folder path as CWD. Parse `request_token_usage` only as a
-native session aggregate; do not assign or materialize it to an assistant
-message or turn. Preserve it only as explicitly scoped
-`provider_session_usage` metadata on `session_start`. Message timestamps are
-derived solely to retain database order
-and must carry `provider_timestamp_present=false` plus
-`timestamp_provenance=derived_order`; only row created/updated times are
-provider-native. Do not
-infer lifecycle hooks, launch interception, OTel, or terminal closure.
-The database does not expose an authoritative interactive/headless signal, so
-mark passive sessions headless/unknown and skip sensitivity classification and
-segmentation rather than inventing eligibility.
+Trajectory reads Zed data as follows:
 
-Setup may merge only the owned `context_servers.trajectory` entry and install
-the owned global skill `~/.agents/skills/trajectory-incognito/SKILL.md` because
-those are documented Zed surfaces. Verify and uninstall only owned state.
-Fixtures cover database discovery, JSON/zstd, WAL fanout, durable no-op,
-tombstones, subagent identity, setup ownership, and local-UI readback. Live Zed
-UI/schema/incognito and cross-platform root validation remain follow-ups.
+- It decodes both JSON and zstd row payloads.
+- It keeps Zed's `zed:<id>` IDs next to session IDs that are safe as paths,
+  `zed-<id>`.
+- A non-empty `parent_id` marks a real subagent session. Trajectory keeps the
+  parent and emits `relationship=subagent`.
+- It recovers prompts, assistant text, thinking, tool calls and results, the
+  model, and the first folder path as the working directory.
+- `request_token_usage` covers the whole session. Trajectory stores it only
+  as `provider_session_usage` metadata on `session_start`. It never assigns it
+  to a message or turn.
+- Message times come only from database order. They carry
+  `provider_timestamp_present=false` and
+  `timestamp_provenance=derived_order`. Only row created and updated times
+  come from Zed.
 
+Trajectory does not add lifecycle hooks, a launch wrapper, OTel, or a session
+end. The database has no reliable interactive or headless signal. Sessions
+are therefore marked headless or unknown, and task segmentation skips them.
+
+Setup merges only the `context_servers.trajectory` entry. It installs the
+global skill `~/.agents/skills/trajectory-incognito/SKILL.md`. Zed documents
+both. Verify and uninstall touch only these items. Tests use fixtures. Live
+tests in the Zed app, incognito, and other platforms are still to do.
+
+## Provider watcher recovery
+
+These rules apply to the watchers for gptme, Kimi, and CodeWhale:
+
+- Each watcher records the last point that capture accepted. After a storage
+  error, it goes back to that point only when the record still matches.
+- New content that capture has not accepted stays pending. This holds even if
+  the content was written before the error appeared.
+- If saving progress fails, the watcher keeps the accepted data and stops
+  taking new work until a retry succeeds.
+
+Each watcher tracks a limited number of sessions. At that limit, it reports
+the pressure and keeps reading the sessions it already tracks. New session
+files stay in the client's store until space frees up. Trajectory never
+treats a session as deleted because discovery stopped early.
+
+## DD Harness
+
+DD Harness is a default-off preview integration, never selected by
+`setup --clients all` while its flag is off:
+
+```bash
+trajectory config features enable dd_harness_instrumentation
+trajectory setup --clients dd-harness
+```
+
+It captures sessions, model requests, tools, messages, and session
+lifecycle as versioned batch envelopes over loopback HTTP. Model requests
+carry token vectors priced through the shared rate card. The
+`trajectory session import dd-harness` command (or `trajectory backfill
+--from-dd-harness`) imports retained history with merge-by-identity so
+re-imports never double-count. Gaps are reported honestly, never guessed.
+
+The DD Harness org-managed user guide holds the integration's operational
+details.
 ## Troubleshooting
 
 Start with:
@@ -2030,9 +2810,26 @@ Start with:
 trajectory doctor
 trajectory config show
 trajectory publish status
-trajectory logs --grep capture
+trajectory doctor logs --grep capture
 ```
 
-If no data appears, verify that the client-specific plugin or hooks exist, the
-capture server is reachable on the configured port, and `trajectory status`
-shows recent local sessions before investigating Datadog publish.
+If no data appears, check these items before you look at Datadog publishing:
+
+1. The client's plugin or hooks exist.
+2. The capture server answers on the configured port.
+3. `trajectory status` shows recent local sessions.
+
+### Confirmed activity evidence
+
+Activity metrics separate accepted subagent launches from launch attempts and
+from tool names alone. A Codex spawn-begin record shows intent. Accepted
+results provide the launch facts. Pi extensions that report activity use the
+versioned format in `plugin/trajectory-pi/README.md`.
+
+Coverage works as follows:
+
+- No extension report means coverage is unknown.
+- A `complete` coverage report allows a count of zero.
+- Unsupported or incomplete capture does not allow a zero count.
+
+These activity metrics are on by default and need no feature flag.

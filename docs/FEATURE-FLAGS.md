@@ -1,57 +1,36 @@
-
 # Feature Flags
 
-Trajectory feature flags gate risky or rollout-sensitive behavior. Use them for
-new behavior that mutates durable user state, changes client startup, introduces
-wrapper/interposer behavior, depends on managed settings, or changes outbound
-network shape.
-
-## Decision Checklist
-
-For feature-oriented work, agents must tell the user the feature-flag decision
-before implementation starts:
-
-```text
-Feature flag decision: needed/not needed - <reason>.
-```
-
-Use a flag when the change mutates durable user or admin config, changes setup
-or client registration, changes wrapper/interposer behavior, changes environment
-injection or OTLP/network shape, changes publish/export behavior, depends on
-managed-settings precedence, introduces a new user-visible workflow, or needs a
-fast kill switch for narrow rollout.
-
-Do not use a flag for docs-only changes, tests-only changes, logging-only
-visibility, internal refactors with no behavior change, or bug fixes that restore
-documented behavior for everyone. Privacy and security fixes should not be made
-optional unless a temporary rollout-safety kill switch is required.
+Trajectory feature flags turn some behavior on or off. Most flags let you try
+new behavior before it becomes the default, or turn a change off if it causes a
+problem on your computers. This page lists the commands, which setting wins,
+and the flags you can use.
 
 ## Commands
 
-Inspect effective flags:
+To see the flags that apply, run:
 
 ```bash
-trajectory features list
-trajectory features status claude_native_otlp_interposer
+trajectory config features list
+trajectory config features status file_work_indicators
 ```
 
-Persist a user override in `~/.trajectory/config.yaml`:
+To save a user override in `~/.trajectory/config.yaml`, run:
 
 ```bash
-trajectory features enable claude_native_otlp_interposer
-trajectory features disable claude_native_otlp_interposer
-trajectory features clear claude_native_otlp_interposer
+trajectory config features enable file_work_indicators
+trajectory config features disable file_work_indicators
+trajectory config features clear file_work_indicators
 ```
 
-The same lists are visible through the config surface:
+The same lists are also config keys:
 
 ```bash
 trajectory config get features.enabled
 trajectory config get features.disabled
-trajectory config set features.disabled claude_native_otlp_interposer
+trajectory config set features.disabled file_work_indicators
 ```
 
-After changing a flag for long-running `trajectory serve` processes, run:
+After you change a flag, reload long-running `trajectory serve` processes:
 
 ```bash
 trajectory config reload --yes
@@ -59,121 +38,488 @@ trajectory config reload --yes
 
 ## Runtime Overrides
 
-Use process-local environment overrides for tests, emergency kill switches, or
-one launched process:
+`frontier_model_catalog` is a rollout flag that defaults off. It lists AI
+Gateway models in the model pickers of Frontier clients. It covers the Codex
+and Claude Code `/model` pickers for launches that do not pin a model.
+
+To override flags for one process, use environment variables. Use them for
+tests, for emergency kill switches, or for a single launched process:
 
 ```bash
 TRAJECTORY_ENABLE_FEATURES=flag_a,flag_b trajectory ...
 TRAJECTORY_DISABLE_FEATURES=flag_a,flag_b trajectory ...
 ```
 
-Disabled wins when a flag appears in both enabled and disabled lists. A managed
-`config.defaults.yaml` disable also wins over user config, so users cannot
-locally re-enable an admin-disabled feature.
+These rules decide which setting wins:
 
-## Rollout Rules
-
-- Default risky features off unless the user action is already an explicit
-  opt-in boundary, such as running `trajectory claude`.
-- Put the feature check at the entrypoint and at the mutation or side-effect
-  boundary when practical.
-- Add tests for default behavior, enabled behavior, disabled behavior, managed
-  disabled behavior, and env-disabled kill switch behavior.
-- Do not use feature flags as permission to mutate broad user settings. Feature
-  flags gate behavior; setup still must use the least invasive supported client
-  integration surface.
+- If a flag is in both the enabled and the disabled list, disabled wins.
+- A disable in the managed `config.defaults.yaml` wins over user config. So a
+  user cannot turn on a feature that an admin turned off.
+- Managed flags with security protection ignore environment overrides. The
+  registry entry of each such flag says so.
 
 ## Registered Flags
 
-`trajectory features list --json` is the machine-readable runtime catalog. The
-table below explains the flags available in this release.
+`setup_debug_instructions` defaults on. Setup writes local debugging
+instructions for agents under the Trajectory home and records the files it
+owns. Later setup runs refresh owned files that you did not change, and keep
+your edits. If you turn the flag off, setup skips the instructions and leaves
+existing files alone. The instructions point to the user guide of the
+installed binary. They register no global skills.
 
-| Flag | Default | Purpose |
-| --- | --- | --- |
-| `bearer_destination_auth` | off | Allows an explicitly redirected publish destination to resolve `bearer_token_ref` and authenticate direct or OTLP HTTP requests with `Authorization: Bearer` instead of a Datadog API-key header. All active signal endpoints must be explicit HTTPS URLs (loopback HTTP is development-only), and authenticated redirects are not followed. Managed direct-Datadog entries use the rollback-safe `datadog_bearer` shape; project entries require publish schema version 2, which also supports bearer OTLP. User config, managed config, or `TRAJECTORY_DISABLE_FEATURES=bearer_destination_auth` can stop bearer-authenticated export. |
-| `module_span_native_composite_attributes` | on | Honors each destination's `module_spans.native_composite_attributes` module allowlist. Selected module maps and arrays use native OTLP `kvlist_value` and `array_value`; all scalars, unlisted modules, and destinations without the allowlist retain the released encoding. User config, managed config, or `TRAJECTORY_DISABLE_FEATURES=module_span_native_composite_attributes` restores JSON-string encoding globally without changing module export authorization. |
-| `additive_metrics_v1` | on | Publishes completed-turn COUNT companions under the `.additive` namespace for facts that are safe to sum across time. Gauges remain point views and distributions remain percentile/population views. User config, managed config, or `TRAJECTORY_DISABLE_FEATURES=additive_metrics_v1` can stop new additive points without changing either legacy family. Historical correction is a separate explicit operation. |
-| `cache_creation_ttl_metrics` | on | Emits separate 5-minute and 1-hour cache-creation token metrics when the client reports that provider breakdown. The existing collapsed cache-creation total remains unchanged. User config, managed config, or `TRAJECTORY_DISABLE_FEATURES=cache_creation_ttl_metrics` can disable the additional series. |
-| `operational_log_publishing` | on | Queues and delivers privacy-bounded operational events only to managed destinations with `operational_logs.enabled: true`. The managed destination block is the permanent default-off authorization boundary; this default-on flag is the emergency kill switch. User config, managed config, or `TRAJECTORY_DISABLE_FEATURES=operational_log_publishing` stops new enqueue and drain without deleting queued local evidence. |
-| `publish_tag_resolvers` | on | Resolves bounded constant and startup-command publish tags and snapshots the result per session for Datadog traces and metrics. Command resolution is asynchronous, argv-only, allowlisted, and timeout-bounded; pending or failed commands use only a declared fallback or omit the tag. Disabling stops conditional and command-derived tags while preserving validated static tags. |
-| `automatic_self_update` | on | Allows `trajectory serve` to perform background self-update checks when `auto_update` is enabled. Managed config and `TRAJECTORY_DISABLE_FEATURES=automatic_self_update` provide rollout kill switches; `TRAJECTORY_AUTO_UPDATE=0` remains the process-local override. |
-| `git_branch_capture` | on | Populates `git_branch` on `session_start` for clients that do not already emit it by resolving `.git/HEAD` for each new session. User config, managed config, or `TRAJECTORY_DISABLE_FEATURES=git_branch_capture` can disable the extra session-start lookup. |
-| `unified_launch_surface` | off | Converges launch-surface attribution across traces and metrics under one agent-neutral value. It is off by default because it changes emitted tag shapes; managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable. |
-| `cost_source_hygiene` | off | Bounds `cost_source` to canonical values and moves free-form provenance to a separate field. It is off by default because it changes emitted tag values; managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable. |
-| `periodic_auto_instrument_reconciliation` | off | Allows managed `trajectory serve` processes to remain resident, periodically discover installed coding agents, and reconcile an explicit auto-instrument allowlist. Managed config or `TRAJECTORY_DISABLE_FEATURES` stops later passes and releases the idle-exit block. |
-| `seamless_update_handoff` | on | Allows automatic update, setup refresh, MCP startup, and background runtime-asset paths to hand a compatible exact serve owner to the installed binary without ending active sessions. Managed config and `TRAJECTORY_DISABLE_FEATURES=seamless_update_handoff` are rollout kill switches; `TRAJECTORY_UPDATE_RECONCILE_PROCESSES=false` remains the process-local override. |
-| `managed_deployment_convergence` | off | Managed-only consumption of an immutable desired-version generation. Targets are monotonic, expiry-bounded, and checksum-pinned; user config cannot enable the feature. Managed disable or `TRAJECTORY_DISABLE_FEATURES=managed_deployment_convergence` stops generation consumption without disabling ordinary forward self-update. |
-| `controlled_binary_downgrade` | off | Managed-only authorization for a checksum-pinned rollback generation or downward drift repair to an already accepted exact generation. It never permits an ordinary release-ring regression. |
-| `automated_oversight_telemetry` | on | Captures model-backed automatic approval, safety, and quality judgments as bounded oversight operations instead of ordinary sessions. It also exposes the content-free Automated Oversight view in `trajectory view`; provider role and feature are local diagnostics, not public metric dimensions. The default external projection is metadata-only `summary`; disable the flag through user config, managed config, or `TRAJECTORY_DISABLE_FEATURES` to suppress new capture, storage, metrics, UI classification/dashboard, and publish projection. Provider approval and safety behavior is unaffected. |
-| `efficiency_shadow_observer` | on | Runs bounded, content-free efficiency detection after canonical session capture. It writes only a replayable local SQLite projection and local run ledger; it invokes no model, network request, subprocess, or per-tool hook. User config, managed config, or `TRAJECTORY_DISABLE_FEATURES=efficiency_shadow_observer` stops new evaluation without deleting canonical events or prior findings. |
-| `codex_cost_derivation_repair` | on | Allows normal `trajectory serve` startup to run one repair page at most once per 24 hours for already-captured Codex sessions. Active and archived roots are paged together from globally newest to oldest. A page scans at most 5,000 directory entries, examines at most 100 candidates plus 1,000 preferred-live identity probes, starts no new unit after 15 seconds, loads/reconstructs at most 10 sessions, and reindexes at most 25. The ordinary lane uses 16 KiB metadata, 10,000-event, 8 MiB session, and 16 MiB phase in-memory/admission thresholds. One oversized source session and one oversized cache session per page reflow through private spill files and bounded record/turn batches with no fixed total-byte, record-count, record-size, or turn-size rejection; additional heavy sessions are cursor-deferred. An admitted source reconstruction and its paired cache promotion complete as one repair unit even when source work crosses the deadline, without leapfrogging a newer deferred candidate. Partial cache rebuilds are excluded until the final chunk promotes the current derivation. Quiet retained rollouts replace only canonical JSONL with a missing or obsolete cost or line-count derivation; current JSONL is left untouched while a missing or stale SQLite projection is reindexed, and already-current projections are not reindexed. Uncaptured history is ignored. User config, managed config, or `TRAJECTORY_DISABLE_FEATURES` can stop the repair without making stale cost or line counts current. |
-| `conversation_view` | off | Adds an experimental conversation-first tab beside Transcript in the local viewer. It keeps user and assistant messages expanded, collapses thinking and tool details behind semantic summaries, bounds long snippets, and preserves safe ANSI terminal colors. Managed config or `TRAJECTORY_DISABLE_FEATURES` can remove the tab without changing captured session data. |
-| `live_in_turn_metrics` | off | Publishes provisional `trajectory.live.*` in-turn progress metrics from bounded hook and durable-source evidence. Completed-turn metrics remain authoritative. Managed config, user config, or `TRAJECTORY_DISABLE_FEATURES=live_in_turn_metrics` can disable live metric enqueue and publication. |
-| `codex_boundary_capture` | on | Activates Codex `SessionStart`, `UserPromptSubmit`, and `Stop` plus paired `PreToolUse` and `PostToolUse` evidence hooks for shell commands. Canonical tool, assistant, permission, compaction, and subagent detail comes from durable rollout reconciliation. Setup obtains initial trust from Codex's installed-cache hashes and verifies trusted readback; updates preserve Codex-owned hashes while reconciling commands, matchers, and enabled states. Disabling activates all ten supported hooks for higher-fidelity ephemeral capture at higher process CPU. |
-| `codex_native_otel` | off | Managed-only. Routes Codex native OTel logs to local `trajectory serve` only when Codex has no existing exporter. Exact tool-decision records join to canonical calls by ID; disabling or uninstalling changes only the Trajectory-owned local exporter. |
-| `codex_hook_cpu_pacing` | on | Applies a bounded 400 ms startup spread to enabled Codex command hooks using a process-local atomic sequence whose evenly permuted slots are not perturbed by unrelated host PIDs, and caps server admission at 1,536 in-flight requests and 256 MiB including fixed request overhead. The measured 20-session boundary profiles launch 380, 540, or 900 hook commands; the cap retains headroom for the 1,340-command all-Bash safety workload and full-hook compatibility. Disabled capture exits before pacing or helper startup, and no cross-process pacing lock is held. Admission overload returns the existing definite-unavailable `503` before reading a body. The empirically tuned two-worker durable-processing bound remains active when this feature is disabled; per-session stripes preserve lifecycle ordering. Pacing does not drop, reorder, asynchronously defer accepted events, or select boundary versus compatibility capture. User config, managed config, or `TRAJECTORY_DISABLE_FEATURES` can disable it. |
-| `codex_legacy_marketplace_cleanup` | on | Allows setup legacy cleanup to remove the retired `trajectory-cc-plugin` Codex marketplace through the Codex CLI and direct bounded removal of its exact cache, checkout, marketplace, plugin, and hook-state config ownership. Disabling the flag leaves all legacy Codex marketplace state untouched while other legacy cleanup continues. User config, managed config, or `TRAJECTORY_DISABLE_FEATURES` can act as a rollout kill switch. |
-| `codex_durable_history` | on | Allows `trajectory serve` to read Codex rollout files for startup backfill and live fallback capture when native hooks are absent or stale. `trajectory uninstrument codex` durably disables this flag and writes a released-binary compatibility fence: current binaries keep other clients active, while older binaries fail closed globally rather than resuming Codex capture. Explicit `trajectory features enable codex_durable_history` clears the compatibility fence. User config, managed config, or `TRAJECTORY_DISABLE_FEATURES=codex_durable_history` stops the watcher and backfill on reload and restart. |
-| `cost_contract_reconciliation` | off | Enables the read-only `trajectory cost reconcile` preview. The command independently rematerializes selected local session JSONL, compares supported client-native transcript evidence, and inspects retained v2 outbox rows without migrating or repairing the live cache/outbox. Managed config or `TRAJECTORY_DISABLE_FEATURES` can stop the preview without disabling stored-v2 inspection permanently. |
-| `cost_fidelity_heartbeat` | off | Managed-only daily reconciliation for an explicitly assigned cohort. It audits only the immediately previous fully closed UTC day after the local activation boundary, uses indexed session/native receipts and hard budgets, and never catches up or backfills historical periods. The feature authorizes local audit only; `cost_fidelity_heartbeat.export.enabled: true` plus managed required-destination references is a separate export gate. User/project config and `TRAJECTORY_ENABLE_FEATURES` alone cannot start it. Managed disable or `TRAJECTORY_DISABLE_FEATURES=cost_fidelity_heartbeat` stops both audit and export. |
-| `cli_command_telemetry` | on | Managed-only, privacy-bounded top-level CLI invocation telemetry. It exports by default to effective managed required Datadog destinations; an optional managed `cli_command_telemetry.export` policy can narrow destinations or set `enabled: false`. User or project config cannot authorize destinations; managed disable or `TRAJECTORY_DISABLE_FEATURES=cli_command_telemetry` is the kill switch. |
-| `mcp_tool_telemetry` | on | Managed-only, privacy-bounded MCP tool lifecycle telemetry. It exports by default to effective managed required Datadog destinations; an optional managed `mcp_tool_telemetry.export` policy can narrow destinations or set `enabled: false`. User or project config cannot authorize destinations; managed disable or `TRAJECTORY_DISABLE_FEATURES=mcp_tool_telemetry` is the kill switch. |
-| `cost_contract_v2` | on | Adds `trajectory.cost_contract:v2` to eligible newly published live cost metrics so authoritative dashboards can positively exclude legacy and generic-backfill distributions. Disable only as an emergency publish-contract kill switch; disabling never blesses historical data. |
-| `cross_process_loc_snapshots` | on | Derives exact line deltas for bounded full-file replacement tools using private content-free receipts shared across separate hook processes. Unsafe paths, symlinks, oversized files, incomplete identities, lock contention, and corrupt receipts fail closed for line counts while ordinary capture continues. |
-| `cursor_native_token_usage` | on | Managed-only default-on for Cursor Desktop and cursor-agent native input, output, cache-read, and cache-write capture. Canonical token publication and suppression of legacy/generic Cursor proxy cost activate together. Pricing defaults to `pricing.cursor.mode: emit` with `source: org_file` (missing rate card stays unpriced, not $0); managed `off` and `TRAJECTORY_DISABLE_FEATURES=cursor_native_token_usage` are kill switches. User config cannot enable this managed-only flag. |
-| `cursor_task_subagent_synthesis` | on | When Cursor omits `subagentStart`/`subagentStop`, synthesize parent-side `subagent_start`/`subagent_stop` from Task/Agent launches paired to nested or sibling child transcripts. Emission runs after the Task/Agent tool and before `turn_end`, with session end as catch-up, so completed-turn and live metrics observe launches before publication. Native Desktop hooks still win; synthesis is idempotent and launch-linked through `tool_use_id`. Managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request. |
-| `cursor_desktop_surface_marker` | on | Trajectory-managed Cursor hooks mark Desktop capture as `client_surface=desktop`. Trusted `CURSOR_INVOKED_AS=agent|cursor-agent` still wins as `cli`. Rerun Cursor setup so existing hooks receive the marker. Managed config or `TRAJECTORY_DISABLE_FEATURES` is the kill switch. |
-| `cursor_print_result_binding` | on | Allows `trajectory cursor-agent --print` to tee stdout, bind session and generation identity plus native token usage from printed JSON, and attach `cursor_print_result` evidence without inventing IDs. Ambiguous identity or incomplete token vectors stay fail-closed. Managed config or `TRAJECTORY_DISABLE_FEATURES` is the kill switch. |
-| `cursor_agent_durable_history` | off | Enables bounded read-only reconciliation of cursor-agent's provider-owned main and subagent JSONL transcripts. Native command-hook turns remain authoritative; passive source mode stays unknown; mutation or deletion rebuilds or clears only watcher-owned local history; incomplete discovery and duplicate raw IDs across projects fail closed. `TRAJECTORY_DISABLE_CURSOR_AGENT_WATCHER=1` is the watcher-specific kill switch. |
-| `claude_native_otlp_interposer` | on | Allows `trajectory claude` to route Claude Code native OTLP through local `trajectory serve` for that launched process. Setup does not write Claude settings files. Disable this flag to keep `trajectory claude` from injecting native OTLP env vars. |
-| `codex_app_capture` | on | Attributes Codex Desktop sessions as `codex-app` instead of `codex` using the provider rollout origin. The live watcher and backfill share the same session-atomic attribution. User config, managed config, or `TRAJECTORY_DISABLE_FEATURES=codex_app_capture` returns newly observed sessions to `client_source="codex"` without relabeling sessions already in progress. |
-| `claude_skill_file_hooks` | off | Allows the Claude fallback path to write reversible Trajectory-owned hook entries into user or project `SKILL.md` frontmatter. Normal setup omits the prompt-time sync hook while this flag is off. Existing prompt hooks, setup refresh, and Claude uninstall remove owned entries when disabled; unrelated skill metadata and user edits are preserved. Enable explicitly, then rerun `trajectory setup --clients cc` before using `trajectory claude skills sync`. Managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable. |
-| `claude_desktop_capture` | on | Enables Claude Desktop (macOS) capture: a near-real-time `trajectory serve` watcher that tails `local-agent-mode-sessions` `audit.jsonl` transcripts, plus backfill (`client_source=claude-desktop`) and app-bundle detection. On by default (macOS-only; the watcher is additionally darwin-gated and honors `TRAJECTORY_DISABLE_CLAUDE_DESKTOP_WATCHER=1`). Disabling this flag is the kill switch that makes Claude Desktop fully inert - not detected/reported, not imported, and the watcher does not start - via a durable `trajectory features disable claude_desktop_capture`, managed config, or `TRAJECTORY_DISABLE_FEATURES=claude_desktop_capture`. |
-| `builtin_wrapper_command_shims` | on | Allows the explicit `trajectory setup --install-client-shims` opt-in to write transparent `claude`, `codex`, and `copilot` launchers backed by Trajectory's built-in wrappers. Setup records the real upstream binary, refuses self-wrapping and unowned-file replacement, and does not edit shell startup files. User, managed, or environment disable prevents new installs and makes installed shims pass through without instrumentation. |
-| `aider_durable_history` | off | Enables explicit `trajectory backfill --from-aider` repair and bounded automatic reconciliation of explicitly configured Aider `.aider.chat.history.md` files. Configure an exact file with `AIDER_CHAT_HISTORY_FILE`, a compatibility root with `AIDER_DIR`, or path-list roots with `TRAJECTORY_AIDER_HISTORY_DIRS`; Trajectory never scans the home directory by default. Wrapper events remain authoritative. Native Markdown supplies prompts, assistant text, model labels, and client-rendered usage, but blockquotes are operational text rather than structured tools, provider deletion never fabricates `session_end`, display-rounded token counts remain estimated, and Aider-reported cost remains noncanonical client evidence. `TRAJECTORY_DISABLE_AIDER_HISTORY_WATCHER=1` disables only the watcher; managed config, `TRAJECTORY_DISABLE_FEATURES`, or the global client-watcher disable wins over a local enable request. |
-| `devin_cli_instrumentation` | off | Enables preview setup-managed Devin hooks, MCP, incognito skill, and authoritative local-source reconciliation. When disabled, setup does not mutate Devin configuration and runtime reconciliation remains off; managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request. |
-| `doctor_agent_assist` | off | Allows an explicitly confirmed `trajectory doctor assist --yes` invocation to launch Codex, Claude, OpenCode, or Pi with bounded redacted findings. Interactive launches preserve the coding agent's normal permission UI when available; Pi instead executes enabled tools automatically after launch confirmation. Headless launches use Codex's read-only sandbox, Claude's plan mode with mutation tools disabled, OpenCode's plan agent, or Pi with only the read tool. Preview remains non-mutating, managed disable wins, and `TRAJECTORY_DISABLE_FEATURES=doctor_agent_assist` is rechecked immediately before launch. |
-| `grok_build_instrumentation` | off | Enables preview setup-managed Grok Build global hooks, incognito skill/command, explicit provider-history repair, and bounded automatic reconciliation of root and nested-subagent session history. Native hook facts remain authoritative; provider deletion never fabricates `session_end`; session-level signal counters remain unattributed diagnostics; and `TRAJECTORY_DISABLE_GROK_HISTORY_WATCHER=1` disables only the watcher. Managed config, `TRAJECTORY_DISABLE_FEATURES`, or the global client-watcher disable wins over a local enable request. |
-| `omp_instrumentation` | off | Enables the preview setup-managed OMP lifecycle extension, MCP registration, and bounded read-only reconciliation of the effective profile's durable v3 history. Explicit history import remains available for repair when the flag is off; managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request. |
-| `opencode_durable_history` | off | Enables bounded read-only reconciliation of newly created or changed OpenCode SQLite and retained-JSON sessions. Native plugin traces remain authoritative, startup does not replay old history, and provider deletion never fabricates `session_end`. Managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request. |
-| `kilo_durable_history` | off | Enables explicit `backfill --from-kilo` repair and bounded read-only reconciliation of newly created or changed Kilo SQLite and retained-JSON sessions. Native Kilo plugin traces remain authoritative, startup does not replay old history, and provider deletion never fabricates `session_end`. `TRAJECTORY_DISABLE_KILO_WATCHER=1` disables only the background watcher; managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request. |
-| `amp_durable_history` | off | Enables bounded read-only reconciliation of Amp's provider-owned `T-*.json` thread files. Exact thread IDs correlate passive history with live plugin capture, native traces remain authoritative, startup imports retained threads in bounded passes, provider credits remain distinct from USD, and provider deletion never fabricates `session_end`. `TRAJECTORY_DISABLE_AMP_HISTORY_WATCHER=1` is the watcher-specific kill switch. |
-| `goose_durable_history` | off | Enables count- and byte-bounded read-only reconciliation of Goose's schema-v15 SQLite session store. Exact provider IDs let ledger-derived model/token/cache corrections and provider-reported USD enrich native Open Plugins traces without replacing them; other native cost labels remain unattributed, passive-only sessions remain incomplete, deletion never fabricates `session_end`, and `TRAJECTORY_DISABLE_GOOSE_HISTORY_WATCHER=1` disables only this watcher. |
-| `kiro_durable_history` | off | Enables bounded read-only reconciliation of Kiro CLI's provider-owned session JSONL and current or legacy SQLite conversation rows. Exact session IDs combine the stores, JSONL content remains authoritative, native hook traces always win, and provider deletion never fabricates `session_end`. No tokens or cost are inferred. `TRAJECTORY_DISABLE_KIRO_HISTORY_WATCHER=1` is the watcher-specific kill switch. |
-| `hermes_durable_history` | off | Enables bounded automatic `state.db` reconciliation in `trajectory serve` and the explicit `trajectory backfill --from-hermes` repair workflow. When disabled, Trajectory does not open Hermes `state.db` or write derived canonical history. Managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request. |
-| `hermes_turn_token_usage` | on | Accumulates Hermes per-message token usage across a turn and attaches the aggregate usage and estimated cost to `turn_end`. No usage is fabricated when Hermes reports none. User config, managed config, or `TRAJECTORY_DISABLE_FEATURES=hermes_turn_token_usage` disables the accumulator. |
-| `openhands_durable_history` | off | Enables bounded automatic reconciliation of provider-owned OpenHands conversation bundles in `trajectory serve` and the explicit `trajectory backfill --from-openhands` repair workflow. Native command-hook events remain authoritative; provider token and cost totals remain session-scoped; `TRAJECTORY_DISABLE_OPENHANDS_HISTORY_WATCHER=1` disables only the background watcher. Managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request. |
-| `mistral_vibe_durable_history` | off | Enables bounded automatic reconciliation of provider-owned Mistral Vibe root and nested-subagent session logs in `trajectory serve` plus explicit `trajectory backfill --from-mistral-vibe` repair. Native hook facts remain authoritative; exact hook transcript paths cover project-config roots; cumulative compaction-continuation aggregates remain unattributed while fresh fork usage remains scoped to the fork; provider deletion never fabricates `session_end`; and `TRAJECTORY_DISABLE_MISTRAL_VIBE_HISTORY_WATCHER=1` disables only the watcher. Managed config, `TRAJECTORY_DISABLE_FEATURES`, or the global client-watcher disable wins over a local enable request. |
-| `antigravity_durable_history` | off | Enables bounded read-only reconciliation of Antigravity CLI's provider-owned `history.jsonl` plus current schema-v1 `conversations/<uuid>.db` generation metadata and the explicit `trajectory backfill --from-antigravity` retained-history repair. Exact scoped prompts retain provider timestamps and workspaces; strict bounded SQLite decoding adds the exact provider model, uncached input, total output including reasoning, cache-read, cache-creation, and retry-attempt usage without transcript text. A separate crash-safe live cursor records the provider boundary at `PreInvocation`, joins append-only generation rows to the official hook turn at `Stop`, scans a bounded 500 ms provider-flush window, and advances only after idempotent canonical append succeeds. Live request rows are metric-eligible and use an exact public Gemini rate-card attribution; request sums must reconcile to the provider aggregate and malformed, mutated, mismatched, or unpriced rows fail closed. Retained watcher/backfill rows stay metric-ineligible on stable provider-indexed turns with synthetic database/WAL modification time when the provider supplies no timestamp. The first watcher scan baselines existing rows; later JSONL, database, WAL, and shared-memory changes are reconciled, while explicit backfill can import the retained baseline without modifying provider files. Watcher delivery uses bounded admission to the materialization and canonical locks shared with explicit repair; failed admission leaves the provider cursor retryable. Existing canonical sessions are skipped unless `--force` refreshes matching provider facts while preserving unmatched arrivals. Native plugin events remain authoritative for tools and Stop metadata. Provider-typed slash commands and unknown typed history rows are skipped; ambiguous ownership, unknown schemas, and mutations fail closed; neither path invents assistant text, tool activity, successful completion, `turn_end`, or `session_end` evidence. Managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request at watcher and repeated mutation boundaries; `TRAJECTORY_DISABLE_ANTIGRAVITY_HISTORY_WATCHER=1` disables both passive and live provider-history reconciliation. |
-| `agy_startup_trace` | on | Allows the explicit `trajectory agy trace-startup` diagnostic. The command launches `agy` unchanged and records process-discovery milestones in a local NDJSON file; it does not alter setup, synthesize capture/session environment, start capture, or publish. Managed config, user config, or `TRAJECTORY_DISABLE_FEATURES=agy_startup_trace` can disable it. |
-| `qwen_durable_history` | off | Enables explicit Qwen Code durable-history backfill plus bounded automatic reconciliation of provider-owned active and archived chat JSONL. The watcher cold-starts in pages, learns workspace-specific runtime roots from native transcript paths, shares the canonical JSONL lock with native capture, retains tombstoned history, and never fabricates `session_end`. Managed config, `TRAJECTORY_DISABLE_FEATURES`, global watcher disable, or `TRAJECTORY_DISABLE_QWEN_WATCHER=1` wins over a local enable request. |
-| `copilot_durable_history` | off | Enables the explicit GitHub Copilot CLI session-state history backfill workflow. It reads bounded provider-owned current and legacy history, reconciles canonical session JSONL without replacing native hook evidence, and never treats provider request cost or nano-AIU as USD. Managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request. |
-| `copilot_cli_durable_history` | off | Enables bounded read-only reconciliation of newly created or changed GitHub Copilot CLI `session-state` sources. Startup does not replay retained history; native plugin facts remain authoritative; active/resumed tails remain open; shutdown usage stays session-scoped; provider deletion never fabricates `session_end`. Managed config, `TRAJECTORY_DISABLE_FEATURES`, and the emergency `TRAJECTORY_DISABLE_COPILOT_HISTORY_WATCHER=1` process switch win over a local enable. |
-| `copilot_cli_native_otel` | off | Allows an explicitly installed Copilot command shim to enable content-disabled native OTel for that launched process and route it to local `trajectory serve`. Strict `service.name=github-copilot` plus `github.copilot` scope attribution, native trace ancestry, and exact provider-history joins produce request-grain model, token/cache, main/subagent, and rate-card USD evidence. Copilot cost multipliers and nano-AIU remain separate provider diagnostics. An existing non-Trajectory exporter, custom scope, file exporter, or explicit telemetry disable is preserved by passing through without instrumentation. Managed config or `TRAJECTORY_DISABLE_FEATURES` is the kill switch. |
-| `forgecode_instrumentation` | off | Enables preview setup-owned ForgeCode MCP/incognito assets and read-only reconciliation of provider-owned `.forge.db` history. It installs no launcher shim and claims no live lifecycle. When disabled, setup does not mutate ForgeCode configuration and the watcher remains off; managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request. |
-| `qoder_cli_instrumentation` | off | Enables preview setup-managed Qoder native-plugin installation and authoritative JSONL transcript reconciliation. When disabled, setup does not install the plugin and the watcher remains off; managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request. |
-| `zcode_instrumentation` | off | Enables preview setup-managed ZCode wake hooks, explicitly owned MCP and incognito assets, bounded provider SQLite reconciliation, and `trajectory backfill --from-zcode`. Current `model_usage` rows provide exact token categories but no native cost; active updates never fabricate `session_end`. Managed config, `TRAJECTORY_DISABLE_FEATURES`, the global client-watcher disable, or `TRAJECTORY_DISABLE_ZCODE_WATCHER=1` wins over a local enable. |
-| `commandcode_instrumentation` | off | Enables preview setup-managed CommandCode wake hooks, MCP and incognito assets plus read-only reconciliation of provider-owned JSONL transcripts. No wrapper is installed, provider files remain read-only, and no SessionEnd, token, or cost source is inferred. Managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request. |
-| `muse_code_instrumentation` | off | Enables preview Muse Code setup on macOS/Linux (managed intent: macOS only) with an optional MCP server, incognito skill, owner-only managed wake hooks, and read-only append-only reconciliation of provider-owned session JSONL. Existing completed sessions are baselined; active and new sessions preserve provider UUIDs, explicit SessionEnd, tokens, tools, compaction, and subagent paths. `TRAJECTORY_DISABLE_MUSE_WATCHER=1` disables only the watcher. No launcher shim, experimental plugin, native telemetry rewrite, or provider-file mutation is used. |
-| `module_evaluation_history` | on | Enables a minimized ring of prior canonical prompt, assistant, and tool events for foreground evaluation. The reader never writes a second transcript: it reads only the current canonical session JSONL through its validated root-local path, stops at session or compaction boundaries, excludes the current hook event, and suppresses hydration during incognito. The module-configurable `config.history_max_turns` defaults to 50 and is hard-capped at 200, with independent 4 MiB tail, 10,000-line scan, 1,000-event, and 64 KiB field limits plus content-free completeness diagnostics. It is enabled by default; disabling immediately stops history reads. Managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request. |
-| `kimi_cli_instrumentation` | off | Enables preview setup-managed Kimi Code hooks, MCP, incognito skill, and provider-owned JSONL/state reconciliation. Current `KIMI_CODE_HOME` data wins over legacy migration copies. Managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request. |
-| `warp_oz_instrumentation` | off | Enables preview setup-managed Warp MCP and incognito skill plus read-only reconciliation of local Warp Desktop and local Oz CLI stores. Warp cloud runs are excluded. Managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable request. |
-| `vscode_copilot_instrumentation` | off | Enables preview user-scoped VS Code Copilot Chat OTel settings, MCP and incognito prompt assets, passive chat-history reconciliation, and strict first-party native OTel attribution. Content capture stays off. Managed config and `TRAJECTORY_DISABLE_FEATURES` win over a local enable. |
-| `windsurf_instrumentation` | off | Enables preview setup-managed Windsurf Cascade hooks, MCP and incognito skill, authoritative transcript reconciliation, and the narrow allowlisted ItemTable fallback. When disabled, setup does not mutate Windsurf settings and the watcher remains off; managed config or `TRAJECTORY_DISABLE_FEATURES` wins. |
-| `zed_passive_history` | off | Enables preview read-only reconciliation of Zed Agent `threads.db` history plus setup-owned MCP and global incognito skill registration. It claims no hooks, wrapper, or native OTel surface. When disabled, setup does not mutate Zed settings and the watcher remains off; managed config or `TRAJECTORY_DISABLE_FEATURES` wins. |
-| `gptme_instrumentation` | off | Enables preview setup-managed gptme lifecycle plugin, MCP, and native incognito command installation plus bounded reconciliation of gptme's provider-owned durable session store. Managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable. |
-| `codewhale_instrumentation` | off | Enables preview setup-managed CodeWhale wake-only hooks, MCP, skill, and model-mediated incognito command plus bounded reconciliation of CodeWhale's durable session store. Managed config or `TRAJECTORY_DISABLE_FEATURES` wins over a local enable. |
-| `personal_cost_guard` | off | Enables discovery and explicit setup of the Personal Cost Guard preview and permits its completed-turn soft warnings and next-prompt hard pauses. Setup still requires explicit local consent, selected clients, and a positive hard cap; provisional cost cannot trigger either cap. Managed config or `TRAJECTORY_DISABLE_FEATURES` can disable both the guide topic and runtime safeguard. |
-| `local_pr_work_attribution` | on | Derives durable local PR/MR work context from instrumented agent events and bounded read-only Git state. This is enabled for everyone by default; disable it only as an emergency managed or process-local kill switch. It never permits provider API, credential-helper, Git-hook, shell-history, or network access. |
-| `historical_metric_replay` | on | Execution gate for bounded historical metric replay. The managed lane remains inert without an authorized campaign or rerun; the explicit CLI lane also permits a user-driven Codex/Codex.app cost repair after `--yes`, up to the effective `capture.retention_days` age window (`0` means keep forever), with a resolved Datadog destination. Effective-dated managed repair requires a checksum-pinned catalog, an exact model allowlist, and original-event-time pricing; it never overwrites an already-priced append-only point. Existing-namespace projection requires an explicit acknowledgement and a window ending no later than the declared live cutover. Each replay records a permanent local receipt. A managed disable or `TRAJECTORY_DISABLE_FEATURES=historical_metric_replay` prevents new replays without retracting completed receipts or queued outbox rows. |
-| `terminal_finalization_recovery` | on | Retries an accepted terminal session's exact durable finalization receipt when sensitivity, segmentation, marker, or publication finalization remains incomplete. Automatic attempts are finite, durable, and backoff-bounded across restarts. User config, managed config, or `TRAJECTORY_DISABLE_FEATURES=terminal_finalization_recovery` stops new automatic attempts without deleting the receipt or canonical source evidence. |
-| `session_trace_snapshot_publish` | off | Allows an explicitly confirmed snapshot of one captured session to publish to a destination independently authorized by managed `session_trace_publish` policy. The flag alone never authorizes a destination. |
-| `enhanced_segmentation_classification` | on | Adds the coding-specific task-classification dimensions per turn plus Work Insights v1 Level 1/Level 2 labels per turn and authoritative leaf task on the existing segmentation cadence. Incognito remains a trace/evaluation publication gate; it does not stop local classification or aggregate metrics. User, managed, or `TRAJECTORY_DISABLE_FEATURES` disable restores released task-only segmentation and avoids the additional classifier call. |
-| `task_segmentation_metrics_v2` | on | Extends explicitly enabled task-metric publishing with one final-session projection of complete turn-derived leaf-task USD distributions plus `task_level` tags and emits bounded segmentation failure telemetry. Incognito sessions still run local segmentation and publish content-free aggregate metrics without incognito privacy metadata while trace-like outputs remain suppressed. A user, managed, or `TRAJECTORY_DISABLE_FEATURES` override restores the released incremental score-only task metric projection without changing the underlying segmentation or destination export permissions. |
-| `task_meta_segmentation` | off | Enables the optional second final-session LLM pass that groups at least three finalized leaf tasks into meta-tasks and adds `task_level:meta_task` cost points. It is effective only while `task_segmentation_metrics_v2` is enabled. Leave it disabled to avoid this additional call; user, managed, or `TRAJECTORY_DISABLE_FEATURES` overrides can independently turn it off. |
-| `patterns_analysis_backfill` | on | Allows explicit, resumable classification of completed local sessions. `trajectory patterns` reporting itself is local and ungated; it distinguishes complete coding and Work Insights v1 task/turn coverage from missing or legacy/partial rows, shows one up-front dollar estimate, and offers an interactive confirmation. Non-interactive and JSON reports never prompt or infer. `trajectory patterns estimate` and `patterns analyze` without `--yes` also perform no inference. A terminal `yes` or explicit `patterns analyze --yes` is the spending boundary. Before inference, confirmed analysis discovers provider-native Claude, Codex, and Cursor sessions absent from the canonical corpus, deterministically reconstructs settled session trees, and indexes live Claude/Codex completed turns as passive snapshots without a synthetic terminal event; active Cursor sessions remain deferred. Only a real terminal event at the end of the current session generation makes a session eligible for final classification. Versioned receipts repair only missing coverage, migrate legacy schemas, retain exact attempt cost/failure accounting, and prevent duplicate classification; rebuilding coding task boundaries refreshes the dependent Work Insights task projection. Confirmed analysis reconciles durable PR work, re-evaluates deterministic markers, and ledger-backfills non-distribution task, taxonomy, deliverable, attribution-coverage, and classifier-operation metrics. This local/metric workflow is not suppressed by incognito, which remains a trace-publication boundary. User, managed, or `TRAJECTORY_DISABLE_FEATURES` disable is the emergency kill switch. |
-| `trajectory_disable_command` | on | Allows the explicit `trajectory config capture disable` action to create `~/.trajectory/capture.disabled`. Managed config or `TRAJECTORY_DISABLE_FEATURES` can disable new use during rollout. `trajectory config capture enable` remains available even when this flag is off so rollback cannot strand a user in the disabled state; existing markers remain honored until cleared. |
-| `persistent_incognito` | on | Allows `trajectory config publish opt-out` and `trajectory_incognito` with `persistent: true` to create the durable user-scoped standard-destination publish opt-out. Managed config or `TRAJECTORY_DISABLE_FEATURES` can stop new opt-outs during rollout. Existing markers are always honored, and opt-in recovery remains available while the flag is off. |
-| `uninstrument_command` | on | Allows the explicit `trajectory uninstrument <client\|all>` workflow to remove setup-owned hooks, plugins, MCP registrations, skills, commands, shims, marketplaces, runtime assets, and module dispatchers while preserving unrelated client configuration. Managed config or `TRAJECTORY_DISABLE_FEATURES=uninstrument_command` can stop new cleanup during rollout; the repository uninstaller fails closed and preserves the binary when cleanup is disabled or incomplete. |
-| `watcher_state_migration` | on | Stores Codex and Cursor Agent cursors and leader locks under root/source-keyed `${TRAJECTORY_HOME}/state/watchers/` paths. Enabled binaries dual-read and dual-write the released `${TRAJECTORY_HOME}/.state/` cursors and acquire the released leader lock first, so old binaries and rollback remain safe. User, managed, or environment disable returns entirely to the released paths. Changing this flag on a running serve owner is replacement-required; `trajectory config reload --yes` reports that status instead of moving an active watcher between namespaces. |
-| `cache_fts_index` | on | Builds SQLite FTS5 full-text indexes over cached `tool_calls` and `turns` text during cache materialization so agents can run indexed `MATCH` search instead of full-table `LIKE` scans. The default-on path creates trigram (`tool_calls`) and word/bm25 (`turns`) virtual tables plus keep-in-sync triggers, and runs a one-time backfill/rebuild for an already-populated cache. Disabling removes the FTS objects and materialization overhead to reclaim space. Managed-disable and `TRAJECTORY_DISABLE_FEATURES=cache_fts_index` act as kill switches. |
+`automatic_task_segmentation` defaults off. It is the only switch for
+automatic task segmentation and task metrics. While it is off, these things
+happen:
+
+- Serve starts no segmentation of any kind: incremental, at session end, in
+  recovery, or in historical catch-up.
+- Serve makes no segmentation LLM calls and uses no segmentation budget.
+- Serve writes no `task_segments` rows.
+- Session end and terminal recovery skip their time budgets for segmentation.
+- No `trajectory.task.*` metrics publish from live sessions or from managed
+  task backfill.
+
+`segmentation.enabled`, `segmentation.interval`, and
+`segmentation.publish_metrics` apply only when the flag is on. So managed or
+org defaults that set them cannot turn segmentation on alone.
+
+Task metric rows that are already in the metric outbox stay there. Trajectory
+neither sends nor deletes them, and sends them if you turn the flag on later.
+If a config reload turns the flag off, Trajectory holds the rows before the old
+publish engine finishes sending.
+
+When the flag is off, backfill and `trajectory publish history` leave out task
+metrics. A session they publish then is not published again after you turn
+the flag on. The diagnostic
+`trajectory publish metrics canary --zero-task-score-probe` still sends its
+probe.
+
+Explicit `trajectory segment` and `trajectory patterns analyze --yes` runs are
+direct user actions. They do not need the flag. See
+[task metrics](metrics/task-metrics.md).
+
+`pi_history_backfill` defaults off. When it is on, serve imports idle Pi files
+that were never captured into the local catalog. It does this in small
+background batches. It does not rewrite captured sessions, invent a session
+end, or start historical publishing. Managed and environment disables win. A
+config reload stops the import worker and waits for it to finish. See
+[Pi history coverage](CLIENT-INSTRUMENTATION.md#pi) for discovery limits,
+one-time import rules, and the files it skips.
+
+Fleet destination-health and org-sync-age metrics are diagnostics that always
+run on managed hosts where they apply. The former
+`fleet_destination_health_metrics` flag is removed, and Trajectory ignores old
+overrides. The normal metric destination and privacy controls still apply.
+
+Each process reuses one shared metric outbox connection pool. The former
+`metric_outbox_pooling` flag is removed, and Trajectory ignores old overrides.
+
+Incognito sessions always publish metrics through `export.incognito_metrics`,
+and shutdown always drains the metric outbox with its graceful budget. The
+former `incognito_metric_disclosure` and `graceful_metric_outbox_drain` flags
+are removed, and Trajectory ignores old overrides.
+
+`unified_backfill_workflow` defaults on and no longer gates anything:
+`trajectory backfill` always runs. The name stays registered so that scripts
+and managed settings that check or set it keep working.
+
+Backfill republication is always available. The former
+`historical_metric_replay` flag is removed, and Trajectory ignores old
+overrides. A destination stops backfill with `backfill_opt_out: true`. The
+automatic Agent Console reconciliation keeps its
+`agent_console_durable_backfill` gate.
+
+The former `cost_source_hygiene` and `unified_launch_surface` flags are
+removed, and Trajectory ignores old overrides. No code read either flag, so the
+removal changes no behavior.
+
+The former `cost_fidelity_heartbeat` flag is removed with the managed cost
+fidelity heartbeat, and Trajectory ignores old overrides.
+
+Account billing metadata, parented subagent traces, conditional and command
+publish tags, and managed operational logs no longer have a flag. The former
+`account_billing_metadata`, `parented_subagent_traces`, `publish_tag_resolvers`,
+and `operational_log_publishing` flags are removed, and Trajectory ignores old
+overrides.
+
+The former `efficiency_shadow_observer` flag is removed with the efficiency
+observer it controlled. Trajectory ignores old overrides. Trajectory no longer
+records efficiency findings. The local cache deletes them when it migrates to
+generation 43 or later.
+
+`trajectory claude` always sets up Claude Code's native OTLP route. Cursor
+setup always marks its hooks with the Desktop surface, and
+`trajectory cursor-agent --print` always binds the print result. The former
+`claude_native_otlp_interposer`, `cursor_desktop_surface_marker`, and
+`cursor_print_result_binding` flags are removed, and Trajectory ignores old
+overrides.
+
+The former `live_in_turn_metrics` flag is removed with live in-turn metrics,
+and Trajectory ignores old overrides. It defaulted off. Trajectory no longer
+publishes `trajectory.live.*` metrics. Nothing opens the
+`state/live-progress.sqlite` database that the feature kept.
+
+Trajectory leaves that file in place. An older serve process on another port
+can share the home and still use it. You can delete the file by hand once no
+such process runs. Metric rows that the feature already queued are still sent.
+
+Task metrics always use the current task projection, serve always runs publish
+dedup ledger retention, and `trajectory flare --heap-profile` always works.
+The former `task_segmentation_metrics_v3`, `publish_ledger_retention`, and
+`heap_profile_flare` flags are removed, and Trajectory ignores old overrides.
+`automatic_task_segmentation` still decides whether task metrics publish.
+
+The former `cost_guidance` and `personal_cost_guard` flags are removed with
+Agent Cost Guidance and Personal Cost Guard. Trajectory ignores old overrides.
+Both defaulted off.
+
+The former `fossilized_user_config_migration`, `seamless_update_handoff`,
+`automatic_empty_owner_recovery`, and `request_prompt_metrics` flags are
+removed, and Trajectory ignores old overrides. All four defaulted on, so
+default behavior does not change.
+`TRAJECTORY_UPDATE_RECONCILE_PROCESSES=false` still turns off the automatic
+update handoff for one process.
+
+The former `enhanced_segmentation_classification`,
+`two_pass_segmentation_classification`, and `task_meta_segmentation` flags are
+removed, and Trajectory ignores old overrides. All three defaulted off, so
+default task segmentation is unchanged. Confirmed
+`trajectory patterns analyze` runs still write turn labels and Work Insights
+labels under `patterns_analysis_backfill`.
+
+Seven `metric_samples_*` selections each control one kept distribution sample.
+They default on today, so current users keep getting the samples. A later
+release can change the default to off.
+
+| Selection | Distribution |
+| --- | --- |
+| `metric_samples_turn_cost` | `trajectory.turn.cost.usd.total` |
+| `metric_samples_session_cost` | `trajectory.session.cost.usd.total` |
+| `metric_samples_turn_duration` | `trajectory.turn.duration_ms.total` |
+| `metric_samples_skill_duration` | `trajectory.turn.skill_duration_ms.total` |
+| `metric_samples_skill_tool_uses` | `trajectory.turn.skill_tool_uses.total` |
+| `metric_samples_skill_distinct_tools` | `trajectory.turn.skill_distinct_tools.total` |
+| `metric_samples_oversight_duration` | `trajectory.oversight.duration_ms.total` |
+
+These rules apply to the selections:
+
+- They never gate additive totals, and they never turn on a destination.
+- The usual export, privacy, and source rules still apply.
+- A managed disable wins over a user enable.
+- A config reload also applies the selection to samples that wait in the
+  outbox.
+- Samples dropped while a selection is off are gone. If you turn it back on,
+  new samples are sent. Trajectory does not rebuild the period when it was off.
+  It does not resend samples that it admitted earlier.
+- Sometimes Trajectory cannot tell whether Datadog accepted a sample. The
+  usual failure and repair rules then apply.
+
+`instrumentation_health_batching` is a temporary rollout kill switch that
+defaults on. It covers best-effort requests for diagnostic metrics. It groups
+the data points by destination every ten seconds. It keeps a limited number of
+pending records, and it sends a best-effort final batch at shutdown.
+
+If you turn it off, Trajectory sends each request on its own again. Batching
+does not change metric values or privacy rules. A crash loses up to ten
+seconds of remote samples that wait to be sent. A failed request loses its
+batch for that destination. The local record stays in both cases. See
+[instrumentation-health export](metrics/instrumentation-health-metrics.md#batched-diagnostic-export).
+
+`otlp_metric_outbox` is a temporary rollout flag that defaults on. It covers
+metrics for OpenTelemetry collector destinations (`type: otlp`). While it is
+on, those metrics skip the in-memory OTel exporter. They go through the
+metric outbox in the local SQLite database that Datadog destinations use:
+
+- They survive a restart or a collector outage and are retried.
+- Backfill keeps each point's original time, and corrections reach the
+  collector.
+- The wire shape matches Datadog's: delta temporality, a timestamp on every
+  point, and exponential histograms. The resource carries `service.name` and
+  `service.version`, and no Datadog header is sent.
+- The in-memory exporter stops for that collector, so nothing is sent twice.
+- Late corrections reach the collector as signed changes at the turn's time.
+  Datadog instead replaces the corrected point, which a collector cannot do.
+- A session may already be running when you turn the flag on. It keeps the
+  turns the in-memory exporter sent, and the outbox does not send them again.
+- Collector rows waiting to send, including rows waiting for a retry, get a
+  quarter of the outbox size limit. When they hold more and the outbox is
+  full, the oldest collector rows are dropped first. So a collector that is
+  down cannot push out Datadog rows. Sweeps drain Datadog destinations before
+  collectors.
+
+If you turn the flag off, collectors use the in-memory exporter again. In a
+session that is still running, the exporter skips the turns the outbox already
+sent. Rows already queued for a collector stay in the outbox and send once the
+flag is on again. Size pruning can still drop them. Agent Security metrics for a
+collector use the outbox whatever the flag says. The flag stays for one
+release as a kill switch.
+
+`agent_security_incremental_staging` is a temporary rollout kill switch that
+defaults on. When a session's Agent Security records only grew since its last
+publish, Trajectory stages and sends only the new records. It adds them to the
+session totals it kept. The metrics it sends are the same either way. If you
+turn the flag off, Trajectory stages every changed session in full again on
+every publish, as before.
+
+In resumed sessions of Claude Code and every other hook client, the previous
+generation can still hold its finalization lock at session end. Serve then
+saves the resumed `SessionStart` to disk, answers the hook at once, and
+captures the event when the lock is released. At startup, serve replays saved
+events that an earlier process confirmed but did not finish. If serve cannot
+save the event, it keeps it in memory, and the event is lost if serve exits
+before capture. Hooks never wait for the lock. The former
+`claude_session_start_async_admission` flag is removed, and Trajectory ignores
+old overrides.
+
+`claude_session_end_http_follows_capture` is a temporary rollout kill switch
+that defaults on. It covers the installed Claude Code hooks. While capture is
+off for Claude, these commands leave the native HTTP `SessionEnd` handler out
+of the plugin:
+
+- setup
+- runtime asset reconciliation
+- the commands that turn capture off and on
+
+This way, Claude does not report a refused connection on exit. When capture is
+on again, the handler comes back. If you turn the flag off, the handler stays
+in every state.
+
+`claude_resumed_event_queue` is a temporary rollout kill switch that defaults
+on. It covers the order of events in resumed sessions of Claude Code and every
+other hook client. In two cases, serve queues the other hook events of the
+session:
+
+- A resumed `SessionStart` is pending.
+- The file ends in a `session_end` whose finalizer still holds the session
+  lock.
+
+Serve answers the hooks at once. It captures the events in order, with the
+time it admitted them, once it records the start of the resumed session. If
+you turn the flag off, serve captures events directly again. It can then write
+resumed events after the `session_end` of the previous generation. Replay at
+startup still empties existing queues.
+
+`claude_native_trace_enrichment` is a temporary rollout kill switch that
+defaults on. It covers native tool timing for Claude Code. Running
+`trajectory claude` is the opt-in that relays native traces. The feature adds
+data only to destinations that already receive the session, so it defaults on.
+It does three things:
+
+- It writes one `native_tool_timing` event for each native tool call.
+- It holds the publication of a Claude turn for at most 60 seconds while native
+  spans arrive for that session.
+- It adds the time spent waiting for permission to tool spans.
+
+If you turn it off, the writes and the hold stop. Recorded events stay out of
+published spans.
+
+`cursor_copilot_hook_helper` is a temporary rollout flag that defaults on.
+When it is on, setup writes Cursor and GitHub Copilot command hooks on macOS
+and Linux. These hooks run the small embedded hook helper that Codex already
+uses. They do not start the full `trajectory` binary for every event. Existing
+installations get the new hooks the next time Trajectory rewrites them: when
+setup runs, or at the client integration refresh after an update.
+
+For a healthy hook, the helper posts to serve with the same payload, delivery
+ID, and hook outcome record as `capture-hook`. In these cases, it runs the full
+binary in the foreground with the payload of the hook:
+
+- Serve is down or refuses the hook.
+- Capture is off.
+- A runtime activation is pending.
+- The session has handed-off events.
+- The helper does not accept the payload.
+
+A hook command uses the full binary when no helper generation is installed.
+To turn the helper off, run
+`trajectory config features disable cursor_copilot_hook_helper`, then run setup
+again for the client.
+`TRAJECTORY_DISABLE_FEATURES=cursor_copilot_hook_helper` also sends an
+installed hook that uses the helper straight to the full binary. One
+difference remains. CLI command telemetry does not count a hook that the helper
+delivers as a `capture-hook` start. Codex hooks work the same way today.
+
+`claude_turn_token_settle` is a temporary rollout control for Claude Code turn
+token metrics. It defaults on. When it is on, Trajectory holds each turn until
+it checks the token usage against the transcript. The check happens at the
+first of these events:
+
+- the next prompt
+- a transcript that stops changing
+- session end
+- a deadline of at most 5 minutes
+
+So the first published value matches the transcript and has the turn
+completion time. Session end then adds no correction rows for settled turns.
+If you turn the flag off, Trajectory again publishes the provisional usage from
+the Stop hook at once. In both cases, reconciliation at session end matches
+turns by prompt. See
+[Claude Code turn token settle](metrics/per-turn-metrics.md#claude-code-turn-token-settle).
+
+The per-request prompt size distribution, which includes cache tokens, always
+publishes. See [per-request prompt size](metrics/per-turn-metrics.md#per-request-prompt-size)
+for coverage, deduplication, and percentile queries.
+
+`reliable_metric_retry` defaults on. Sometimes Trajectory cannot tell whether
+Datadog accepted a metric submission. This flag retries those submissions in a
+limited number of rounds, and it saves them to disk between rounds. A disable
+in managed config or the environment still works as a kill switch. It stops
+the attempts and keeps the pending retries.
+
+Trajectory takes flag names, defaults, control restrictions, and short
+descriptions from the flag registry in the binary. To see them, run:
+
+```bash
+trajectory config features list
+trajectory config features list --json
+trajectory config features status <flag>
+```
+
+The CLI reads the flag list from the binary, so its list is always current.
+
+An explicit `trajectory patterns analyze --yes` run acts with the authority of
+the user. It does not check or use the automation budget. Automatic
+segmentation and backfill still use their documented budgets.
+
+AI-EDR availability depends on the version:
+
+- `agent_security_ai_edr` is still on as a compatibility marker for releases
+  through v0.5.36.
+- Current binaries allow AI-EDR only through the `agent_security_ai_edr_v2`
+  flag. That flag defaults off, is managed-only, and ignores environment
+  overrides.
+- Neither flag turns on the module, installs hooks, selects the evaluator mode,
+  or overrides destination publishing gates.
+
+`otlp_conventions_trace_shape` is a default-off temporary rollout control for
+generic `otlp` destinations that do not set `trace_shape`. When enabled, their
+turn traces use the conventions-first OpenTelemetry GenAI shape instead of the
+Datadog LLM Observability intake shape. An explicit per-destination
+`trace_shape` always wins, and Datadog destinations always keep the Datadog
+shape. See [OTLP destinations](PUBLISH.md#otlp).
+
+`trace_request_metadata_copies_removed` is a temporary rollout kill switch
+that defaults on. While it is on, traces no longer carry a
+`gen_ai.request.<key>` copy of every span metadata key, and model calls carry
+typed `gen_ai.request.max_tokens`, `gen_ai.request.stream` and
+`gen_ai.response.finish_reasons`. In Datadog LLM Observability the copies
+appeared as `request.<key>` tags next to the `metadata.<key>` tags. A saved
+query may still use a `request.<key>` tag. To bring the copies back for
+Datadog-shaped traces, turn the flag off in managed defaults, user config, or
+`TRAJECTORY_DISABLE_FEATURES`.
+
+`managed_reconcile_backoff` is a temporary rollout kill switch that defaults
+on and is managed-only. After three identical failures in a row, the managed
+reconcile LaunchAgent waits 5 minutes before its next attempt. The wait doubles
+each time, up to 1 hour. Without the flag, it retries every minute.
+
+A profile change, a new release, or a manual `trajectory managed reconcile`
+always runs at once. To restore the retry every minute, use one of these:
+
+- set `features.managed_reconcile_backoff` to `false` in the MDM intent
+- add a disable to the remote managed defaults
+- set `TRAJECTORY_DISABLE_FEATURES`
+
+Status still records the last failure either way. See
+[Background reconciliation failures](MANAGED-ENDPOINTS.md#background-reconciliation-failures).
+
+`managed_dropped_client_removal` is a temporary rollout kill switch that
+defaults on and is managed-only. An administrator can remove a client from the
+managed profile. User reconciliation then removes the Trajectory integration
+for that client, if reconciliation set it up. The removal is the same as
+`trajectory uninstrument`.
+
+A managed defaults disable or `TRAJECTORY_DISABLE_FEATURES` turns the removal
+off. Reconciliation still records which clients it sets up. So if you turn the
+flag back on, it removes the clients that were dropped in the meantime. See
+[Remove a client from the profile](MANAGED-ENDPOINTS.md#remove-a-client-from-the-profile).
+
+`managed_trajectory_link` is a temporary rollout kill switch that defaults on.
+Managed user reconciliation runs setup with the `PATH` that its MDM adapter or
+LaunchAgent sets. It does not use the `PATH` of the user's terminal.
+
+While the flag is on, setup in those runs links `~/.local/bin/trajectory` to
+the user's `~/.trajectory/bin/trajectory` when that name is free. It never
+replaces another entry and never edits shell startup files.
+
+A user config disable, a managed defaults disable, or
+`TRAJECTORY_DISABLE_FEATURES` turns it off. Setup then uses its usual step
+based on `PATH`, and leaves an existing link in place. The installer's
+`remove` operation still deletes the link. See
+[Run trajectory in a terminal](MANAGED-ENDPOINTS.md#run-trajectory-in-a-terminal).
+
+`client_shim_terminal_path` is a default-on temporary rollout kill switch.
+While it is on, setup decides whether a client command shim is active from the
+`PATH` that the user's login shell sets. It does not use the `PATH` setup runs
+with. Setup starts that shell as the user, as an interactive login shell
+(`-i -l -c`) the way a new Terminal window does. The shell then reads the
+user's interactive startup files. On Linux, a desktop terminal starts bash as
+an interactive shell that is not a login shell. So for bash on Linux, setup
+reads the login profile first. Then it starts an interactive bash, which reads
+`~/.bashrc`.
+The shell has no terminal, empty input, a fixed
+environment, and a 5-second limit, and reports an unknown result as unknown.
+It links a shim only into a home bin folder that this `PATH` lists, records
+each result for `trajectory managed status`, and `trajectory doctor` runs the
+same check. A user config disable, a managed defaults disable, or
+`TRAJECTORY_DISABLE_FEATURES` turns it off. Setup then checks its own `PATH`
+and starts no login shell. If setup cannot read the flag, for example because
+a configuration file is unreadable or is not valid YAML, it treats the flag as
+off. See "Route ordinary `claude`, `codex`, and `copilot` commands through
+Trajectory" in the [administrator guide](MANAGED-ENDPOINTS.md).
+
+`managed_shell_path_block` is a temporary rollout kill switch that defaults on
+and is managed-only. While the managed profile turns on client command shims,
+managed setup adds a marked block to the user's shell startup files. The block
+puts `~/.trajectory/bin` on `PATH`, so a new terminal runs the wrappers. A
+`trajectory setup` that a user runs never adds it.
+
+A user config disable, a managed defaults disable, or
+`TRAJECTORY_DISABLE_FEATURES` stops new blocks. Setup still removes a block it
+added earlier when the profile option is turned off or the profile is
+withdrawn. It also removes it when `trajectory uninstrument` or the
+installation script's `remove` operation runs. If setup cannot read the flag,
+for example because a configuration file is not valid YAML, it adds no block.
+See "Route ordinary `claude`, `codex`, and `copilot` commands through
+Trajectory" in the [administrator guide](MANAGED-ENDPOINTS.md).
+
+`managed_late_client_setup` is a temporary rollout kill switch that defaults on
+and is managed-only. Managed user status reports a client that the profile
+selects, that is installed, but that is not set up. User reconciliation runs
+setup for that client. If setup fails, it tries again on a growing schedule.
+
+A managed defaults disable or `TRAJECTORY_DISABLE_FEATURES` turns the check
+off. Status and reconciliation then rely only on the reconciliation receipt, as
+before. See
+[Clients installed later](MANAGED-ENDPOINTS.md#clients-installed-later).
+
+`dd_harness_instrumentation` defaults off. It is a single gate for three
+surfaces together. The first is the `/capture/dd-harness/capabilities`
+and `/capture/dd-harness/batch` routes on `serve`. A disabled flag makes
+the owner answer 404. DD Harness's own contract already treats that as
+"no safe owner" and retries negotiation every 60s, so agents are
+unaffected either way. The second is `trajectory setup --clients
+dd-harness`. The third is the retained-history `--from-dd-harness` /
+`trajectory session import dd-harness` importer.
+
+It is independent of DD Harness's own per-home `pluginsEnabled` opt-in
+(`trajectory` present in DD Harness's own `app-settings.json`). Both must
+be true before any envelope flows. DD Harness is deliberately absent from
+`setup`'s client catalog, so this flag turning on never makes `setup
+--clients all` or auto-instrument select DD Harness. Only an explicit
+`--clients dd-harness` does. See [DD Harness
+coverage](CLIENT-INSTRUMENTATION.md#dd-harness).
+
+
+## Qualified PR observation rollout
+
+`qualified_pr_observations` defaults on. It gates
+`trajectory.pr.ai_assisted.observations.total` for live sessions and for
+historical sessions that you select. If you turn it off, Trajectory holds
+queued points and stops new ones. It does not delete source facts or delivery
+receipts.
+
+Before you rely on reports built on this metric, query it in Datadog and
+confirm that the points arrive. Trajectory still sends the older PR campaign
+and the existing session and PR exports. See the
+[metric contract](metrics/built-in-marker-metrics.md#qualified-pr-observations).
