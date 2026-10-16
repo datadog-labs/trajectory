@@ -4,12 +4,9 @@ Observe AI coding agents like production systems.
 
 See the whole run. Measure the behavior. Improve the workflow.
 
-Trajectory captures coding-agent sessions across Claude Code, Claude Desktop,
-Cline CLI, Codex, Gemini, Antigravity, Goose, Aider, Continue CLI, Mistral
-Vibe, Codebuff, Hermes Agent, Amp Code, Qwen Code, OpenHands, Kiro CLI, Kilo
-Code, Cursor, Pi, OpenCode, GitHub Copilot CLI, and Factory Droid, then turns them
-into local timelines, Datadog LLM Observability traces, operational metrics,
-and Markers.
+Trajectory captures sessions from the coding agents listed under
+[Supported Clients](#supported-clients). It turns them into local timelines,
+Datadog LLM Observability traces, operational metrics, and Markers.
 
 ## What It Answers
 
@@ -61,9 +58,9 @@ How it works:
 - `measures` turns point hits into a count named `force-pushes`.
 
 When the command appears in a captured session, Trajectory records a
-`force-push` marker and can publish `trajectory.session.force_pushes` plus a
-completed-session count metric. Raw behavior becomes something you can query by
-repo, team, environment, or release workflow.
+`force-push` marker and can publish
+`trajectory.session.force_pushes.completed_count`. Raw behavior becomes
+something you can query by repo, team, environment, or release workflow.
 
 Use Markers to detect patterns such as:
 
@@ -81,14 +78,12 @@ agent behavior becomes something you can graph, alert on, compare, and improve.
 
 ## Core Capabilities
 
-- **Multi-client instrumentation** for Claude Code, Cline CLI, Codex CLI,
-  Gemini CLI, Antigravity CLI, Goose, Aider, Continue CLI, Mistral Vibe,
-  Codebuff, Hermes Agent, Amp Code, Qwen Code, OpenHands, Kiro CLI, Kilo Code,
-  Cursor, Pi, OpenCode, GitHub Copilot CLI beta, and Factory Droid beta.
+- **Multi-client instrumentation** for the coding agents listed under
+  [Supported Clients](#supported-clients).
 - **Local-first timelines** for session lifecycle, turns, tool calls, model
   usage, cost signals, and repository context.
 - **Work Insights and reports** for adoption, outcomes, task mix, complexity,
-  agent-work cost, pull-request attribution, and evidence-backed deliverables.
+  agent-work cost, and pull-request attribution.
 - **Datadog-native export** for configurable LLM Observability traces and
   operational metrics for tokens, cost, duration, tool use, capture health, and
   attribution workflows.
@@ -96,16 +91,13 @@ agent behavior becomes something you can graph, alert on, compare, and improve.
   `trajectory-security` plugin for Claude Code, Codex, and Cursor.
 - **Investigation tools** including `trajectory status`, `trajectory view`,
   diagnostics, support bundles, MCP tools, and historical backfill.
-- **Privacy and capacity controls** including `/incognito`, local-only capture,
-  durable `trajectory config capture disable` / `trajectory config capture enable`
-  capture control,
-  sensitivity scanning, configurable trace detail, and controls for
-  Trajectory-owned LLM calls.
+- **Privacy and capacity controls** including incognito, local-only capture,
+  and configurable trace detail. `trajectory config capture disable` stops all
+  new capture, and Trajectory-owned LLM calls have their own controls.
 - **Workflow attribution** across repositories, commits, pull requests, and
-  completed-session samples, including CODEOWNER-aware production analysis.
-- **Preview integrations** for CommandCode, Devin CLI, ForgeCode, gptme, Grok
-  Build, Kimi Code CLI, Muse Code, Oh My Pi, Qoder CLI, VS Code Copilot Chat,
-  Warp, Windsurf, ZCode, and Zed.
+  completed-session samples.
+- **Preview integrations** for more clients, marked (preview) under
+  [Supported Clients](#supported-clients).
 
 ## Install
 
@@ -122,10 +114,10 @@ Choose the installation path that matches who manages the endpoint:
 bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main/install.sh)
 ```
 
-The installer downloads the latest Trajectory release asset for your platform,
-installs it under `~/.trajectory/bin/trajectory`, stages the Claude wrapper
-intercept runtime, runs `trajectory setup`, and registers detected coding-agent
-integrations. Agent command shims are opt-in and can be installed with
+The installer downloads the latest Trajectory release for your platform and
+installs it under `~/.trajectory/bin/trajectory`. It stages the Claude wrapper
+intercept runtime, runs `trajectory setup`, and connects the coding agents it
+finds. Agent command shims are opt-in. Install them with
 `--install-client-shims` where supported.
 
 For local capture without a Datadog API key, leave the API-key prompt blank or
@@ -135,10 +127,10 @@ make the choice explicit:
 bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main/install.sh) --local-only
 ```
 
-Configure Datadog export later with `trajectory destination configure`.
+Configure Datadog export later with `trajectory publish destination configure`.
 
 Add `--security` to enable Datadog Security for detected Claude Code, Codex,
-and Cursor installations. Security defaults to enforce mode; use
+and Cursor installations. Security defaults to enforce mode. Use
 `--security-mode observe` for non-blocking recording. Pass `--app-key` or set
 `DD_APP_KEY` when enabling security so result readback can authenticate.
 
@@ -176,7 +168,6 @@ Trajectory supports:
 - Cline CLI
 - Codex CLI
 - GitHub Copilot CLI beta
-- Gemini CLI
 - Antigravity CLI (`agy`)
 - Aider
 - Continue CLI
@@ -218,7 +209,7 @@ Turn local agent activity into an operational view:
 
 ```bash
 trajectory summary                   # Usage, tokens, cost, agents, and projects
-trajectory outcomes                  # Yield, cost per commit, and cost per PR
+trajectory patterns outcomes         # Commits and PRs linked to sessions, and their cost
 trajectory patterns                  # Work mix, outcomes, cost, and deliverables
 trajectory patterns session ID       # Task spans and turn-level cost drivers
 ```
