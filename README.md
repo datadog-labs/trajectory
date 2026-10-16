@@ -264,15 +264,13 @@ This repository accepts changes to public docs, marketplace metadata, plugin ass
 - [docs/REPORTS.md](docs/REPORTS.md): summary, outcomes, Patterns, historical analysis, and session drilldown
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md): config files, managed defaults, environment overrides, and common settings
 - [docs/API-APP-KEY-MANAGEMENT.md](docs/API-APP-KEY-MANAGEMENT.md): Datadog API/application key storage, resolution, permissions, and rotation
-- [docs/SECURITY.md](docs/SECURITY.md): standalone Agent Security plugin setup, modes, destinations, and secret handling
 - [docs/MANAGED-ENDPOINTS.md](docs/MANAGED-ENDPOINTS.md): managed endpoint bundle preparation and endpoint verification
 - [docs/FEATURE-FLAGS.md](docs/FEATURE-FLAGS.md): feature-flag commands, runtime overrides, and registered flags
 - [docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md): supported coding-agent clients and version requirements
 - [docs/CLIENT-INSTRUMENTATION.md](docs/CLIENT-INSTRUMENTATION.md): per-client hook, watcher, MCP, and backfill surfaces
-- [docs/CURSOR-CAPTURE-TRUST.md](docs/CURSOR-CAPTURE-TRUST.md): trustworthy Cursor tokens, cost, surface, and subagent signals
 - [docs/COSTS.md](docs/COSTS.md): local cost summaries, turn evidence, objective observations, and fidelity checks
-- [docs/COST-ATTRIBUTION.md](docs/COST-ATTRIBUTION.md): additive cost totals, overlapping CODEOWNER associations, and safe dashboard patterns
-- [docs/PRIVACY.md](docs/PRIVACY.md): incognito, sensitive tags, and sensitivity scanning
+- [docs/COST-ATTRIBUTION.md](docs/COST-ATTRIBUTION.md): additive cost totals and safe dashboard patterns
+- [docs/PRIVACY.md](docs/PRIVACY.md): incognito, capture levels, and what each destination receives
 - [docs/SECURITY-EVENT-STREAM.md](docs/SECURITY-EVENT-STREAM.md): managed security event log projection
 - [docs/LLM-CAPACITY.md](docs/LLM-CAPACITY.md): which features use additional LLM capacity and how to control them
 - [docs/METRICS-REFERENCE.md](docs/METRICS-REFERENCE.md): emitted metric names, types, tags, and query guidance
@@ -283,7 +281,6 @@ This repository accepts changes to public docs, marketplace metadata, plugin ass
 - [docs/SUBAGENT-TRACE-MODEL.md](docs/SUBAGENT-TRACE-MODEL.md): semantic subagent trace rendering and span-link behavior
 - [docs/LLM-OBS-SPAN-TAGS.md](docs/LLM-OBS-SPAN-TAGS.md): Datadog LLM Observability span tag contract
 - [docs/COST-OVERLAP-CONSUMER-GUIDE.md](docs/COST-OVERLAP-CONSUMER-GUIDE.md): cost-overlap dashboard guidance
-- [docs/LOCAL-UI-DATA-SOURCES.md](docs/LOCAL-UI-DATA-SOURCES.md): local-ui datastore provenance fields
 
 ## License
 
