@@ -504,10 +504,10 @@ trajectory user-guide cursor-cost     # Cursor token formula, rate provenance, a
 
 The current OSS binary does not expose a general-purpose `trajectory query`
 CLI. Use `trajectory status`, `trajectory local-ui`, `get_session_trajectory`, and
-the `trajectory_schema` / `trajectory_query` tools for local inspection. Pi
-registers those as native extension tools; setup-managed MCP clients get the
-same schema-first workflow through `trajectory mcp`. The embedded query guide
-documents schema-first inspection and `TRAJECTORY_CACHE_DB` handling.
+the `trajectory_schema` / `trajectory_query` MCP tools for local inspection.
+The Pi extension does not register native tools, keeping their schemas out of
+the model context by default. The embedded query guide documents schema-first
+inspection and `TRAJECTORY_CACHE_DB` handling.
 
 Use `trajectory cost` for local cost tracking. It reads the local SQLite cache,
 automatically repairs obsolete Codex token/cost projections when needed, shows
@@ -871,7 +871,7 @@ sensitivity classification and segmentation.
 | Cursor Desktop | Incognito skill, using Claude skill when available or native Cursor fallback; setup also installs `cursor-agent-incognito` | Yes | Non-headless GUI sessions eligible; headless skipped | Non-headless GUI sessions eligible; headless skipped | Punted for positive privacy-feature proof: GUI/transcript watcher path has no stable credential-free non-headless hook stream |
 | cursor-agent CLI | Setup-managed `cursor-agent-incognito` command when the Cursor integration is installed; watcher has no native slash surface | No | Passive history is local-only and replay-ineligible; native hook sessions use their proven surface | Passive history is local-only and replay-ineligible; native hook sessions use their proven surface | Protected `cursor-agent --print` native/passive identity gate; shared passive store remains surface-unknown |
 | Factory Droid | Incognito skill in the local marketplace plugin | Yes | Non-headless plugin sessions eligible; headless skipped | Non-headless plugin sessions eligible; headless skipped | `privacy-features` E2E positive fixture proof; no live Droid incognito UX gate yet |
-| Pi | Native `trajectory_incognito` tool plus MCP | Yes | Non-headless extension sessions eligible; extension-supplied verdicts accepted; headless skipped | Non-headless extension sessions eligible; headless skipped | Live incognito UX; `privacy-features` E2E positive fixture proof; extension verdict tests |
+| Pi | MCP request path | Yes | Non-headless extension sessions eligible; extension-supplied verdicts accepted; headless skipped | Non-headless extension sessions eligible; headless skipped | Live incognito UX; `privacy-features` E2E positive fixture proof; extension verdict tests |
 | Oh My Pi (`omp`) | MCP request path; no setup-managed slash command yet | Yes | Native extension marks headless state; non-headless eligible, headless skipped | Non-headless eligible; headless skipped | Sanitized v16.5.2 setup/capture/backfill fixtures; real executable and positive privacy proof pending |
 | Hermes Agent | Incognito skill | Yes | Non-headless observer sessions eligible; headless skipped | Non-headless observer sessions eligible; headless skipped | `privacy-features` E2E positive fixture proof; protected live capture coverage; no live incognito UX gate yet |
 | Amp Code | Setup-managed `amp-incognito` command plus MCP request path | Yes | Non-headless Amp plugin sessions eligible; headless skipped | Non-headless Amp plugin sessions eligible; headless skipped | `privacy-features` E2E positive fixture proof until a usable `AMP_API_KEY` exists |
