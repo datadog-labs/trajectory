@@ -58,9 +58,9 @@ How it works:
 - `measures` turns point hits into a count named `force-pushes`.
 
 When the command appears in a captured session, Trajectory records a
-`force-push` marker and can publish `trajectory.session.force_pushes` plus a
-completed-session count metric. Raw behavior becomes something you can query by
-repo, team, environment, or release workflow.
+`force-push` marker and can publish
+`trajectory.session.force_pushes.completed_count`. Raw behavior becomes
+something you can query by repo, team, environment, or release workflow.
 
 Use Markers to detect patterns such as:
 
