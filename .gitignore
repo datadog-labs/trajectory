@@ -5,3 +5,6 @@ dist/
 tmp/
 node_modules/
 .trajectory/
+
+tests/__pycache__/
+*.pyc

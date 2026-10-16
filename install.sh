@@ -935,6 +935,29 @@ fi
 if command -v openhands >/dev/null 2>&1; then
     info "      OpenHands detected - configuration is handled by the setup wizard."
     info "      To refresh OpenHands wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients openhands"
+    # Conditional local datastore verification prompt for OpenHands. Purely
+    # informational: install.sh never enables openhands_durable_history or
+    # runs the backfill itself. Guards (all must hold): interactive mode,
+    # local-capture path, and a TTY on stdin as a secondary safety belt so
+    # piped installs are never blocked even if the flags look interactive.
+    if [ "$NON_INTERACTIVE" = "0" ] \
+        && { [ "$LOCAL_ONLY" = "1" ] || [ "$API_KEY_PROVIDED" = "0" ]; } \
+        && [ -t 0 ]; then
+        info "      OpenHands stores conversation bundles in a provider-owned location."
+        info "      Trajectory can reconcile them into the local datastore via the"
+        info "      'openhands_durable_history' feature flag (default: off)."
+        printf '[trajectory]  Run a one-shot local datastore verification suggestion for OpenHands after setup? [y/N]: '
+        reply=""
+        read -r reply || reply=""
+        case "$reply" in
+            y|Y|yes|YES|Yes)
+                info "    To verify: ~/.trajectory/bin/trajectory features enable openhands_durable_history && ~/.trajectory/bin/trajectory backfill --from-openhands --dry-run"
+                ;;
+            *)
+                info "      Skipping local datastore verification prompt for OpenHands."
+                ;;
+        esac
+    fi
     PLUGIN_INSTALLED=1
 else
     info "      OpenHands CLI not detected - skipping OpenHands configuration guidance."
