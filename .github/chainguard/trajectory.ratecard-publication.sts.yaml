@@ -1,0 +1,15 @@
+# Grants only the protected source rate card publication workflow a
+# short-lived token to update the generated files on the ratecards branch.
+issuer: https://token.actions.githubusercontent.com
+
+subject: repo:DataDog/trajectory:environment:ratecard-publication
+
+claim_pattern:
+  event_name: (push|workflow_dispatch)
+  ref: refs/heads/main
+  ref_protected: "true"
+  repository: DataDog/trajectory
+  job_workflow_ref: DataDog/trajectory/\.github/workflows/ratecard-publish\.yml@refs/heads/main
+
+permissions:
+  contents: write
