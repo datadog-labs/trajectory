@@ -1,0 +1,95 @@
+{
+  "assume": {
+    "service_tier": "standard"
+  },
+  "card": {
+    "currency": "USD",
+    "id": "meta",
+    "snapshot_date": "2026-10-20",
+    "source_url": "https://developer.meta.com/ai/",
+    "sources": {
+      "litellm": {
+        "kind": "price_list",
+        "name": "LiteLLM model_prices_and_context_window.json",
+        "retrieved_at": "2026-10-26T03:07:36Z",
+        "sha256": "12ea25ddb6f2427bf7be2550b5a160d8659136d8747cfddf62327701591d2226",
+        "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+      },
+      "models-dev": {
+        "kind": "price_list",
+        "name": "models.dev api.json",
+        "retrieved_at": "2026-10-26T03:07:36Z",
+        "sha256": "73319ee88a10e0ec47b895bda9efcd388cc81684db5473a0fe0b7a75bdca87ea",
+        "url": "https://models.dev/api.json"
+      },
+      "provider-pricing-rate-limits": {
+        "kind": "provider_page",
+        "name": "Meta's pricing-rate-limits page",
+        "retrieved_at": "2026-10-26T02:55:06Z",
+        "url": "https://dev.meta.ai/docs/pricing-rate-limits"
+      }
+    },
+    "version": "initial"
+  },
+  "models": [
+    {
+      "components": [
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider-pricing-rate-limits"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider-pricing-rate-limits"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.15",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider-pricing-rate-limits"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "4.25",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-rate-limits"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.0025",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "muse-spark-1.1"
+        ]
+      }
+    }
+  ],
+  "schema": "opentrajectory.rate_card/1"
+}

@@ -1,0 +1,555 @@
+{
+  "schema": "opentrajectory.model_aliases/1",
+  "aliases": [
+    {
+      "canonical": "claude-opus-5-5",
+      "ids": ["claude-opus-5-5-medium"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "medium"}
+    },
+    {
+      "canonical": "claude-opus-5-5",
+      "ids": ["claude-opus-5-5-high"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "claude-opus-5-5",
+      "ids": ["claude-opus-5-5-xhigh"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "xhigh"}
+    },
+    {
+      "canonical": "claude-opus-5-5",
+      "ids": ["claude-opus-5-5-max"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "max"}
+    },
+    {
+      "canonical": "claude-opus-5-5",
+      "ids": ["claude-opus-5-5-medium-fast"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "medium", "speed_mode": "fast", "service_tier": "fast"}
+    },
+    {
+      "canonical": "claude-opus-5-5",
+      "ids": ["claude-opus-5-5-high-fast"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high", "speed_mode": "fast", "service_tier": "fast"}
+    },
+    {
+      "canonical": "claude-opus-5-5",
+      "ids": ["claude-opus-5-5-fast"],
+      "client_sources": ["opencode"],
+      "attributes": {"speed_mode": "fast", "service_tier": "fast"}
+    },
+    {
+      "canonical": "claude-opus-5-5",
+      "ids": ["claude-opus-5-5_1m"],
+      "client_sources": ["claude-code"],
+      "attributes": {"context_mode": "1m"}
+    },
+    {
+      "canonical": "claude-sonnet-5-5",
+      "ids": ["claude-sonnet-5-5-low"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "low"}
+    },
+    {
+      "canonical": "claude-sonnet-5-5",
+      "ids": ["claude-sonnet-5-5-medium"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "medium"}
+    },
+    {
+      "canonical": "claude-sonnet-5-5",
+      "ids": ["claude-sonnet-5-5-high"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "claude-sonnet-5-5",
+      "ids": ["claude-sonnet-5-5-xhigh"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "xhigh"}
+    },
+    {
+      "canonical": "claude-sonnet-5-5",
+      "ids": ["claude-sonnet-5-5-max"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "max"}
+    },
+    {
+      "canonical": "claude-sonnet-5-5",
+      "ids": ["claude-sonnet-5-5_1m"],
+      "client_sources": ["claude-code"],
+      "attributes": {"context_mode": "1m"}
+    },
+    {"canonical": "claude-fable-5", "ids": ["fable-5"]},
+    {"canonical": "claude-mythos-5", "ids": ["mythos-5"]},
+    {
+      "canonical": "claude-opus-4-8",
+      "ids": ["claude-opus-4-8-low"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "low"}
+    },
+    {
+      "canonical": "claude-opus-4-8",
+      "ids": ["claude-opus-4-8-medium"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "medium"}
+    },
+    {
+      "canonical": "claude-opus-4-8",
+      "ids": ["claude-opus-4-8-high"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "claude-opus-4-8",
+      "ids": ["claude-opus-4-8-xhigh"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "xhigh"}
+    },
+    {
+      "canonical": "claude-opus-4-8",
+      "ids": ["claude-opus-4-8-max"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "max"}
+    },
+    {
+      "canonical": "claude-opus-4-8",
+      "ids": ["claude-opus-4-8-thinking-low"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "low"}
+    },
+    {
+      "canonical": "claude-opus-4-8",
+      "ids": ["claude-opus-4-8-thinking-medium"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "medium"}
+    },
+    {
+      "canonical": "claude-opus-4-8",
+      "ids": ["claude-opus-4-8-thinking-high"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "claude-opus-4-8",
+      "ids": ["claude-opus-4-8-thinking-xhigh"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "xhigh"}
+    },
+    {
+      "canonical": "claude-opus-4-8",
+      "ids": ["claude-opus-4-8-thinking-max"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "max"}
+    },
+    {
+      "canonical": "claude-opus-4-8",
+      "ids": ["claude-opus-4-8-xhigh-fast"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "xhigh", "speed_mode": "fast", "service_tier": "fast"}
+    },
+    {
+      "canonical": "claude-opus-4-8",
+      "ids": ["claude-opus-4.8-xhigh-fast"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "xhigh", "speed_mode": "fast", "service_tier": "fast"}
+    },
+    {
+      "canonical": "claude-sonnet-5",
+      "ids": ["claude-sonnet-5-low"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "low"}
+    },
+    {
+      "canonical": "claude-sonnet-5",
+      "ids": ["claude-sonnet-5-medium"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "medium"}
+    },
+    {
+      "canonical": "claude-sonnet-5",
+      "ids": ["claude-sonnet-5-high"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "claude-sonnet-5",
+      "ids": ["claude-sonnet-5-xhigh"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "xhigh"}
+    },
+    {
+      "canonical": "claude-sonnet-5",
+      "ids": ["claude-sonnet-5-max"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "max"}
+    },
+    {
+      "canonical": "claude-sonnet-5",
+      "ids": ["claude-sonnet-5-thinking-low"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "low"}
+    },
+    {
+      "canonical": "claude-sonnet-5",
+      "ids": ["claude-sonnet-5-thinking-medium"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "medium"}
+    },
+    {
+      "canonical": "claude-sonnet-5",
+      "ids": ["claude-sonnet-5-thinking-high"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "claude-sonnet-5",
+      "ids": ["claude-sonnet-5-thinking-xhigh"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "xhigh"}
+    },
+    {
+      "canonical": "claude-sonnet-5",
+      "ids": ["claude-sonnet-5-thinking-max"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "max"}
+    },
+    {"canonical": "claude-sonnet-5", "ids": ["sonnet-5"]},
+    {
+      "canonical": "claude-opus-4-5",
+      "ids": ["claude-4.5-opus-high"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "claude-opus-4-5",
+      "ids": ["claude-4.5-opus-high-thinking"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "claude-opus-4-6",
+      "ids": ["claude-4.6-opus-high"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "claude-opus-4-6",
+      "ids": ["claude-4.6-opus-high-thinking"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "claude-opus-4-6",
+      "ids": ["claude-4.6-opus-max"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "max"}
+    },
+    {
+      "canonical": "claude-opus-4-6",
+      "ids": ["claude-4.6-opus-max-thinking"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "max"}
+    },
+    {
+      "canonical": "claude-opus-4-6",
+      "ids": ["claude-opus-4-6-thinking-high"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "claude-opus-4-7",
+      "ids": ["claude-opus-4-7-low"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "low"}
+    },
+    {
+      "canonical": "claude-opus-4-7",
+      "ids": ["claude-opus-4-7-medium"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "medium"}
+    },
+    {
+      "canonical": "claude-opus-4-7",
+      "ids": ["claude-opus-4-7-high"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "claude-opus-4-7",
+      "ids": ["claude-opus-4-7-max"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "max"}
+    },
+    {
+      "canonical": "claude-opus-4-7",
+      "ids": ["claude-opus-4-7-thinking-medium"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "medium"}
+    },
+    {
+      "canonical": "claude-opus-4-7",
+      "ids": ["claude-opus-4-7-thinking-high"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "claude-opus-4-7",
+      "ids": ["claude-opus-4-7-thinking-xhigh"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "xhigh"}
+    },
+    {
+      "canonical": "claude-opus-4-7",
+      "ids": ["claude-opus-4-7-thinking-max"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "max"}
+    },
+    {"canonical": "claude-sonnet-4-5", "ids": ["claude-4.5-sonnet"], "client_sources": ["cursor"]},
+    {
+      "canonical": "claude-sonnet-4-5",
+      "ids": ["claude-4.5-sonnet-thinking"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "enabled"}
+    },
+    {
+      "canonical": "claude-sonnet-4-6",
+      "ids": ["claude-4.6-sonnet-medium"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "medium"}
+    },
+    {
+      "canonical": "claude-sonnet-4-6",
+      "ids": ["claude-4.6-sonnet-low-thinking"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "low"}
+    },
+    {
+      "canonical": "claude-sonnet-4-6",
+      "ids": ["claude-4.6-sonnet-medium-thinking"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "medium"}
+    },
+    {
+      "canonical": "claude-sonnet-4-6",
+      "ids": ["claude-4.6-sonnet-high-thinking"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "claude-sonnet-4-6",
+      "ids": ["claude-4.6-sonnet-max-thinking"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "max"}
+    },
+    {"canonical": "claude-haiku-4-5", "ids": ["claude-4.5-haiku"], "client_sources": ["cursor"]},
+    {
+      "canonical": "claude-haiku-4-5",
+      "ids": ["claude-4.5-haiku-thinking"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "enabled"}
+    },
+    {
+      "canonical": "grok-4.5",
+      "ids": ["cursor-grok-4.5-high"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "gemini-4-argon",
+      "ids": ["gemini-4-argon-low"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "low"}
+    },
+    {
+      "canonical": "gemini-4-argon",
+      "ids": ["gemini-4-argon-medium"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "medium"}
+    },
+    {
+      "canonical": "gemini-4-argon",
+      "ids": ["gemini-4-argon-high"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "grok-4.20-0309-reasoning",
+      "ids": [
+        "grok-4.20-reasoning-latest",
+        "grok-4.20",
+        "grok-4.20-reasoning",
+        "grok-4.20-0309",
+        "grok-4.20-beta-0309-reasoning",
+        "grok-4.20-beta",
+        "grok-4.20-beta-0309",
+        "grok-4.20-beta-latest",
+        "grok-4.20-beta-latest-reasoning",
+        "grok-4.20-beta-reasoning",
+        "grok-4.20-experimental-beta-0304-reasoning",
+        "grok-4.20-experimental-beta-0304",
+        "grok-4.20-experimental-beta-reasoning-latest",
+        "grok-4.20-experimental-beta-latest",
+        "grok-4.20-reasoning-gv2"
+      ]
+    },
+    {
+      "canonical": "grok-4.20-0309-non-reasoning",
+      "ids": [
+        "grok-4.20-non-reasoning",
+        "grok-4.20-non-reasoning-latest",
+        "grok-4.20-beta-non-reasoning",
+        "grok-4.20-beta-latest-non-reasoning",
+        "grok-4.20-experimental-beta-0304-non-reasoning",
+        "grok-4.20-experimental-beta-non-reasoning-latest",
+        "grok-4.20-beta-0309-non-reasoning",
+        "grok-4.20-non-reasoning-gv2"
+      ]
+    },
+    {
+      "canonical": "grok-4.20-multi-agent-0309",
+      "ids": [
+        "grok-4.20-multi-agent",
+        "grok-4.20-multi-agent-latest",
+        "grok-4.20-multi-agent-beta-latest",
+        "grok-4.20-multi-agent-experimental-beta-0304",
+        "grok-4.20-multi-agent-experimental-beta-latest",
+        "grok-4.20-multi-agent-beta-0309"
+      ]
+    },
+    {"canonical": "grok-4.3", "ids": ["grok-4.3-latest"]},
+    {"canonical": "grok-build-0.1", "ids": ["grok-code-fast-1", "grok-code-fast", "grok-code-fast-1-0825"]},
+    {"canonical": "gpt-5.6-sol", "ids": ["gpt-5.6"]},
+    {"canonical": "gpt-3.5-turbo", "ids": ["gpt-3.5-turbo-0125"]},
+    {"canonical": "gpt-4-turbo-2024-04-09", "ids": ["gpt-4-turbo"]},
+    {"canonical": "gpt-4-0613", "ids": ["gpt-4"]},
+    {"canonical": "gpt-5.1", "ids": ["gpt-5.1-codex-max"]},
+    {"canonical": "gpt-5.6-sol", "ids": ["gpt-5.6-sol-low"], "attributes": {"thinking_mode": "low"}},
+    {
+      "canonical": "gpt-5.6-sol",
+      "ids": ["gpt-5.6-sol-medium"],
+      "attributes": {"thinking_mode": "medium"}
+    },
+    {
+      "canonical": "gpt-5.6-sol",
+      "ids": ["gpt-5.6-sol-high"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "gpt-5.6-sol",
+      "ids": ["gpt-5.6-sol-xhigh"],
+      "attributes": {"thinking_mode": "xhigh"}
+    },
+    {
+      "canonical": "gpt-5.6-sol",
+      "ids": ["gpt-5.6-sol-xhigh-fast"],
+      "client_sources": ["cursor"],
+      "attributes": {"thinking_mode": "xhigh", "speed_mode": "fast", "service_tier": "fast"}
+    },
+    {
+      "canonical": "gpt-5.6-sol",
+      "ids": ["gpt-5.6-sol-fast"],
+      "client_sources": ["opencode"],
+      "attributes": {"speed_mode": "fast", "service_tier": "fast"}
+    },
+    {"canonical": "gpt-5.6-sol", "ids": ["gpt-5.6-sol-max"], "attributes": {"thinking_mode": "max"}},
+    {
+      "canonical": "gpt-5.6-terra",
+      "ids": ["gpt-5.6-terra-low"],
+      "attributes": {"thinking_mode": "low"}
+    },
+    {
+      "canonical": "gpt-5.6-terra",
+      "ids": ["gpt-5.6-terra-medium"],
+      "attributes": {"thinking_mode": "medium"}
+    },
+    {
+      "canonical": "gpt-5.6-terra",
+      "ids": ["gpt-5.6-terra-high"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "gpt-5.6-terra",
+      "ids": ["gpt-5.6-terra-xhigh"],
+      "attributes": {"thinking_mode": "xhigh"}
+    },
+    {
+      "canonical": "gpt-5.6-terra",
+      "ids": ["gpt-5.6-terra-max"],
+      "attributes": {"thinking_mode": "max"}
+    },
+    {
+      "canonical": "gpt-5.6-luna",
+      "ids": ["gpt-5.6-luna-low"],
+      "attributes": {"thinking_mode": "low"}
+    },
+    {
+      "canonical": "gpt-5.6-luna",
+      "ids": ["gpt-5.6-luna-medium"],
+      "attributes": {"thinking_mode": "medium"}
+    },
+    {
+      "canonical": "gpt-5.6-luna",
+      "ids": ["gpt-5.6-luna-high"],
+      "attributes": {"thinking_mode": "high"}
+    },
+    {
+      "canonical": "gpt-5.6-luna",
+      "ids": ["gpt-5.6-luna-xhigh"],
+      "attributes": {"thinking_mode": "xhigh"}
+    },
+    {
+      "canonical": "gpt-5.6-luna",
+      "ids": ["gpt-5.6-luna-max"],
+      "attributes": {"thinking_mode": "max"}
+    },
+    {"canonical": "claude-opus-5-5", "ids": ["claude-opus-5.5"]},
+    {"canonical": "claude-opus-4-5", "ids": ["claude-opus-4.5"]},
+    {"canonical": "claude-opus-4-8", "ids": ["claude-opus-4.8"]},
+    {"canonical": "claude-opus-4", "ids": ["claude-opus-4-0"]},
+    {"canonical": "claude-sonnet-5-5", "ids": ["claude-sonnet-5.5"]},
+    {"canonical": "claude-sonnet-4-6", "ids": ["claude-sonnet-4.6"]},
+    {"canonical": "claude-3-7-sonnet", "ids": ["claude-sonnet-3-7"]},
+    {"canonical": "claude-3-7-sonnet", "ids": ["claude-sonnet-3.7"]},
+    {"canonical": "claude-haiku-5-5", "ids": ["claude-haiku-5.5"]},
+    {"canonical": "claude-haiku-4-5", "ids": ["claude-haiku-4.5"]},
+    {"canonical": "claude-3-5-haiku", "ids": ["claude-haiku-3-5"]},
+    {"canonical": "claude-3-5-haiku", "ids": ["claude-haiku-3.5"]},
+    {"canonical": "claude-3-haiku", "ids": ["claude-haiku-3"]},
+    {"canonical": "gemini-3.8-flash", "ids": ["gemini-3-8-flash"]},
+    {"canonical": "gemini-3.7-flash", "ids": ["gemini-3-7-flash"]},
+    {"canonical": "gemini-3.6-flash", "ids": ["gemini-3-6-flash"]},
+    {"canonical": "gemini-3.5-flash-lite", "ids": ["gemini-3-5-flash-lite"]},
+    {"canonical": "gemini-3.5-flash", "ids": ["gemini-3-5-flash"]},
+    {"canonical": "gemini-3.1-pro-preview", "ids": ["gemini-3-1-pro-preview"]},
+    {"canonical": "gemini-3.1-flash-lite", "ids": ["gemini-3-1-flash-lite"]},
+    {"canonical": "gemini-3.1-flash-lite", "ids": ["gemini-3.1-flash-lite-preview"]},
+    {"canonical": "gemini-3.1-pro-preview", "ids": ["gemini-3.1-pro-preview-customtools"]},
+    {"canonical": "gemini-2.5-pro", "ids": ["gemini-2-5-pro"]},
+    {"canonical": "gemini-2.5-flash-lite", "ids": ["gemini-2-5-flash-lite"]},
+    {"canonical": "gemini-2.5-flash", "ids": ["gemini-2-5-flash"]},
+    {"canonical": "gemini-2.0-flash", "ids": ["gemini-2-0-flash"]},
+    {"canonical": "gemini-1.5-pro", "ids": ["gemini-1-5-pro"]},
+    {"canonical": "gemini-1.5-flash", "ids": ["gemini-1-5-flash"]},
+    {"canonical": "codex-mini", "ids": ["gpt-5.1-codex-mini"]},
+    {"canonical": "claude-fable-5-1", "ids": ["fable-5.1"]},
+    {"canonical": "claude-mythos-5-1", "ids": ["mythos-5.1"]},
+    {"canonical": "claude-opus-5-5", "ids": ["opus-5.5"]},
+    {"canonical": "claude-opus-5", "ids": ["opus-5"]},
+    {"canonical": "claude-opus-4-5", "ids": ["opus-4.5"]},
+    {"canonical": "claude-opus-4-7", "ids": ["opus"]},
+    {"canonical": "claude-opus-4-8", "ids": ["opus-4.8"]},
+    {"canonical": "claude-opus-4", "ids": ["opus-4"]},
+    {"canonical": "claude-sonnet-4-6", "ids": ["sonnet"]},
+    {"canonical": "claude-sonnet-5-5", "ids": ["sonnet-5.5"]},
+    {"canonical": "claude-haiku-5-5", "ids": ["haiku-5.5"]},
+    {"canonical": "claude-haiku-4-5", "ids": ["haiku"]},
+    {"canonical": "claude-3-5-haiku", "ids": ["haiku-3.5"]},
+    {"canonical": "claude-3-haiku", "ids": ["haiku-3"]}
+  ]
+}

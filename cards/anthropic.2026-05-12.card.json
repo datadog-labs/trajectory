@@ -1,0 +1,1658 @@
+{
+  "assume": {
+    "service_tier": "standard"
+  },
+  "card": {
+    "currency": "USD",
+    "effective_from": "2026-05-12T00:00:00Z",
+    "effective_from_evidence": {
+      "quote": "Fast mode (research preview) now supports Claude Opus 4.7. Set speed: \"fast\" with model: \"claude-opus-4-7\" and the fast-mode-2026-02-01 beta header for significantly faster output token generation at premium pricing. Pricing, rate limits, and access are the same as for Opus 4.6 fast mode; interested customers should join the waitlist.",
+      "source": "announcement-2026-05-12"
+    },
+    "id": "anthropic",
+    "snapshot_date": "2026-10-27",
+    "source_url": "https://platform.claude.com/docs/en/about-claude/pricing",
+    "sources": {
+      "announcement-2026-05-12": {
+        "kind": "announcement",
+        "name": "Anthropic's announcement of the prices from 2026-05-12",
+        "retrieved_at": "2026-10-27T03:30:43Z",
+        "url": "https://platform.claude.com/docs/en/release-notes/overview"
+      },
+      "genai-prices": {
+        "kind": "price_list",
+        "name": "pydantic genai-prices prices/data.json",
+        "retrieved_at": "2026-10-27T03:33:18Z",
+        "sha256": "f41075aab069a7dc378f83b7586523f72682a6c9860b23a89ad0b57c073aec41",
+        "url": "https://raw.githubusercontent.com/pydantic/genai-prices/main/prices/data.json"
+      },
+      "genai-prices-2026-10-26": {
+        "kind": "price_list",
+        "name": "pydantic genai-prices prices/data.json",
+        "retrieved_at": "2026-10-26T15:09:26Z",
+        "sha256": "f41075aab069a7dc378f83b7586523f72682a6c9860b23a89ad0b57c073aec41",
+        "url": "https://raw.githubusercontent.com/pydantic/genai-prices/main/prices/data.json"
+      },
+      "litellm": {
+        "kind": "price_list",
+        "name": "LiteLLM model_prices_and_context_window.json",
+        "retrieved_at": "2026-10-27T03:33:18Z",
+        "sha256": "1faeeb3b9f7c974445a1377db267551c90b3b2748918f106e6fe2d54b8938d07",
+        "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+      },
+      "litellm-2026-10-26": {
+        "kind": "price_list",
+        "name": "LiteLLM model_prices_and_context_window.json",
+        "retrieved_at": "2026-10-26T15:09:26Z",
+        "sha256": "12ea25ddb6f2427bf7be2550b5a160d8659136d8747cfddf62327701591d2226",
+        "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+      },
+      "models-dev": {
+        "kind": "price_list",
+        "name": "models.dev api.json",
+        "retrieved_at": "2026-10-27T03:33:18Z",
+        "sha256": "1fb686c61bdc26a71f820079ead7a229d0d105be98ebfee7f4596f7dcd05d8e7",
+        "url": "https://models.dev/api.json"
+      },
+      "models-dev-2026-10-26": {
+        "kind": "price_list",
+        "name": "models.dev api.json",
+        "retrieved_at": "2026-10-26T15:09:26Z",
+        "sha256": "58c58f083cad605f73662eb5cedaa0e96a121a31858fe3103b9b8d0903b2febb",
+        "url": "https://models.dev/api.json"
+      },
+      "provider": {
+        "kind": "provider_page",
+        "name": "Anthropic's pricing page",
+        "retrieved_at": "2026-10-26T15:10:43Z",
+        "url": "https://platform.claude.com/docs/en/about-claude/pricing"
+      },
+      "provider-model-deprecations": {
+        "kind": "provider_page",
+        "name": "Anthropic's model-deprecations page",
+        "retrieved_at": "2026-10-26T15:11:12Z",
+        "url": "https://platform.claude.com/docs/en/about-claude/model-deprecations#model-status"
+      },
+      "provider-web-search-tool": {
+        "kind": "provider_page",
+        "name": "Anthropic's web-search-tool page",
+        "retrieved_at": "2026-10-28T23:33:25Z",
+        "url": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool"
+      }
+    },
+    "version": "2026-05-12"
+  },
+  "models": [
+    {
+      "cache_write_lifetime": {
+        "component": "cache_write_5m",
+        "if_unspecified": "lower_bound"
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "1",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_write_5m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "12.5",
+          "quantity": "cache_write_5m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_write_1h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "20",
+          "quantity": "cache_write_1h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "50",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "provider",
+            "provider-web-search-tool"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "claude-fable-5"
+        ]
+      }
+    },
+    {
+      "cache_write_lifetime": {
+        "component": "cache_write_5m",
+        "if_unspecified": "lower_bound"
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_write_5m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "6.25",
+          "quantity": "cache_write_5m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_write_1h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "cache_write_1h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "25",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "provider",
+            "provider-web-search-tool"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "claude-opus-4-5"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "cache_write_lifetime": {
+        "component": "cache_write_5m",
+        "if_unspecified": "lower_bound"
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_write_5m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "6.25",
+          "quantity": "cache_write_5m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "cache_write_1h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "cache_write_1h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "25",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider",
+            "provider-web-search-tool"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write_5m",
+            "cache_write_1h",
+            "output"
+          ],
+          "factor": "6",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "claude-opus-4-6"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "cache_write_lifetime": {
+        "component": "cache_write_5m",
+        "if_unspecified": "lower_bound"
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_write_5m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "6.25",
+          "quantity": "cache_write_5m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "cache_write_1h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "cache_write_1h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "25",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider",
+            "provider-web-search-tool"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write_5m",
+            "cache_write_1h",
+            "output"
+          ],
+          "factor": "6",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "claude-opus-4-7"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "cache_write_lifetime": {
+        "component": "cache_write_5m",
+        "if_unspecified": "lower_bound"
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_write_5m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "6.25",
+          "quantity": "cache_write_5m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_write_1h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "cache_write_1h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "25",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "provider",
+            "provider-web-search-tool"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write_5m",
+            "cache_write_1h",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "claude-opus-4-8"
+        ]
+      }
+    },
+    {
+      "cache_write_lifetime": {
+        "component": "cache_write_5m",
+        "if_unspecified": "lower_bound"
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-opus-4-20250514 | Retired | April 14, 2026 | June 15, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "15",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-opus-4-20250514 | Retired | April 14, 2026 | June 15, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "1.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-opus-4-20250514 | Retired | April 14, 2026 | June 15, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write_5m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "18.75",
+          "quantity": "cache_write_5m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-opus-4-20250514 | Retired | April 14, 2026 | June 15, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write_1h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "30",
+          "quantity": "cache_write_1h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-opus-4-20250514 | Retired | April 14, 2026 | June 15, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "75",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-opus-4-20250514 | Retired | April 14, 2026 | June 15, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "claude-opus-4"
+        ]
+      }
+    },
+    {
+      "cache_write_lifetime": {
+        "component": "cache_write_5m",
+        "if_unspecified": "lower_bound"
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-opus-4-1-20250805 | Retired | June 5, 2026 | August 5, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "15",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-opus-4-1-20250805 | Retired | June 5, 2026 | August 5, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "1.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-opus-4-1-20250805 | Retired | June 5, 2026 | August 5, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write_5m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "18.75",
+          "quantity": "cache_write_5m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-opus-4-1-20250805 | Retired | June 5, 2026 | August 5, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write_1h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "30",
+          "quantity": "cache_write_1h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-opus-4-1-20250805 | Retired | June 5, 2026 | August 5, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "75",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-opus-4-1-20250805 | Retired | June 5, 2026 | August 5, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "claude-opus-4-1"
+        ]
+      }
+    },
+    {
+      "cache_write_lifetime": {
+        "component": "cache_write_5m",
+        "if_unspecified": "lower_bound"
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-sonnet-4-20250514 | Retired | April 14, 2026 | June 15, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "3",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-sonnet-4-20250514 | Retired | April 14, 2026 | June 15, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.3",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-sonnet-4-20250514 | Retired | April 14, 2026 | June 15, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write_5m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "3.75",
+          "quantity": "cache_write_5m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-sonnet-4-20250514 | Retired | April 14, 2026 | June 15, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write_1h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "6",
+          "quantity": "cache_write_1h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-sonnet-4-20250514 | Retired | April 14, 2026 | June 15, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "15",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-sonnet-4-20250514 | Retired | April 14, 2026 | June 15, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "claude-sonnet-4"
+        ]
+      }
+    },
+    {
+      "cache_write_lifetime": {
+        "component": "cache_write_5m",
+        "if_unspecified": "lower_bound"
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "3",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.3",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_write_5m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "3.75",
+          "quantity": "cache_write_5m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_write_1h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "6",
+          "quantity": "cache_write_1h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "15",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "provider",
+            "provider-web-search-tool"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write_5m",
+            "cache_write_1h"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "200000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "1.5",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "200000",
+            "quantity": "prompt_size"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "claude-sonnet-4-5"
+        ]
+      }
+    },
+    {
+      "cache_write_lifetime": {
+        "component": "cache_write_5m",
+        "if_unspecified": "lower_bound"
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "3",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.3",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_write_5m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "3.75",
+          "quantity": "cache_write_5m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_write_1h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "6",
+          "quantity": "cache_write_1h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "15",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "provider",
+            "provider-web-search-tool"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "claude-sonnet-4-6"
+        ]
+      }
+    },
+    {
+      "cache_write_lifetime": {
+        "component": "cache_write_5m",
+        "if_unspecified": "lower_bound"
+      },
+      "components": [
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-3-7-sonnet-20250219 | Retired | October 28, 2025 | February 19, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "3",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-3-7-sonnet-20250219 | Retired | October 28, 2025 | February 19, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.3",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-3-7-sonnet-20250219 | Retired | October 28, 2025 | February 19, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write_5m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "3.75",
+          "quantity": "cache_write_5m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-3-7-sonnet-20250219 | Retired | October 28, 2025 | February 19, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write_1h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "6",
+          "quantity": "cache_write_1h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-3-7-sonnet-20250219 | Retired | October 28, 2025 | February 19, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "15",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-3-7-sonnet-20250219 | Retired | October 28, 2025 | February 19, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "claude-3-7-sonnet"
+        ]
+      }
+    },
+    {
+      "cache_write_lifetime": {
+        "component": "cache_write_5m",
+        "if_unspecified": "lower_bound"
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "1",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.1",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_write_5m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "cache_write_5m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_write_1h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "2",
+          "quantity": "cache_write_1h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider",
+            "provider-web-search-tool"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Web search is available on the Claude API for $10 USD per 1,000 searches, plus standard token costs for search-generated content.",
+            "reason": "Only one source states this price, so Anthropic's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "claude-haiku-4-5"
+        ]
+      }
+    },
+    {
+      "cache_write_lifetime": {
+        "component": "cache_write_5m",
+        "if_unspecified": "lower_bound"
+      },
+      "components": [
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-3-5-haiku-20241022 | Retired | December 19, 2025 | February 19, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "0.8",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-3-5-haiku-20241022 | Retired | December 19, 2025 | February 19, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.08",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-3-5-haiku-20241022 | Retired | December 19, 2025 | February 19, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write_5m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "1",
+          "quantity": "cache_write_5m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-3-5-haiku-20241022 | Retired | December 19, 2025 | February 19, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write_1h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "1.6",
+          "quantity": "cache_write_1h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-3-5-haiku-20241022 | Retired | December 19, 2025 | February 19, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "4",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-3-5-haiku-20241022 | Retired | December 19, 2025 | February 19, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "claude-3-5-haiku"
+        ]
+      }
+    },
+    {
+      "cache_write_lifetime": {
+        "component": "cache_write_5m",
+        "if_unspecified": "lower_bound"
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26"
+          ],
+          "decision": {
+            "decided_on": "2026-10-23",
+            "evidence": "claude-3-haiku-20240307 | Retired | February 19, 2026 | April 20, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "0.25",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26"
+          ],
+          "decision": {
+            "decided_on": "2026-10-23",
+            "evidence": "claude-3-haiku-20240307 | Retired | February 19, 2026 | April 20, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.03",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26"
+          ],
+          "decision": {
+            "decided_on": "2026-10-23",
+            "evidence": "claude-3-haiku-20240307 | Retired | February 19, 2026 | April 20, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write_5m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.3",
+          "quantity": "cache_write_5m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-3-haiku-20240307 | Retired | February 19, 2026 | April 20, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write_1h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "cache_write_1h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices-2026-10-26"
+          ],
+          "decision": {
+            "decided_on": "2026-10-23",
+            "evidence": "claude-3-haiku-20240307 | Retired | February 19, 2026 | April 20, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "claude-3-haiku-20240307 | Retired | February 19, 2026 | April 20, 2026",
+            "reason": "Anthropic has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-model-deprecations",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "claude-3-haiku"
+        ]
+      }
+    }
+  ],
+  "schema": "opentrajectory.rate_card/1"
+}

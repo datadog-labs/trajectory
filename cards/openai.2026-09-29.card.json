@@ -1,0 +1,4543 @@
+{
+  "assume": {
+    "service_tier": "standard"
+  },
+  "card": {
+    "currency": "USD",
+    "effective_from": "2026-09-29T00:00:00Z",
+    "effective_from_evidence": {
+      "quote": "Added Ultrafast mode for GPT-6 Astra in the Responses API. Use gpt-6-astra with service_tier: \"ultrafast\" to reduce the time between generated output tokens. It is available to API customers, subject to rate limits, with global processing and US data residency. EU and other regional inference residency aren't supported. See Ultrafast pricing.",
+      "source": "announcement-2026-09-29"
+    },
+    "id": "openai",
+    "snapshot_date": "2026-10-27",
+    "source_url": "https://developers.openai.com/api/docs/pricing",
+    "sources": {
+      "announcement-2026-09-29": {
+        "kind": "announcement",
+        "name": "OpenAI's announcement of the prices from 2026-09-29",
+        "retrieved_at": "2026-10-27T20:28:17Z",
+        "url": "https://developers.openai.com/api/docs/changelog"
+      },
+      "genai-prices": {
+        "kind": "price_list",
+        "name": "pydantic genai-prices prices/data.json",
+        "retrieved_at": "2026-10-27T20:45:44Z",
+        "sha256": "f41075aab069a7dc378f83b7586523f72682a6c9860b23a89ad0b57c073aec41",
+        "url": "https://raw.githubusercontent.com/pydantic/genai-prices/main/prices/data.json"
+      },
+      "litellm": {
+        "kind": "price_list",
+        "name": "LiteLLM model_prices_and_context_window.json",
+        "retrieved_at": "2026-10-29T04:24:54Z",
+        "sha256": "c8f693745f2c07a5a6b4d517b41cb1c81f81d68e62672bdd6b71fa78ade4c2ee",
+        "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+      },
+      "litellm-2026-10-25": {
+        "kind": "price_list",
+        "name": "LiteLLM model_prices_and_context_window.json",
+        "retrieved_at": "2026-10-25T11:02:01Z",
+        "sha256": "12ea25ddb6f2427bf7be2550b5a160d8659136d8747cfddf62327701591d2226",
+        "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+      },
+      "litellm-2026-10-27": {
+        "kind": "price_list",
+        "name": "LiteLLM model_prices_and_context_window.json",
+        "retrieved_at": "2026-10-27T20:45:44Z",
+        "sha256": "7989a84f15ba56025650ed850c1b1a262d95a42680746d7ec5b1c956dd012121",
+        "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+      },
+      "models-dev": {
+        "kind": "price_list",
+        "name": "models.dev api.json",
+        "retrieved_at": "2026-10-29T04:24:54Z",
+        "sha256": "6eb50cf3e7ac77ac156d2a54ba948ed24703bb33380ccf8a2696638377c3e3e9",
+        "url": "https://models.dev/api.json"
+      },
+      "models-dev-2026-10-25": {
+        "kind": "price_list",
+        "name": "models.dev api.json",
+        "retrieved_at": "2026-10-25T11:02:00Z",
+        "sha256": "7eb7e12967d8f6b65d0ac3d1c7aa44037a7ddef8a62aaa194b41b3cfafa31889",
+        "url": "https://models.dev/api.json"
+      },
+      "models-dev-2026-10-27": {
+        "kind": "price_list",
+        "name": "models.dev api.json",
+        "retrieved_at": "2026-10-27T20:45:44Z",
+        "sha256": "bfb2795758c93fa1383fb04d204d59e23ab9371eb5f785d0902dfae3ac5ae9d9",
+        "url": "https://models.dev/api.json"
+      },
+      "provider": {
+        "kind": "provider_page",
+        "name": "OpenAI's pricing page",
+        "retrieved_at": "2026-10-29T04:18:37Z",
+        "url": "https://developers.openai.com/api/docs/pricing"
+      },
+      "provider-codex-mini-latest": {
+        "kind": "provider_page",
+        "name": "OpenAI's codex-mini-latest page",
+        "retrieved_at": "2026-10-22T14:16:10Z",
+        "url": "https://developers.openai.com/api/docs/models/codex-mini-latest"
+      },
+      "provider-deprecations": {
+        "kind": "provider_page",
+        "name": "OpenAI's deprecations page",
+        "retrieved_at": "2026-10-26T15:11:36Z",
+        "url": "https://developers.openai.com/api/docs/deprecations#2026-04-22-legacy-gpt-model-snapshots-july-2026-shutdown"
+      },
+      "provider-pricing-md": {
+        "kind": "provider_page",
+        "name": "OpenAI's pricing.md page",
+        "retrieved_at": "2026-10-29T04:19:33Z",
+        "url": "https://developers.openai.com/api/docs/pricing.md"
+      },
+      "provider-prompt-caching": {
+        "kind": "provider_page",
+        "name": "OpenAI's prompt-caching page",
+        "retrieved_at": "2026-10-26T02:48:11Z",
+        "url": "https://developers.openai.com/api/docs/guides/prompt-caching"
+      }
+    },
+    "version": "2026-09-29"
+  },
+  "models": [
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex",
+          "ultrafast"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "1",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "12.5",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "50",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "1.5",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "6",
+          "id": "ultrafast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "ultrafast"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-6-astra"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "2",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.2",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-25",
+            "models-dev-2026-10-25"
+          ],
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "2.5",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "1.5",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-6-sol"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.1",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.01",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-25",
+            "models-dev-2026-10-25"
+          ],
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.125",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "1.5",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-6-luna"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "2",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.1",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "2.5",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "1.5",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-6.1-sol"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "gpt-5.6-sol | $4.00 | $20.00 | $0.40 | $5.00 | $10.00",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "4",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "gpt-5.6-sol | $4.00 | $20.00 | $0.40 | $5.00 | $10.00",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.4",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-25",
+            "models-dev-2026-10-25",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "gpt-5.6-sol | $4.00 | $20.00 | $0.40 | $5.00 | $10.00",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "gpt-5.6-sol | $4.00 | $20.00 | $0.40 | $5.00 | $10.00",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "20",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "1.5",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.6-sol"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "gpt-5.6-terra | $2.00 | $12.00 | $0.20 | $2.50 | $5.00",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "2",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "gpt-5.6-terra | $2.00 | $12.00 | $0.20 | $2.50 | $5.00",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.2",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-25",
+            "models-dev-2026-10-25",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "gpt-5.6-terra | $2.00 | $12.00 | $0.20 | $2.50 | $5.00",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "2.5",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "gpt-5.6-terra | $2.00 | $12.00 | $0.20 | $2.50 | $5.00",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "12",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "1.5",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.6-terra"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "gpt-5.6-luna | $0.20 | $1.20 | $0.02 | $0.25 | $0.50",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "0.2",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "gpt-5.6-luna | $0.20 | $1.20 | $0.02 | $0.25 | $0.50",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.02",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-25",
+            "models-dev-2026-10-25",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "gpt-5.6-luna | $0.20 | $1.20 | $0.02 | $0.25 | $0.50",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.25",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "gpt-5.6-luna | $0.20 | $1.20 | $0.02 | $0.25 | $0.50",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "1.2",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "1.5",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.6-luna"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "gpt-5.6-cyber | $12.50 | $75.00 | $1.25 | $15.625 | $31.25",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "12.5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "gpt-5.6-cyber | $12.50 | $75.00 | $1.25 | $15.625 | $31.25",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "gpt-5.6-cyber | $12.50 | $75.00 | $1.25 | $15.625 | $31.25",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "15.625",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "gpt-5.6-cyber | $12.50 | $75.00 | $1.25 | $15.625 | $31.25",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "75",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.6-cyber"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "25",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-rosalind-discovery"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "30",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "1.5",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "exclusive_with": [
+            "long_context_input",
+            "long_context_output"
+          ],
+          "factor": "2.5",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.5"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "30",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "gpt-5.5-pro (\u003c272K context length) | $30.00 | $180.00 | - | - | - | $60.00 | $270.00 | - | - | -",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "30",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "180",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "1.5",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "exclusive_with": [
+            "long_context_input",
+            "long_context_output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.5-pro"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "12.5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "75",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.5-cyber"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.75",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.075",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "4.5",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.4-mini"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.2",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.02",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.4-nano"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "2.5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.25",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "15",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "1.5",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "exclusive_with": [
+            "long_context_input",
+            "long_context_output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.4"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "30",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "gpt-5.4-pro (\u003c272K context length) | $30.00 | $180.00 | - | - | - | $60.00 | $270.00 | - | - | -",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "30",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "180",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "1.5",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "272000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.4-pro"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "1.75",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.175",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "14",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.3-codex"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "July 23, 2026 | gpt-5.2-codex | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "1.75",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "July 23, 2026 | gpt-5.2-codex | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.175",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "July 23, 2026 | gpt-5.2-codex | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "14",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "July 23, 2026 | gpt-5.2-codex | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.2-codex"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "1.75",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.175",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "14",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.2"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "21",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "gpt-5.2-pro | $21.00 | $168.00 | -",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "21",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "168",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.2-pro"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.125",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5.1"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.25",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.025",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "2",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "1.8",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5-mini"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.05",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.005",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "0.4",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5-nano"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.125",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "15",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "gpt-5-pro | $15.00 | $120.00 | -",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "15",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "120",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5-pro"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.125",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-5-search-api"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "30",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "chat-latest"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "provider-codex-mini-latest"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "2026-02-12 | codex-mini-latest | gpt-5-codex-mini",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "1.5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "provider-codex-mini-latest"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "2026-02-12 | codex-mini-latest | gpt-5-codex-mini",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.375",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-prompt-caching"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "2026-02-12 | codex-mini-latest | gpt-5-codex-mini",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "1.5",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "provider-codex-mini-latest"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "2026-02-12 | codex-mini-latest | gpt-5-codex-mini",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "6",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "2026-02-12 | codex-mini-latest | gpt-5-codex-mini",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "codex-mini"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "20",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "o3-pro | $20.00 | $80.00 | -",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "20",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-prompt-caching"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Cache write charge | 1.25× for \"30m\"; 2.5× for \"12h\" in the Responses API | No additional cache-write charge | No additional cache-write charge",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-prompt-caching",
+            "why": "single_source"
+          },
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "20",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "80",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "o3-pro"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "2",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-prompt-caching"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Cache write charge | 1.25× for \"30m\"; 2.5× for \"12h\" in the Responses API | No additional cache-write charge | No additional cache-write charge",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-prompt-caching",
+            "why": "single_source"
+          },
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "2",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "8",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "1.75",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "o3"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "October 23, 2026 | o4-mini-2025-04-16 | o4-mini | gpt-5.6-terra",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "1.1",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "October 23, 2026 | o4-mini-2025-04-16 | o4-mini | gpt-5.6-terra",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.275",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-prompt-caching"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "October 23, 2026 | o4-mini-2025-04-16 | o4-mini | gpt-5.6-terra",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "1.1",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "October 23, 2026 | o4-mini-2025-04-16 | o4-mini | gpt-5.6-terra",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "4.4",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-27",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "October 23, 2026 | o4-mini-2025-04-16 | o4-mini | gpt-5.6-terra",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "o4-mini"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "1.1",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.55",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "4.4",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "o3-mini"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "150",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "o1-pro | $150.00 | $600.00 | -",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "150",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "600",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "o1-pro"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "15",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "7.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "60",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "o1"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "2",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-prompt-caching"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Cache write charge | 1.25× for \"30m\"; 2.5× for \"12h\" in the Responses API | No additional cache-write charge | No additional cache-write charge",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-prompt-caching",
+            "why": "single_source"
+          },
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "2",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "8",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-24",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "1.75",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-4.1"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.4",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.1",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "1.6",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "disputed"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "1.75",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-4.1-mini"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.1",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.025",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "0.4",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-4.1-nano"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "2026-02-17 | chatgpt-4o-latest | gpt-5.1-chat-latest",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "2026-02-17 | chatgpt-4o-latest | gpt-5.1-chat-latest",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "2026-02-17 | chatgpt-4o-latest | gpt-5.1-chat-latest",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "2026-02-17 | chatgpt-4o-latest | gpt-5.1-chat-latest",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "15",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "2026-02-17 | chatgpt-4o-latest | gpt-5.1-chat-latest",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "chatgpt-4o"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.15",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.075",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "0.6",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-24",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "1.666666666667",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-4o-mini"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "2.5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-prompt-caching"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Cache write charge | 1.25× for \"30m\"; 2.5× for \"12h\" in the Responses API | No additional cache-write charge | No additional cache-write charge",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-prompt-caching",
+            "why": "single_source"
+          },
+          "id": "cache_write",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "2.5",
+          "quantity": "cache_write_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-27",
+            "models-dev-2026-10-27",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "cache_write",
+            "output"
+          ],
+          "factor": "1.7",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-4o"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "gpt-4o-2024-05-13 | $5.00 | $15.00 | -",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "disputed"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "gpt-4o-2024-05-13 | $5.00 | $15.00 | -",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "disputed"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "gpt-4o-2024-05-13 | $5.00 | $15.00 | -",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "disputed"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "15",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "1.75",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-4o-2024-05-13"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "gpt-4-turbo-2024-04-09 | $10.00 | $30.00 | -",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "30",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-4-turbo-2024-04-09"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "30",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "gpt-4-0613 | $30.00 | $60.00 | -",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "30",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "60",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-4-0613"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "gpt-3.5-turbo | $0.50 | $1.50 | -",
+            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "disputed"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider-pricing-md"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "1.5",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-pricing-md"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-pricing-md",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-3.5-turbo"
+        ]
+      }
+    }
+  ],
+  "schema": "opentrajectory.rate_card/1"
+}

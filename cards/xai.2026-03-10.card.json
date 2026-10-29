@@ -1,0 +1,783 @@
+{
+  "assume": {
+    "service_tier": "standard"
+  },
+  "card": {
+    "currency": "USD",
+    "effective_from": "2026-03-10T00:00:00Z",
+    "effective_from_evidence": {
+      "quote": "Grok 4.20 and Grok 4.20 Multi-agent are live",
+      "source": "announcement-2026-03-10"
+    },
+    "id": "xai",
+    "snapshot_date": "2026-10-29",
+    "source_url": "https://docs.x.ai/developers/pricing",
+    "sources": {
+      "announcement-2026-03-10": {
+        "kind": "announcement",
+        "name": "xAI's announcement of the prices from 2026-03-10",
+        "retrieved_at": "2026-10-29T04:26:26Z",
+        "url": "https://docs.x.ai/developers/release-notes"
+      },
+      "genai-prices": {
+        "kind": "price_list",
+        "name": "pydantic genai-prices prices/data.json",
+        "retrieved_at": "2026-10-26T15:09:26Z",
+        "sha256": "f41075aab069a7dc378f83b7586523f72682a6c9860b23a89ad0b57c073aec41",
+        "url": "https://raw.githubusercontent.com/pydantic/genai-prices/main/prices/data.json"
+      },
+      "litellm": {
+        "kind": "price_list",
+        "name": "LiteLLM model_prices_and_context_window.json",
+        "retrieved_at": "2026-10-29T04:24:54Z",
+        "sha256": "c8f693745f2c07a5a6b4d517b41cb1c81f81d68e62672bdd6b71fa78ade4c2ee",
+        "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+      },
+      "litellm-2026-10-26": {
+        "kind": "price_list",
+        "name": "LiteLLM model_prices_and_context_window.json",
+        "retrieved_at": "2026-10-26T15:09:26Z",
+        "sha256": "12ea25ddb6f2427bf7be2550b5a160d8659136d8747cfddf62327701591d2226",
+        "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+      },
+      "models-dev": {
+        "kind": "price_list",
+        "name": "models.dev api.json",
+        "retrieved_at": "2026-10-29T04:24:54Z",
+        "sha256": "6eb50cf3e7ac77ac156d2a54ba948ed24703bb33380ccf8a2696638377c3e3e9",
+        "url": "https://models.dev/api.json"
+      },
+      "models-dev-2026-10-26": {
+        "kind": "price_list",
+        "name": "models.dev api.json",
+        "retrieved_at": "2026-10-26T15:09:26Z",
+        "sha256": "58c58f083cad605f73662eb5cedaa0e96a121a31858fe3103b9b8d0903b2febb",
+        "url": "https://models.dev/api.json"
+      },
+      "provider": {
+        "kind": "provider_page",
+        "name": "xAI's pricing page",
+        "retrieved_at": "2026-10-29T04:18:37Z",
+        "url": "https://docs.x.ai/developers/pricing"
+      }
+    },
+    "version": "2026-03-10"
+  },
+  "models": [
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.2",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "2.5",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web Search | web_search | Search the internet and browse web pages | $5 / 1k calls",
+            "reason": "Only one source states this price, so xAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.005",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "199999",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "2",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "199999",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "grok-4.20-0309-reasoning"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.2",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "2.5",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web Search | web_search | Search the internet and browse web pages | $5 / 1k calls",
+            "reason": "Only one source states this price, so xAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.005",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "199999",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "2",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "199999",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "grok-4.20-0309-non-reasoning"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "grok-4.20-multi-agent-0309 Long context ≥ 200k tokens | 1M | $1.25 | $0.20 | $2.50 | $2.50 | $0.40 | $5.00",
+            "reason": "The sources disagree on this price, so xAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.2",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "grok-4.20-multi-agent-0309 Long context ≥ 200k tokens | 1M | $1.25 | $0.20 | $2.50 | $2.50 | $0.40 | $5.00",
+            "reason": "The sources disagree on this price, so xAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "2.5",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-29",
+            "evidence": "Web Search | web_search | Search the internet and browse web pages | $5 / 1k calls",
+            "reason": "Only one source states this price, so xAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.005",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "199999",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "2",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "199999",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "grok-4.20-multi-agent-0309"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "2",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "grok-4.5 Long context ≥ 200k tokens | 500k | $2.00 | $0.30 | $6.00 | $4.00 | $0.60 | $12.00",
+            "reason": "The sources disagree on this price, so xAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.3",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "6",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Web Search | web_search | Search the internet and browse web pages | $5 / 1k calls",
+            "reason": "Only one source states this price, so xAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.005",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "199999",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "2",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "199999",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "grok-4.5"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "2",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "6",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Web Search | web_search | Search the internet and browse web pages | $5 / 1k calls",
+            "reason": "Only one source states this price, so xAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.005",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "199999",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "2",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "199999",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "grok-4.6"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "2",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-10-26",
+            "models-dev-2026-10-26",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "6",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Web Search | web_search | Search the internet and browse web pages | $5 / 1k calls",
+            "reason": "Only one source states this price, so xAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.005",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "199999",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "2",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "199999",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "2",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "grok-4.7"
+        ]
+      }
+    }
+  ],
+  "schema": "opentrajectory.rate_card/1"
+}

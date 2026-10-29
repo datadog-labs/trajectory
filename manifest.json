@@ -1,0 +1,183 @@
+{
+  "schema": "trajectory.ratecard_bundle.v1",
+  "source": {
+    "repository": "DataDog/trajectory",
+    "path": "pricing/engine/ratecards",
+    "commit": "a1343f792166cb1eccfe87294cafeb5d39377fec"
+  },
+  "spec_version": "0.1.0",
+  "files": [
+    {
+      "path": "DECISION-RULES.md",
+      "sha256": "48a69b649a841e0f6e9743f1508da58756175b50d044b0fd245b5cf830bc8d72"
+    },
+    {
+      "path": "README.md",
+      "sha256": "7e0e27e3bacd4f618d83dd6aff0bb71e0e10fd08752ccb9b8d344a372572b331"
+    },
+    {
+      "path": "SPEC-PRICING.md",
+      "sha256": "54d8faadebd56e2ce4df5e4a63ae3b3cecb45b64432ab638afd404ad2316922a"
+    },
+    {
+      "path": "aliases.json",
+      "sha256": "609cb348312fe00af66a5b2eb033e990db6692e30bf11c0d278a670ff47c5c93"
+    },
+    {
+      "path": "cards/anthropic.2026-02-07.card.json",
+      "sha256": "194f2d10e15556c67440e5099d9cbb57e4cc0a5ab41927b4ca78ad95951de5c7"
+    },
+    {
+      "path": "cards/anthropic.2026-05-12.card.json",
+      "sha256": "d369502e3a27270072c279ce494682ed83baf6b6767c72a43b68aa488e48dbca"
+    },
+    {
+      "path": "cards/anthropic.2026-06-09.card.json",
+      "sha256": "c62116db051195889e61dd4767c30b99d79fd5c8388989dca7fbb2bc0c2f7fe9"
+    },
+    {
+      "path": "cards/anthropic.2026-06-29.card.json",
+      "sha256": "e122e2eefa4310859f0055835e0e0cbcaaeffa33851d431b46425c39b090c1b0"
+    },
+    {
+      "path": "cards/anthropic.2026-06-30.card.json",
+      "sha256": "7b891b75572ecd7f5d0498dd3f31e19ca3332158d8a08e05a1641ee043500214"
+    },
+    {
+      "path": "cards/anthropic.2026-07-24.card.json",
+      "sha256": "957539aa84014916be09171617f3b0803b39016bb23187608fdbb46a3aa1f0d4"
+    },
+    {
+      "path": "cards/anthropic.2026-09-01.card.json",
+      "sha256": "a61494159279ed94ae25dbaece3575d0d96fe5a082441d6b1d90d63d23510d62"
+    },
+    {
+      "path": "cards/anthropic.2026-09-22.card.json",
+      "sha256": "9bc3972284eacac4b91d4c8f09554e8b77e96d128a63e6afd8557cfed5dcadae"
+    },
+    {
+      "path": "cards/anthropic.2026-09-28.card.json",
+      "sha256": "d63cff8124b4143e6c645636f70e30aca288884daaf0dfcf8d77b98ced17dedd"
+    },
+    {
+      "path": "cards/anthropic.2026-10-07.card.json",
+      "sha256": "fe0302b0e3e87b7543331da518a9ec5e81ee3a4786e3417d1743b0319b380ad4"
+    },
+    {
+      "path": "cards/anthropic.initial.card.json",
+      "sha256": "a24f20c63f0dcd8873290398a761c764f4578f4eaf2c9ea8e1631b3b44588cc1"
+    },
+    {
+      "path": "cards/google.2025-10-10.card.json",
+      "sha256": "1a5520c05912a1f165be936a38b1105568a2affa3576fcc8c9929e468c7a622c"
+    },
+    {
+      "path": "cards/google.2025-12-17.card.json",
+      "sha256": "1f1c3b7bd3dec75e2b29ec6bdee2924ae9cdf9c1afbd2991f7208ee5c1911722"
+    },
+    {
+      "path": "cards/google.2026-02-19.card.json",
+      "sha256": "889d016339645181f3150a6881d7f15c944f0e2d18a75fc4707ed65589505704"
+    },
+    {
+      "path": "cards/google.2026-07-30.card.json",
+      "sha256": "99b1f216bddb43803b445226bab26201f893214b1bc36bfde05b9875e89b492f"
+    },
+    {
+      "path": "cards/google.2026-10-13.card.json",
+      "sha256": "7cde03228d882779a89b5a0210c2a28f62078be0a0217772877c92e5d4ee0793"
+    },
+    {
+      "path": "cards/google.2026-12-01.card.json",
+      "sha256": "05e200c545085d5ef82cc8ecde091f1ff0f5a9a6af90ddedbf2e317136889f53"
+    },
+    {
+      "path": "cards/google.2027-01-01.card.json",
+      "sha256": "4ed482e5939a13201c46b73ef8983f65b6915e13df282a010564522845f8be1d"
+    },
+    {
+      "path": "cards/google.initial.card.json",
+      "sha256": "07f3c763c5fb9c38d425df5d3ae19e0d4c109d61c61fdfd8509d7369bc4ac7cb"
+    },
+    {
+      "path": "cards/meta.2026-08-05.card.json",
+      "sha256": "c32813a0a0b2d42b3950e776cc1c035055c223c290a90006dce6da8bbe038815"
+    },
+    {
+      "path": "cards/meta.2026-09-02.card.json",
+      "sha256": "8bd4c83a55062733ba39982d8aaa90a99de83eb1d1b649d359ed7215b8153014"
+    },
+    {
+      "path": "cards/meta.2026-10-12.card.json",
+      "sha256": "4e2357ef72ee69dd711c487067082254f90d25950d893873ac2ccdbb2e47f636"
+    },
+    {
+      "path": "cards/meta.initial.card.json",
+      "sha256": "7d4af41993b77535cecb644c44c72af67582cfebe55d1cb0465af0775734f39e"
+    },
+    {
+      "path": "cards/openai.2026-07-09.card.json",
+      "sha256": "24b65b046fcbad7023c5a4721e4f4f5894d138694d9fd37a734b27cc47130df8"
+    },
+    {
+      "path": "cards/openai.2026-07-30.card.json",
+      "sha256": "5e38abb703a153b2690e377f39824c9a26eb45ebac28251fe7e6b77747305821"
+    },
+    {
+      "path": "cards/openai.2026-08-05.card.json",
+      "sha256": "f12c76ba09e958dcb68034be2a993127e5b4ec98cd6842d1c5a5a8f32dfd22aa"
+    },
+    {
+      "path": "cards/openai.2026-08-07.card.json",
+      "sha256": "f14790215438f6d4d1534549d6c276955b311cde1c399e93be41a8ba4fa20ed6"
+    },
+    {
+      "path": "cards/openai.2026-08-21.card.json",
+      "sha256": "7b4268d4fa0024ffdf940820c999d8c551ea39b24d8bd365b2ea5511f3bfcdc2"
+    },
+    {
+      "path": "cards/openai.2026-09-22.card.json",
+      "sha256": "addafe7b8cd94a1a4004825e9115828518457b4d1bc826ab6fdab0d738cc6c94"
+    },
+    {
+      "path": "cards/openai.2026-09-29.card.json",
+      "sha256": "74dd043d005a883b85cda3947dc71a0fa61d49adb02ec758d3e7cc2adfde4b84"
+    },
+    {
+      "path": "cards/openai.2026-10-05.card.json",
+      "sha256": "a0158acbd9413940fcf6a6c30503f53bfcf63510f6d9ee14b809b498f7812e30"
+    },
+    {
+      "path": "cards/openai.2026-10-08.card.json",
+      "sha256": "55113f73ce0a1f248fe887714985c0ce5ffa06dcadfe51361d60bd308d87589f"
+    },
+    {
+      "path": "cards/openai.2026-10-20.card.json",
+      "sha256": "a334c7da7925e1bbe9f35a22b1765b23a59a1be9d17ecbb845afa160ab56f2bb"
+    },
+    {
+      "path": "cards/openai.2026-10-26.card.json",
+      "sha256": "cf68b302d0f869b3e87a54295b568020781b45da16e88bfad3b729ba115cf7d0"
+    },
+    {
+      "path": "cards/openai.initial.card.json",
+      "sha256": "037e968421e861c45b80c34dbe72eab42aa9e2f35443b39168d37fa7683ce401"
+    },
+    {
+      "path": "cards/xai.2026-03-10.card.json",
+      "sha256": "625ae923e2c24e1dd5902e6cb8c11d3ef72688fc719a1121894f6bc0d65b7f5f"
+    },
+    {
+      "path": "cards/xai.2026-05-05.card.json",
+      "sha256": "86d7caace5bf0bde6cd80a90b11e3869aa3c3800ac7f4234f521c0d36b3380ad"
+    },
+    {
+      "path": "cards/xai.2026-05-19.card.json",
+      "sha256": "2130b7af93b4eba0568322de12a1f2cb2e3d36439aef019fbdfd44b219a2c107"
+    },
+    {
+      "path": "cards/xai.initial.card.json",
+      "sha256": "4a0bec06eed3745eea70ac5144379ad84870f43352de6ef47454d7a921754c18"
+    }
+  ]
+}
