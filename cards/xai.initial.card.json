@@ -34,6 +34,18 @@
         "name": "xAI's pricing page",
         "retrieved_at": "2026-10-26T15:11:38Z",
         "url": "https://docs.x.ai/developers/pricing"
+      },
+      "provider-grok-code-fast-1": {
+        "kind": "provider_page",
+        "name": "xAI's grok-code-fast-1 page",
+        "retrieved_at": "2026-10-30T02:55:35Z",
+        "url": "https://x.ai/news/grok-code-fast-1"
+      },
+      "provider-models": {
+        "kind": "provider_page",
+        "name": "xAI's models page",
+        "retrieved_at": "2025-09-11T09:08:12Z",
+        "url": "https://web.archive.org/web/20250911090812/https://docs.x.ai/docs/models"
       }
     },
     "version": "initial"
@@ -388,6 +400,94 @@
       "match": {
         "ids": [
           "grok-4.7"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "provider-grok-code-fast-1",
+            "provider-models"
+          ],
+          "decision": {
+            "decided_on": "2026-10-30",
+            "evidence": "The model is generally available via the xAI API, priced at $0.20 / 1M input tokens, $1.50 / 1M output tokens, and $0.02 / 1M cached input tokens.",
+            "reason": "The sources disagree on this price, so xAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-grok-code-fast-1",
+            "why": "disputed"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "0.2",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "provider-grok-code-fast-1"
+          ],
+          "decision": {
+            "decided_on": "2026-10-30",
+            "evidence": "The model is generally available via the xAI API, priced at $0.20 / 1M input tokens, $1.50 / 1M output tokens, and $0.02 / 1M cached input tokens.",
+            "reason": "The sources disagree on this price, so xAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-grok-code-fast-1",
+            "why": "disputed"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.02",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "provider-grok-code-fast-1",
+            "provider-models"
+          ],
+          "decision": {
+            "decided_on": "2026-10-30",
+            "evidence": "The model is generally available via the xAI API, priced at $0.20 / 1M input tokens, $1.50 / 1M output tokens, and $0.02 / 1M cached input tokens.",
+            "reason": "The sources disagree on this price, so xAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-grok-code-fast-1",
+            "why": "disputed"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "1.5",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-30",
+            "evidence": "Web Search | web_search | Search the internet and browse web pages | $5 / 1k calls",
+            "reason": "Only one source states this price, so xAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.005",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "grok-code-fast-1"
         ]
       }
     }

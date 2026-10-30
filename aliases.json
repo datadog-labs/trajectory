@@ -423,7 +423,12 @@
       ]
     },
     {"canonical": "grok-4.3", "ids": ["grok-4.3-latest"]},
-    {"canonical": "grok-build-0.1", "ids": ["grok-code-fast-1", "grok-code-fast", "grok-code-fast-1-0825"]},
+    {"canonical": "grok-code-fast-1", "ids": ["grok-code-fast", "grok-code-fast-1-0825"], "effective_until": "2026-05-19T00:00:00Z"},
+    {
+      "canonical": "grok-build-0.1",
+      "ids": ["grok-code-fast-1", "grok-code-fast", "grok-code-fast-1-0825"],
+      "effective_from": "2026-05-19T00:00:00Z"
+    },
     {"canonical": "gpt-5.6-sol", "ids": ["gpt-5.6"]},
     {"canonical": "gpt-3.5-turbo", "ids": ["gpt-3.5-turbo-0125"]},
     {"canonical": "gpt-4-turbo-2024-04-09", "ids": ["gpt-4-turbo"]},

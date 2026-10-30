@@ -3,7 +3,7 @@
   "source": {
     "repository": "DataDog/trajectory",
     "path": "pricing/engine/ratecards",
-    "commit": "a1343f792166cb1eccfe87294cafeb5d39377fec"
+    "commit": "2d9b5224e2e80f125fe3f58f64577ec6a8220c10"
   },
   "spec_version": "0.1.0",
   "files": [
@@ -21,7 +21,7 @@
     },
     {
       "path": "aliases.json",
-      "sha256": "609cb348312fe00af66a5b2eb033e990db6692e30bf11c0d278a670ff47c5c93"
+      "sha256": "ae8012fb0e711879b1384446fdb0c9724b6f78478799e131a03d2e434d44016c"
     },
     {
       "path": "cards/anthropic.2026-02-07.card.json",
@@ -68,32 +68,64 @@
       "sha256": "a24f20c63f0dcd8873290398a761c764f4578f4eaf2c9ea8e1631b3b44588cc1"
     },
     {
+      "path": "cards/google.2025-10-10-corrected-2026-10-30.card.json",
+      "sha256": "ef853cec297b6f41b5a1add15deecf09b802ab7be745674c58e8ea4024c59964"
+    },
+    {
       "path": "cards/google.2025-10-10.card.json",
       "sha256": "1a5520c05912a1f165be936a38b1105568a2affa3576fcc8c9929e468c7a622c"
+    },
+    {
+      "path": "cards/google.2025-12-17-corrected-2026-10-30.card.json",
+      "sha256": "b2449ed82b7ef02afa25fef7468294980fc467f061be900b39146812f6ccc055"
     },
     {
       "path": "cards/google.2025-12-17.card.json",
       "sha256": "1f1c3b7bd3dec75e2b29ec6bdee2924ae9cdf9c1afbd2991f7208ee5c1911722"
     },
     {
+      "path": "cards/google.2026-02-19-corrected-2026-10-30.card.json",
+      "sha256": "acceee9785c1c4b4427e843bea82685c70d9d8679e473c368a0a4c24f76075c8"
+    },
+    {
       "path": "cards/google.2026-02-19.card.json",
       "sha256": "889d016339645181f3150a6881d7f15c944f0e2d18a75fc4707ed65589505704"
+    },
+    {
+      "path": "cards/google.2026-07-30-corrected-2026-10-30.card.json",
+      "sha256": "a22a6db1a1950bd7ede388438a8a3fb157edcf4a5c9f56ab4a464f552797c336"
     },
     {
       "path": "cards/google.2026-07-30.card.json",
       "sha256": "99b1f216bddb43803b445226bab26201f893214b1bc36bfde05b9875e89b492f"
     },
     {
+      "path": "cards/google.2026-10-13-corrected-2026-10-30.card.json",
+      "sha256": "539e80a4ed1aced5abdd3b1815552d800f01c08832c5fd5370c4e945fde3ff00"
+    },
+    {
       "path": "cards/google.2026-10-13.card.json",
       "sha256": "7cde03228d882779a89b5a0210c2a28f62078be0a0217772877c92e5d4ee0793"
+    },
+    {
+      "path": "cards/google.2026-12-01-corrected-2026-10-30.card.json",
+      "sha256": "e97b20deafa87e2f5754e0dae52079fecdc5132cd0dcd061c06ee7da1dc6ca07"
     },
     {
       "path": "cards/google.2026-12-01.card.json",
       "sha256": "05e200c545085d5ef82cc8ecde091f1ff0f5a9a6af90ddedbf2e317136889f53"
     },
     {
+      "path": "cards/google.2027-01-01-corrected-2026-10-30.card.json",
+      "sha256": "57dbacb03918482cafd1a96be2e281cc78561993702c7b6e2971ae18aa0f8c49"
+    },
+    {
       "path": "cards/google.2027-01-01.card.json",
       "sha256": "4ed482e5939a13201c46b73ef8983f65b6915e13df282a010564522845f8be1d"
+    },
+    {
+      "path": "cards/google.initial-corrected-2026-10-30.card.json",
+      "sha256": "ac26db78f55a170627860c9d6e8c770878911933f1efd61ed2a1e45bfb183422"
     },
     {
       "path": "cards/google.initial.card.json",
@@ -165,11 +197,11 @@
     },
     {
       "path": "cards/xai.2026-03-10.card.json",
-      "sha256": "625ae923e2c24e1dd5902e6cb8c11d3ef72688fc719a1121894f6bc0d65b7f5f"
+      "sha256": "68efbf3adfbf7fd251bb9f68dbebb89786804bef05f9d69baec6cd78b8d2a966"
     },
     {
       "path": "cards/xai.2026-05-05.card.json",
-      "sha256": "86d7caace5bf0bde6cd80a90b11e3869aa3c3800ac7f4234f521c0d36b3380ad"
+      "sha256": "d3bb6249a5d113ffcc7bc5d780c79f43ebbf7461f03c3210778620cb1e212e52"
     },
     {
       "path": "cards/xai.2026-05-19.card.json",
@@ -177,7 +209,7 @@
     },
     {
       "path": "cards/xai.initial.card.json",
-      "sha256": "4a0bec06eed3745eea70ac5144379ad84870f43352de6ef47454d7a921754c18"
+      "sha256": "02fb8e14a49641aaf9c45df7c9da32d0ba512d906586a2a92e1d1369bd5fee09"
     }
   ]
 }

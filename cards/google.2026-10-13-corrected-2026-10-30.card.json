@@ -1,0 +1,1699 @@
+{
+  "assume": {
+    "service_tier": "standard"
+  },
+  "card": {
+    "corrects": "2026-10-13",
+    "currency": "USD",
+    "effective_from": "2026-10-13T00:00:00Z",
+    "effective_from_evidence": {
+      "quote": "Gemini 4 Argon (gemini-4-argon) generally available (GA): Released Gemini 4 Argon (gemini-4-argon), our most capable model built for complex coding, agentic, math, and science tasks.",
+      "source": "announcement-2026-10-13"
+    },
+    "id": "google",
+    "snapshot_date": "2026-10-29",
+    "source_url": "https://ai.google.dev/gemini-api/docs/pricing",
+    "sources": {
+      "announcement-2026-10-13": {
+        "kind": "announcement",
+        "name": "Google's announcement of the prices from 2026-10-13",
+        "retrieved_at": "2026-10-29T04:28:44Z",
+        "url": "https://ai.google.dev/gemini-api/docs/changelog"
+      },
+      "genai-prices": {
+        "kind": "price_list",
+        "name": "pydantic genai-prices prices/data.json",
+        "retrieved_at": "2026-10-30T03:21:36Z",
+        "sha256": "f41075aab069a7dc378f83b7586523f72682a6c9860b23a89ad0b57c073aec41",
+        "url": "https://raw.githubusercontent.com/pydantic/genai-prices/main/prices/data.json"
+      },
+      "litellm": {
+        "kind": "price_list",
+        "name": "LiteLLM model_prices_and_context_window.json",
+        "retrieved_at": "2026-10-30T03:21:36Z",
+        "sha256": "6bf2dfe375aed646d7c229cc4212c3e04e431d2f0a5b5f7e1d340e7f81c69608",
+        "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+      },
+      "models-dev": {
+        "kind": "price_list",
+        "name": "models.dev api.json",
+        "retrieved_at": "2026-10-30T03:21:36Z",
+        "sha256": "91bc2016796c905d15a6e2085fb902fca1a9b5944341ee49f50ac5a3276d011e",
+        "url": "https://models.dev/api.json"
+      },
+      "provider": {
+        "kind": "provider_page",
+        "name": "Google's pricing page",
+        "retrieved_at": "2026-10-29T04:18:37Z",
+        "url": "https://ai.google.dev/gemini-api/docs/pricing"
+      },
+      "provider-changelog": {
+        "kind": "provider_page",
+        "name": "Google's changelog page",
+        "retrieved_at": "2026-10-26T15:15:42Z",
+        "url": "https://ai.google.dev/gemini-api/docs/changelog#09-29-2025"
+      },
+      "provider-gemini-2-0-flash": {
+        "kind": "provider_page",
+        "name": "Google's gemini-2.0-flash page",
+        "retrieved_at": "2026-10-26T15:15:39Z",
+        "url": "https://ai.google.dev/gemini-api/docs/models/gemini-2.0-flash"
+      },
+      "provider-gemini-3-5-flash": {
+        "kind": "provider_page",
+        "name": "Google's gemini-3.5-flash page",
+        "retrieved_at": "2026-10-26T15:15:37Z",
+        "url": "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash"
+      },
+      "provider-gemini-3-7-flash": {
+        "kind": "provider_page",
+        "name": "Google's gemini-3.7-flash page",
+        "retrieved_at": "2026-10-26T02:51:35Z",
+        "url": "https://ai.google.dev/gemini-api/docs/models/gemini-3.7-flash"
+      }
+    },
+    "version": "2026-10-13-corrected-2026-10-30"
+  },
+  "models": [
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "2",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.1",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.014",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "1.8",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-4-argon"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.75",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.075",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "3.75",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.014",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "1.8",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-3.8-flash"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Deprecated: Gemini 3.7 Flash (gemini-3.7-flash) is deprecated and has been replaced by Gemini 3.8 Flash (gemini-3.8-flash). It is no longer available to select in Google AI Studio, and API requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash.",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-gemini-3-7-flash",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "0.75",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Deprecated: Gemini 3.7 Flash (gemini-3.7-flash) is deprecated and has been replaced by Gemini 3.8 Flash (gemini-3.8-flash). It is no longer available to select in Google AI Studio, and API requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash.",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-gemini-3-7-flash",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.075",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Deprecated: Gemini 3.7 Flash (gemini-3.7-flash) is deprecated and has been replaced by Gemini 3.8 Flash (gemini-3.8-flash). It is no longer available to select in Google AI Studio, and API requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash.",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-gemini-3-7-flash",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "3.75",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm"
+          ],
+          "decision": {
+            "decided_on": "2026-10-23",
+            "evidence": "Deprecated: Gemini 3.7 Flash (gemini-3.7-flash) is deprecated and has been replaced by Gemini 3.8 Flash (gemini-3.8-flash). It is no longer available to select in Google AI Studio, and API requests to gemini-3.7-flash are automatically routed to gemini-3.8-flash.",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-gemini-3-7-flash",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.014",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-3.7-flash"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "Input price | Free of charge | $0.75 through December 31, 2026. $1.50 starting January 1, 2027.",
+            "reason": "The sources disagree on this price, so Google's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "0.75",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "Context caching price | Free of charge | $0.075 through December 31, 2026. $0.15 starting January 1, 2027.",
+            "reason": "The sources disagree on this price, so Google's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.075",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-22",
+            "evidence": "Output price (including thinking tokens) | Free of charge | $3.75 through December 31, 2026. $7.50 starting January 1, 2027.",
+            "reason": "The sources disagree on this price, so Google's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "disputed"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "3.75",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.014",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "1.8",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-3.6-flash"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.3",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.03",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "2.5",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.014",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "output"
+          ],
+          "factor": "1.8",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "cache_read"
+          ],
+          "factor": "1.666666666667",
+          "id": "fast_cache_read",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        },
+        {
+          "applies_to": [
+            "cache_read"
+          ],
+          "factor": "0.666666666667",
+          "id": "flex_cache_read",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-3.5-flash-lite"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Deprecated: Gemini 3.5 Flash (gemini-3.5-flash) is deprecated and has been replaced by Gemini 3.6 Flash (gemini-3.6-flash). It is no longer available to select in Google AI Studio, and API requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash.",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-gemini-3-5-flash",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "1.5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Deprecated: Gemini 3.5 Flash (gemini-3.5-flash) is deprecated and has been replaced by Gemini 3.6 Flash (gemini-3.6-flash). It is no longer available to select in Google AI Studio, and API requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash.",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-gemini-3-5-flash",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.15",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Deprecated: Gemini 3.5 Flash (gemini-3.5-flash) is deprecated and has been replaced by Gemini 3.6 Flash (gemini-3.6-flash). It is no longer available to select in Google AI Studio, and API requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash.",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-gemini-3-5-flash",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "9",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm"
+          ],
+          "decision": {
+            "decided_on": "2026-10-23",
+            "evidence": "Deprecated: Gemini 3.5 Flash (gemini-3.5-flash) is deprecated and has been replaced by Gemini 3.6 Flash (gemini-3.6-flash). It is no longer available to select in Google AI Studio, and API requests to gemini-3.5-flash are automatically routed to gemini-3.6-flash.",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-gemini-3-5-flash",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.014",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-3.5-flash"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "2",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.2",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "12",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.014",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "200000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "1.5",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "200000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "1.8",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-3.1-pro-preview"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "1",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.1",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.014",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-robotics-er-2-preview"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.25",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.025",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "1.5",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.014",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "1.8",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-3.1-flash-lite"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.5",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.05",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "3",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.014",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "1.8",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-3-flash-preview"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.125",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.035",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "200000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "1.5",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "200000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "1.8",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-2.5-pro"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.1",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.01",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "0.4",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.035",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "1.8",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-2.5-flash-lite"
+        ]
+      }
+    },
+    {
+      "attribute_values": {
+        "service_tier": [
+          "standard",
+          "fast",
+          "priority",
+          "flex"
+        ]
+      },
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "0.3",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.03",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "litellm",
+            "models-dev",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "2.5",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.035",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read",
+            "output"
+          ],
+          "factor": "1.8",
+          "id": "fast",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "in": [
+              "fast",
+              "priority"
+            ]
+          }
+        },
+        {
+          "applies_to": [
+            "input",
+            "output"
+          ],
+          "factor": "0.5",
+          "id": "flex",
+          "type": "multiplier",
+          "when": {
+            "attribute": "service_tier",
+            "eq": "flex"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-2.5-flash"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices"
+          ],
+          "decision": {
+            "decided_on": "2026-10-23",
+            "evidence": "Gemini 2.0 Flash is deprecated and has been shut down June 1, 2026. Migrate to Gemini 3.8 Flash to avoid service disruption.",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-gemini-2-0-flash",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "0.1",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices"
+          ],
+          "decision": {
+            "decided_on": "2026-10-23",
+            "evidence": "Gemini 2.0 Flash is deprecated and has been shut down June 1, 2026. Migrate to Gemini 3.8 Flash to avoid service disruption.",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-gemini-2-0-flash",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.025",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices"
+          ],
+          "decision": {
+            "decided_on": "2026-10-23",
+            "evidence": "Gemini 2.0 Flash is deprecated and has been shut down June 1, 2026. Migrate to Gemini 3.8 Flash to avoid service disruption.",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-gemini-2-0-flash",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "0.4",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "Gemini 2.0 Flash is deprecated and has been shut down June 1, 2026. Migrate to Gemini 3.8 Flash to avoid service disruption.",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-gemini-2-0-flash",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.035",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-2.0-flash"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-23",
+            "evidence": "The following Gemini 1.5 models are now shut down: gemini-1.5-pro gemini-1.5-flash-8b gemini-1.5-flash",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-changelog",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "1.25",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "The following Gemini 1.5 models are now shut down: gemini-1.5-pro gemini-1.5-flash-8b gemini-1.5-flash",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-changelog",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.3125",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-23",
+            "evidence": "The following Gemini 1.5 models are now shut down: gemini-1.5-pro gemini-1.5-flash-8b gemini-1.5-flash",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-changelog",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "5",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "The following Gemini 1.5 models are now shut down: gemini-1.5-pro gemini-1.5-flash-8b gemini-1.5-flash",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-changelog",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.035",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "128000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "2",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "128000",
+            "quantity": "prompt_size"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-1.5-pro"
+        ]
+      }
+    },
+    {
+      "components": [
+        {
+          "backed_by": [
+            "genai-prices",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-23",
+            "evidence": "The following Gemini 1.5 models are now shut down: gemini-1.5-pro gemini-1.5-flash-8b gemini-1.5-flash",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-changelog",
+            "why": "deprecated"
+          },
+          "id": "input",
+          "per": "1000000",
+          "price": "0.075",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-23",
+            "evidence": "The following Gemini 1.5 models are now shut down: gemini-1.5-pro gemini-1.5-flash-8b gemini-1.5-flash",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-changelog",
+            "why": "deprecated"
+          },
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "0.01875",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "genai-prices",
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-23",
+            "evidence": "The following Gemini 1.5 models are now shut down: gemini-1.5-pro gemini-1.5-flash-8b gemini-1.5-flash",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-changelog",
+            "why": "deprecated"
+          },
+          "id": "output",
+          "per": "1000000",
+          "price": "0.3",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider"
+          ],
+          "decision": {
+            "decided_on": "2026-10-26",
+            "evidence": "The following Gemini 1.5 models are now shut down: gemini-1.5-pro gemini-1.5-flash-8b gemini-1.5-flash",
+            "reason": "Google has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-changelog",
+            "why": "deprecated"
+          },
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.035",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        },
+        {
+          "applies_to": [
+            "input",
+            "cache_read"
+          ],
+          "factor": "2",
+          "id": "long_context_input",
+          "type": "multiplier",
+          "when": {
+            "gt": "128000",
+            "quantity": "prompt_size"
+          }
+        },
+        {
+          "applies_to": [
+            "output"
+          ],
+          "factor": "2",
+          "id": "long_context_output",
+          "type": "multiplier",
+          "when": {
+            "gt": "128000",
+            "quantity": "prompt_size"
+          }
+        }
+      ],
+      "match": {
+        "ids": [
+          "gemini-1.5-flash"
+        ]
+      }
+    }
+  ],
+  "schema": "opentrajectory.rate_card/1"
+}
