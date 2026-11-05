@@ -69,8 +69,8 @@
       "provider-deprecations": {
         "kind": "provider_page",
         "name": "OpenAI's deprecations page",
-        "retrieved_at": "2026-10-26T15:11:36Z",
-        "url": "https://developers.openai.com/api/docs/deprecations#2026-04-22-legacy-gpt-model-snapshots-july-2026-shutdown"
+        "retrieved_at": "2026-11-05T08:59:18Z",
+        "url": "https://developers.openai.com/api/docs/deprecations#2026-04-22-legacy-gpt-model-snapshots"
       },
       "provider-pricing-md": {
         "kind": "provider_page",
@@ -3823,6 +3823,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | o3-mini-2025-01-31 | o3-mini | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "input",
           "per": "1000000",
           "price": "1.1",
@@ -3836,6 +3844,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | o3-mini-2025-01-31 | o3-mini | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "cache_read",
           "if_absent": "skip",
           "per": "1000000",
@@ -3850,6 +3866,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | o3-mini-2025-01-31 | o3-mini | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "output",
           "per": "1000000",
           "price": "4.4",
@@ -3861,12 +3885,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
-            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "single_source"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | o3-mini-2025-01-31 | o3-mini | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "web_search",
           "if_absent": "skip",
@@ -3891,6 +3915,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | o1-pro-2025-03-19 | o1-pro | gpt-5.6-sol (reasoning.mode: pro)",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "input",
           "per": "1000000",
           "price": "150",
@@ -3902,12 +3934,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "o1-pro | $150.00 | $600.00 | -",
-            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "single_source"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | o1-pro-2025-03-19 | o1-pro | gpt-5.6-sol (reasoning.mode: pro)",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "cache_read",
           "if_absent": "skip",
@@ -3923,6 +3955,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | o1-pro-2025-03-19 | o1-pro | gpt-5.6-sol (reasoning.mode: pro)",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "output",
           "per": "1000000",
           "price": "600",
@@ -3934,12 +3974,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
-            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "single_source"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | o1-pro-2025-03-19 | o1-pro | gpt-5.6-sol (reasoning.mode: pro)",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "web_search",
           "if_absent": "skip",
@@ -3964,6 +4004,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | o1-2024-12-17 | o1 | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "input",
           "per": "1000000",
           "price": "15",
@@ -3977,6 +4025,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | o1-2024-12-17 | o1 | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "cache_read",
           "if_absent": "skip",
           "per": "1000000",
@@ -3991,6 +4047,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | o1-2024-12-17 | o1 | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "output",
           "per": "1000000",
           "price": "60",
@@ -4002,12 +4066,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
-            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "single_source"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | o1-2024-12-17 | o1 | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "web_search",
           "if_absent": "skip",
@@ -4243,6 +4307,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4.1-nano | gpt-4.1-nano-2025-04-14 | gpt-5.6-luna",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "input",
           "per": "1000000",
           "price": "0.1",
@@ -4256,6 +4328,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4.1-nano | gpt-4.1-nano-2025-04-14 | gpt-5.6-luna",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "cache_read",
           "if_absent": "skip",
           "per": "1000000",
@@ -4270,6 +4350,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4.1-nano | gpt-4.1-nano-2025-04-14 | gpt-5.6-luna",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "output",
           "per": "1000000",
           "price": "0.4",
@@ -4281,12 +4369,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
-            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "single_source"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4.1-nano | gpt-4.1-nano-2025-04-14 | gpt-5.6-luna",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "web_search",
           "if_absent": "skip",
@@ -4641,12 +4729,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "gpt-4o-2024-05-13 | $5.00 | $15.00 | -",
-            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "disputed"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4o-2024-05-13 | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "input",
           "per": "1000000",
@@ -4659,12 +4747,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "gpt-4o-2024-05-13 | $5.00 | $15.00 | -",
-            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "disputed"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4o-2024-05-13 | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "cache_read",
           "if_absent": "skip",
@@ -4680,12 +4768,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "gpt-4o-2024-05-13 | $5.00 | $15.00 | -",
-            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "disputed"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4o-2024-05-13 | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "output",
           "per": "1000000",
@@ -4698,12 +4786,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
-            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "single_source"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4o-2024-05-13 | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "web_search",
           "if_absent": "skip",
@@ -4745,6 +4833,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4-turbo | gpt-4-turbo-2024-04-09, gpt-4-turbo-completions | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "input",
           "per": "1000000",
           "price": "10",
@@ -4756,12 +4852,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "gpt-4-turbo-2024-04-09 | $10.00 | $30.00 | -",
-            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "single_source"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4-turbo | gpt-4-turbo-2024-04-09, gpt-4-turbo-completions | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "cache_read",
           "if_absent": "skip",
@@ -4777,6 +4873,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4-turbo | gpt-4-turbo-2024-04-09, gpt-4-turbo-completions | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "output",
           "per": "1000000",
           "price": "30",
@@ -4788,12 +4892,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
-            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "single_source"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4-turbo | gpt-4-turbo-2024-04-09, gpt-4-turbo-completions | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "web_search",
           "if_absent": "skip",
@@ -4818,6 +4922,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4-0613 | gpt-4, gpt-4-0613-completions, gpt-4-completions | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "input",
           "per": "1000000",
           "price": "30",
@@ -4829,12 +4941,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "gpt-4-0613 | $30.00 | $60.00 | -",
-            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "single_source"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4-0613 | gpt-4, gpt-4-0613-completions, gpt-4-completions | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "cache_read",
           "if_absent": "skip",
@@ -4850,6 +4962,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4-0613 | gpt-4, gpt-4-0613-completions, gpt-4-completions | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "output",
           "per": "1000000",
           "price": "60",
@@ -4861,12 +4981,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
-            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "single_source"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-4-0613 | gpt-4, gpt-4-0613-completions, gpt-4-completions | gpt-5.6-sol",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "web_search",
           "if_absent": "skip",
@@ -4891,6 +5011,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-3.5-turbo-0125 | gpt-3.5-turbo, gpt-3.5-turbo-completions | gpt-5.6-terra",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "input",
           "per": "1000000",
           "price": "0.5",
@@ -4902,12 +5030,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "gpt-3.5-turbo | $0.50 | $1.50 | -",
-            "reason": "The sources disagree on this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "disputed"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-3.5-turbo-0125 | gpt-3.5-turbo, gpt-3.5-turbo-completions | gpt-5.6-terra",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "cache_read",
           "if_absent": "skip",
@@ -4923,6 +5051,14 @@
             "models-dev",
             "provider-pricing-md"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-3.5-turbo-0125 | gpt-3.5-turbo, gpt-3.5-turbo-completions | gpt-5.6-terra",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
+          },
           "id": "output",
           "per": "1000000",
           "price": "1.5",
@@ -4934,12 +5070,12 @@
             "provider-pricing-md"
           ],
           "decision": {
-            "decided_on": "2026-10-29",
-            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
-            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
-            "rule": "R1",
-            "source": "provider-pricing-md",
-            "why": "single_source"
+            "decided_on": "2026-11-05",
+            "evidence": "October 23, 2026 | gpt-3.5-turbo-0125 | gpt-3.5-turbo, gpt-3.5-turbo-completions | gpt-5.6-terra",
+            "reason": "OpenAI has retired or deprecated this model, so the card keeps the last price it had (rule R3).",
+            "rule": "R3",
+            "source": "provider-deprecations",
+            "why": "deprecated"
           },
           "id": "web_search",
           "if_absent": "skip",
