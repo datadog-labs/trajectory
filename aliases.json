@@ -44,6 +44,18 @@
       "attributes": {"speed_mode": "fast", "service_tier": "fast"}
     },
     {
+      "canonical": "claude-opus-4-7",
+      "ids": ["claude-opus-4-7-fast"],
+      "client_sources": ["opencode"],
+      "attributes": {"speed_mode": "fast", "service_tier": "fast"}
+    },
+    {
+      "canonical": "claude-opus-4-8",
+      "ids": ["claude-opus-4-8-fast"],
+      "client_sources": ["opencode"],
+      "attributes": {"speed_mode": "fast", "service_tier": "fast"}
+    },
+    {
       "canonical": "claude-opus-5-5",
       "ids": ["claude-opus-5-5_1m"],
       "client_sources": ["claude-code"],
@@ -459,6 +471,24 @@
     {
       "canonical": "gpt-5.6-sol",
       "ids": ["gpt-5.6-sol-fast"],
+      "client_sources": ["opencode"],
+      "attributes": {"speed_mode": "fast", "service_tier": "fast"}
+    },
+    {
+      "canonical": "gpt-5.6-luna",
+      "ids": ["gpt-5.6-luna-fast"],
+      "client_sources": ["opencode"],
+      "attributes": {"speed_mode": "fast", "service_tier": "fast"}
+    },
+    {
+      "canonical": "gpt-5.6-terra",
+      "ids": ["gpt-5.6-terra-fast"],
+      "client_sources": ["opencode"],
+      "attributes": {"speed_mode": "fast", "service_tier": "fast"}
+    },
+    {
+      "canonical": "gpt-5.5",
+      "ids": ["gpt-5.5-fast"],
       "client_sources": ["opencode"],
       "attributes": {"speed_mode": "fast", "service_tier": "fast"}
     },
