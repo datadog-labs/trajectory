@@ -3,7 +3,7 @@
   "source": {
     "repository": "DataDog/trajectory",
     "path": "pricing/engine/ratecards",
-    "commit": "fc6f85bac87834e6f1507eecfa6706f9d21b2cf0"
+    "commit": "da5af59cda1e035d5f8faf92b2459d01d83049ec"
   },
   "spec_version": "0.1.0",
   "files": [
@@ -149,51 +149,55 @@
     },
     {
       "path": "cards/openai.2026-07-09.card.json",
-      "sha256": "24b65b046fcbad7023c5a4721e4f4f5894d138694d9fd37a734b27cc47130df8"
+      "sha256": "fcd19de818c04cb9e8d3e32c943c9a70a848bdaaff777b67357e8bc8455cddfe"
     },
     {
       "path": "cards/openai.2026-07-30.card.json",
-      "sha256": "5e38abb703a153b2690e377f39824c9a26eb45ebac28251fe7e6b77747305821"
+      "sha256": "3bc0c7144fd05d43be15f9dd11b77e9ebab7bc73d7bc18239e28c2138188b4f5"
     },
     {
       "path": "cards/openai.2026-08-05.card.json",
-      "sha256": "f12c76ba09e958dcb68034be2a993127e5b4ec98cd6842d1c5a5a8f32dfd22aa"
+      "sha256": "ab8544a8de6cf06ca56120ffaa8ede84a1817b77f7fc05d7477e4cfc87afba24"
     },
     {
       "path": "cards/openai.2026-08-07.card.json",
-      "sha256": "f14790215438f6d4d1534549d6c276955b311cde1c399e93be41a8ba4fa20ed6"
+      "sha256": "06c4bf61ad4e7def03b7609e8737c73e09ac237d3a5c903fe7dac657e0416c49"
     },
     {
       "path": "cards/openai.2026-08-21.card.json",
-      "sha256": "7b4268d4fa0024ffdf940820c999d8c551ea39b24d8bd365b2ea5511f3bfcdc2"
+      "sha256": "bcc3c0bc56943c2f0060baf3c347c92addd036c23976d08efdbf6dc47e701a61"
     },
     {
       "path": "cards/openai.2026-09-22.card.json",
-      "sha256": "addafe7b8cd94a1a4004825e9115828518457b4d1bc826ab6fdab0d738cc6c94"
+      "sha256": "8aa375e6e506ef7ab28089fa5525d4557e9039531cd11748c2f6294b91ea534b"
     },
     {
       "path": "cards/openai.2026-09-29.card.json",
-      "sha256": "74dd043d005a883b85cda3947dc71a0fa61d49adb02ec758d3e7cc2adfde4b84"
+      "sha256": "54360f5913acd170a2a8319993a0a0af3eb66f18bf74c689f4e0c391125a41d5"
     },
     {
       "path": "cards/openai.2026-10-05.card.json",
-      "sha256": "a0158acbd9413940fcf6a6c30503f53bfcf63510f6d9ee14b809b498f7812e30"
+      "sha256": "fe8fde58a30fe027d3d9cc090fc3a809b4b96278512506946ca4acd526763f26"
     },
     {
       "path": "cards/openai.2026-10-08.card.json",
-      "sha256": "55113f73ce0a1f248fe887714985c0ce5ffa06dcadfe51361d60bd308d87589f"
+      "sha256": "741d7d596c9acfc3531420fd754646bd54db2d5ce731b3746d05f1d2faa67d81"
     },
     {
       "path": "cards/openai.2026-10-20.card.json",
-      "sha256": "a334c7da7925e1bbe9f35a22b1765b23a59a1be9d17ecbb845afa160ab56f2bb"
+      "sha256": "795eb28a4c2012859c14801608fe3c9ec63331cab83f39cc0aa89103fe5c4cde"
     },
     {
       "path": "cards/openai.2026-10-26.card.json",
-      "sha256": "9ae5b0320b31c44b743c79f322db3d176022be87f7e2f3ad689d5671d4df484d"
+      "sha256": "fa0a427c906b9d73d823ae8ff05bb6cf8e4c726b936a2131bcbfb9b85a8e78d1"
+    },
+    {
+      "path": "cards/openai.2026-10-30.card.json",
+      "sha256": "75560b14ef6d220c92103bf89f209568cba8ad4edbe3de97fb6ce77864ed3305"
     },
     {
       "path": "cards/openai.initial.card.json",
-      "sha256": "037e968421e861c45b80c34dbe72eab42aa9e2f35443b39168d37fa7683ce401"
+      "sha256": "ab81d045f0d000c04c910d40390a7026356c1e194627eeda83d8c36b76bc87f8"
     },
     {
       "path": "cards/xai.2026-03-10.card.json",

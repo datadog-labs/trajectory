@@ -54,6 +54,13 @@
         "sha256": "7989a84f15ba56025650ed850c1b1a262d95a42680746d7ec5b1c956dd012121",
         "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
       },
+      "litellm-2026-11-05": {
+        "kind": "price_list",
+        "name": "LiteLLM model_prices_and_context_window.json",
+        "retrieved_at": "2026-11-05T11:38:03Z",
+        "sha256": "70a7588ce5053f6ef706b61fb9e799a42c40a3218474e382906cc44c6b037c74",
+        "url": "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json"
+      },
       "models-dev": {
         "kind": "price_list",
         "name": "models.dev api.json",
@@ -244,6 +251,107 @@
       "match": {
         "ids": [
           "gpt-6-astra"
+        ]
+      }
+    },
+    {
+      "cache_write_lifetime": {
+        "component": "cache_write_30m",
+        "if_unspecified": "lower_bound"
+      },
+      "cache_write_lifetimes": [
+        "30m",
+        "12h"
+      ],
+      "components": [
+        {
+          "backed_by": [
+            "litellm-2026-11-05",
+            "provider"
+          ],
+          "id": "input",
+          "per": "1000000",
+          "price": "10",
+          "quantity": "uncached_input",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-11-05",
+            "provider"
+          ],
+          "id": "cache_read",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "1",
+          "quantity": "cache_read_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-prompt-caching"
+          ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "Cache write charge | 1.25× for \"30m\"; 2.5× for \"12h\" in the Responses API | No additional cache-write charge | No additional cache-write charge",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-prompt-caching",
+            "why": "single_source"
+          },
+          "id": "cache_write_30m",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "12.5",
+          "quantity": "cache_write_30m_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "provider-prompt-caching"
+          ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "Cache write charge | 1.25× for \"30m\"; 2.5× for \"12h\" in the Responses API | No additional cache-write charge | No additional cache-write charge",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider-prompt-caching",
+            "why": "single_source"
+          },
+          "id": "cache_write_12h",
+          "if_absent": "skip",
+          "per": "1000000",
+          "price": "25",
+          "quantity": "cache_write_12h_input_tokens",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-11-05",
+            "provider"
+          ],
+          "id": "output",
+          "per": "1000000",
+          "price": "50",
+          "quantity": "billable_output",
+          "type": "per_unit"
+        },
+        {
+          "backed_by": [
+            "litellm-2026-11-05",
+            "provider"
+          ],
+          "id": "web_search",
+          "if_absent": "skip",
+          "per": "1",
+          "price": "0.01",
+          "quantity": "web_search_requests",
+          "type": "per_unit"
+        }
+      ],
+      "match": {
+        "ids": [
+          "gpt-6-astra-law"
         ]
       }
     },
