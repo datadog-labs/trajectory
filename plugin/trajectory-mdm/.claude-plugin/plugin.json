@@ -1,0 +1,10 @@
+{
+  "name": "trajectory-mdm",
+  "description": "Helps IT administrators set up Trajectory for managed computers with the trajectory-mdm helper",
+  "version": "0.1.0",
+  "author": {
+    "name": "Datadog",
+    "email": "no-reply@datadoghq.com"
+  },
+  "skills": "./skills/"
+}

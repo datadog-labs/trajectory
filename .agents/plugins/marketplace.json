@@ -27,6 +27,18 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Security"
+    },
+    {
+      "name": "trajectory-mdm",
+      "source": {
+        "source": "local",
+        "path": "./plugin/trajectory-mdm"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
     }
   ]
 }

@@ -10,7 +10,9 @@ agents and whether the agents produce useful results.
 
 Trajectory instruments supported clients (coding agents) and converts their
 activity into one consistent format in Datadog. It links agent use to the
-people, repositories, tools, and engineering work involved.
+people, repositories, tools, and engineering work involved. It can also send
+the same data to any OpenTelemetry collector over OTLP. See
+[Send Data to an OpenTelemetry Collector](OTLP.md).
 
 ## What do I need to do to install it?
 

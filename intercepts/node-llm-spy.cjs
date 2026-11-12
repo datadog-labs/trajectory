@@ -2,7 +2,7 @@
 
 (() => {
   const ANTHROPIC_HOST = 'api.anthropic.com';
-  const ANTHROPIC_PATH_PATTERN = /^\/v1\/(messages|complete)(\/|$)/;
+  const ANTHROPIC_PATH_PATTERN = /^\/(?:launch\/[^/]+\/)?v1\/(messages|complete)(\/|$)/;
   const CAPTURE_URL = process.env.TRAJECTORY_CAPTURE_URL || 'http://127.0.0.1:19222';
   const CAPTURE_ENDPOINT = `${CAPTURE_URL}/llm-call`;
   const PATCH_SENTINEL = Symbol.for('trajectory.nodeLlmSpy.patch');
@@ -137,6 +137,27 @@
       cache_creation_input_tokens: 0,
     };
 
+    function mergeCacheCreationBreakdown(usage) {
+      const breakdown = usage?.cache_creation;
+      if (!breakdown || typeof breakdown !== 'object') return;
+      let known = false;
+      if (Object.prototype.hasOwnProperty.call(breakdown, 'ephemeral_5m_input_tokens')) {
+        tokens.cache_creation_5m_tokens = Math.max(
+          tokens.cache_creation_5m_tokens ?? 0,
+          toInteger(breakdown.ephemeral_5m_input_tokens),
+        );
+        known = true;
+      }
+      if (Object.prototype.hasOwnProperty.call(breakdown, 'ephemeral_1h_input_tokens')) {
+        tokens.cache_creation_1h_tokens = Math.max(
+          tokens.cache_creation_1h_tokens ?? 0,
+          toInteger(breakdown.ephemeral_1h_input_tokens),
+        );
+        known = true;
+      }
+      if (known) tokens.cache_creation_breakdown_known = true;
+    }
+
     for (const entry of events) {
       const event = entry?.event;
       const data = entry?.data || {};
@@ -150,11 +171,13 @@
         tokens.input_tokens = toInteger(usage.input_tokens);
         tokens.cache_read_input_tokens = toInteger(usage.cache_read_input_tokens);
         tokens.cache_creation_input_tokens = toInteger(usage.cache_creation_input_tokens);
+        mergeCacheCreationBreakdown(usage);
       } else if (event === 'message_delta') {
         const usage = data.usage || {};
         if (usage.output_tokens !== undefined) {
           tokens.output_tokens = toInteger(usage.output_tokens);
         }
+        mergeCacheCreationBreakdown(usage);
         const delta = data.delta || {};
         if (typeof delta.stop_reason === 'string' && delta.stop_reason.length > 0) {
           stopReason = delta.stop_reason;
@@ -171,15 +194,29 @@
 
   function extractFromJSONResponse(payload) {
     const usage = payload?.usage || {};
+    const tokens = {
+      input_tokens: toInteger(usage.input_tokens),
+      output_tokens: toInteger(usage.output_tokens),
+      cache_read_input_tokens: toInteger(usage.cache_read_input_tokens),
+      cache_creation_input_tokens: toInteger(usage.cache_creation_input_tokens),
+    };
+    const breakdown = usage.cache_creation;
+    if (breakdown && typeof breakdown === 'object') {
+      let known = false;
+      if (Object.prototype.hasOwnProperty.call(breakdown, 'ephemeral_5m_input_tokens')) {
+        tokens.cache_creation_5m_tokens = toInteger(breakdown.ephemeral_5m_input_tokens);
+        known = true;
+      }
+      if (Object.prototype.hasOwnProperty.call(breakdown, 'ephemeral_1h_input_tokens')) {
+        tokens.cache_creation_1h_tokens = toInteger(breakdown.ephemeral_1h_input_tokens);
+        known = true;
+      }
+      if (known) tokens.cache_creation_breakdown_known = true;
+    }
     return {
       model: typeof payload?.model === 'string' ? payload.model : '',
       stopReason: typeof payload?.stop_reason === 'string' ? payload.stop_reason : '',
-      tokens: {
-        input_tokens: toInteger(usage.input_tokens),
-        output_tokens: toInteger(usage.output_tokens),
-        cache_read_input_tokens: toInteger(usage.cache_read_input_tokens),
-        cache_creation_input_tokens: toInteger(usage.cache_creation_input_tokens),
-      },
+      tokens,
     };
   }
 
@@ -326,6 +363,8 @@
     startMs,
     ttfbMs,
     durationMs,
+    requestBody,
+    responseBody,
     requestSummary,
     responseSummary,
     rateLimit,
@@ -368,14 +407,24 @@
       },
       error: error || null,
     };
+    const launchId = process.env.TRAJECTORY_LLM_CALL_LAUNCH_ID || '';
+    if (launchId) {
+      event.trajectory_launch_id = launchId;
+    }
+    if (requestBody && typeof requestBody === 'object') {
+      event.request_body = requestBody;
+    }
+    if (responseBody && typeof responseBody === 'object') {
+      event.response_body = responseBody;
+    }
     if (rateLimit) {
       event.rate_limit = rateLimit;
     }
     return event;
   }
 
-  function legacyBuildEvent(sessionId, model, stopReason, stream, tokens, startMs, ttfbMs, durationMs, error) {
-    return {
+  function legacyBuildEvent(sessionId, model, stopReason, stream, tokens, startMs, ttfbMs, durationMs, requestBody, error) {
+    const event = {
       event_type: 'llm_call',
       session_id: sessionId || '',
       timestamp: new Date().toISOString(),
@@ -410,6 +459,14 @@
       },
       error: error || null,
     };
+    const launchId = process.env.TRAJECTORY_LLM_CALL_LAUNCH_ID || '';
+    if (launchId) {
+      event.trajectory_launch_id = launchId;
+    }
+    if (requestBody && typeof requestBody === 'object') {
+      event.request_body = requestBody;
+    }
+    return event;
   }
 
   function postEvent(eventPayload) {
@@ -445,6 +502,8 @@
           startMs: context.startMs,
           ttfbMs,
           durationMs,
+          requestBody: context.requestBody,
+          responseBody: events,
           requestSummary: extractRequestSummary(context.requestBody),
           responseSummary: extractResponseSummaryFromSSEEvents(events),
           rateLimit: extractRateLimit(context.responseHeaders),
@@ -453,7 +512,7 @@
       );
     } catch {
       postEvent(
-        legacyBuildEvent(context.sessionId, '', '', context.stream, null, context.startMs, ttfbMs, durationMs, 'sse_parse_failed'),
+        legacyBuildEvent(context.sessionId, '', '', context.stream, null, context.startMs, ttfbMs, durationMs, context.requestBody, 'sse_parse_failed'),
       );
     }
   }
@@ -473,6 +532,8 @@
           startMs: context.startMs,
           ttfbMs,
           durationMs,
+          requestBody: context.requestBody,
+          responseBody: payload,
           requestSummary: extractRequestSummary(context.requestBody),
           responseSummary: payload ? extractResponseSummaryFromJSON(payload) : null,
           rateLimit: extractRateLimit(context.responseHeaders),
@@ -482,7 +543,7 @@
     } catch {
       const durationMs = Date.now() - context.startMs;
       postEvent(
-        legacyBuildEvent(context.sessionId, '', '', context.stream, null, context.startMs, ttfbMs, durationMs, 'response_read_failed'),
+        legacyBuildEvent(context.sessionId, '', '', context.stream, null, context.startMs, ttfbMs, durationMs, context.requestBody, 'response_read_failed'),
       );
     }
   }

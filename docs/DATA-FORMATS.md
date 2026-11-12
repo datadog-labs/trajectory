@@ -1,7 +1,9 @@
 # Data Formats
 
-This page lists the fields in Trajectory's materialized session files, the
-local viewer API, and the cost fields on LLM Observability spans.
+This page lists the fields in materialized session JSON, the local viewer API,
+and the cost fields on LLM Observability spans. The local viewer and
+`trajectory flare --privileged` build materialized session JSON from the
+session's JSONL files with the `sessionstream` SDK.
 
 ## Materialized Session JSON
 
@@ -55,9 +57,32 @@ database. These fields do not replace the raw `tool_calls`, `permissions`,
 | Field | Type | Description |
 | --- | --- | --- |
 | `tool_summary` | object, optional | Tool counts for the turn. It contains `total`, `by_tool[]` entries with `tool` and `count`, and the `failures` and `denied` counts. Subagent tool calls already nested under `sub_agents[]` do not count in the parent turn's summary. |
-| `file_touches` | array of objects, optional | A summary of each file that file tools touched. Each entry contains `path`, `operation`, `tool`, and `count`. For write and edit content, it can also estimate `bytes` and `lines`. `operation` is `read`, `write`, or `edit`. |
-| `markers` | array of marker objects, optional | The markers attached to this turn, for the viewer to show. The viewer takes markers from the materialized `annotations.markers`. When it reads an existing materialized trace, it also adds marker records from the local database. |
+| `file_touches` | array of objects, optional | A summary of each file that file tools touched. Each entry contains `path`, `operation`, `tool`, and `count`. For write and edit content, it can also estimate `bytes` and `lines`. `operation` is `read`, `write`, `edit`, `delete`, or `rename`. |
+| `markers` | array of marker objects, optional | The markers attached to this turn, for the viewer to show. The viewer takes markers from the trace's top-level `annotations.markers`, which it fills from marker records in the local database. The materializer does not write `annotations`. |
 | `marker_ids` | array of strings, optional | Stable IDs for the markers attached to this turn. Each ID appears once. The IDs match the objects in `markers`, top-level `annotations.markers`, or both. |
+
+Codex `ApplyPatch` file summaries use complete retained `input.patch` sections.
+Additions use `write`, updates use `edit`, and deletions use `delete`.
+Moves use `rename` for both the original and destination paths.
+Only calls with recorded success contribute patch file rows.
+Failed, denied, and unfinished calls remain in tool summaries, without patch file rows.
+A completed call can also lack a recorded success outcome. Those calls remain
+visible as tool activity but contribute no patch file rows. Completion and
+retained patch text cannot establish that a patch applied.
+Malformed or truncated patch text supplies no paths, including any complete prefix.
+No file activity is inferred from shell commands.
+
+Other patch tools can supply a direct `file_path` or `path` with a unified diff.
+Successful calls retain that direct-path edit row when no Codex sections can be parsed.
+Parsed Codex sections take precedence over optional direct-path metadata.
+
+The transcript view reconstructs these summaries when read, without recapturing
+sessions or rewriting retained events. The embedded viewer fallback follows the same rules.
+Expanding a file shows its recorded patch section, including move metadata.
+It does not reconstruct the file's full contents or load its current disk contents.
+The SQLite fallback reconstructs file summaries from retained tool inputs.
+That fallback still omits tool content, so expandable patch content requires
+the retained session transcript. Existing size limits continue to apply.
 
 ### Session Viewer Tool Insights
 
@@ -152,16 +177,36 @@ across the component fields. It weights the split by the best model and token
 data it has. It keeps the total unchanged and labels the source as native.
 
 The `tokens` object can carry `cache_creation_5m_tokens`,
-`cache_creation_1h_tokens`, and `cache_creation_breakdown_known`. These sit
+`cache_creation_30m_tokens`, `cache_creation_1h_tokens`,
+`cache_creation_12h_tokens`, and `cache_creation_breakdown_known`. These sit
 next to the combined `cache_creation_input_tokens`. Some models have different
-rates for each cache-write duration. To estimate cost from tokens for such a
-model, Trajectory needs a known breakdown. The buckets must add up to the
-combined total. If Trajectory has only the total, or the numbers disagree, the
-call stays unpriced.
+rates for each cache-write duration. To price such a model exactly, Trajectory
+needs a known breakdown, and the buckets must add up to the combined total. If
+Trajectory has only the total, it prices the writes at the model's shortest
+duration and marks the cost as a lower bound. If the numbers disagree, the call
+stays unpriced.
+
+A captured call also records the `service_tier` the provider says it applied,
+such as `standard`, `fast`, `flex` or `priority`, and is priced at that tier.
+For OpenAI, Trajectory reads the 30-minute and 12-hour cache writes from the
+response. If the response does not split them, the writes take the duration
+the request asked for. A split that Trajectory cannot read stays unknown and
+gives a lower bound. For Anthropic, it reads the 5-minute and 1-hour writes.
+xAI's Responses API is read as OpenAI's. A Gemini `generate_content` call
+takes its tier from `usageMetadata.serviceTier`, its cache reads from
+`cachedContentTokenCount`, and its thoughts as reasoning tokens. Its input
+includes `toolUsePromptTokenCount`, the prompt of tools Gemini ran itself,
+which Google bills as input. `tool_use_prompt_input_tokens` records that part
+of the input. Its grounded searches are `web_search_requests`, in the unit
+Google charges. That is each search query on Gemini 3 and later, and each
+grounded prompt on Gemini 2.5 and earlier.
+Trajectory's AI gateway can translate a response into its client's format. The
+call then keeps the upstream's tier and cache-write durations, even when that
+format cannot show them.
 
 Reasoning output tokens stay a separate usage counter. Trajectory prices them
-as output tokens. OpenAI Responses already includes reasoning in its output
-count, so pricing does not add it again.
+as output tokens. OpenAI and xAI Responses already include reasoning in their
+output count, so pricing does not add it again.
 
 Pi captures keep estimates from configured model metadata apart from provider
 charges. New request summaries carry a `model_pricing` decision. It holds the

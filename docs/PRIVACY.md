@@ -24,6 +24,8 @@ Incognito and opt-out stop publishing. They do not stop capture:
 - Trajectory still sends accounting and activity metrics. By default, these
   metrics leave out model and repository names.
 - Managed destinations with `incognito_exempt: true` still receive events.
+- Agent Security still sends the current prompt or tool call to AI Guard. See
+  [Agent Security checks during incognito](#agent-security-checks-during-incognito).
 
 Your organization decides which destinations exist and what each one is for.
 For example, it can send engineering analytics to an ordinary destination. It
@@ -89,11 +91,11 @@ record. It does not make a switch-off impossible for such an agent.
 During incognito, these steps continue on your computer:
 
 - Local JSONL capture.
-- Task segmentation.
 - Semantic classification.
 
 Trajectory sends no trace or log output to Datadog destinations, except exempt
-ones. These outputs include traces, evaluations, records, and AI Usage events.
+ones. These outputs include traces, evaluations, records, AI Usage events, and
+managed operational logs that name the session.
 
 Trajectory still sends metrics. You can still measure session count, cost,
 tokens, activity, identity, timestamps, and semantic results.
@@ -116,8 +118,8 @@ If managed config sets `incognito_metrics`, the managed value wins.
 
 `redacted` removes these tags:
 
-- `gen_ai.request.model`, the reasoning effort, and every `trajectory.model.*`
-  tag.
+- `gen_ai.request.model`, the reasoning effort, the service tier, and every
+  `trajectory.model.*` tag.
 - The provider, the provider route, and the provider cost visibility.
 - The pricing version and the cost overlap and cost dedupe tags.
 - The repository, owner, git remote host, repository source, project
@@ -136,14 +138,18 @@ the measurements that stay.
 
 ### Models that are always redacted
 
-Trajectory always removes the model tags from metrics for some models. This
-happens even when `incognito_metrics` is `standard`, and you cannot turn it
-off.
+Your organization can list model ID suffixes in
+`export.redacted_model_suffixes`. Trajectory then always removes the model
+tags from metrics and AI Usage events for models whose IDs end in one of
+them. This happens even when `incognito_metrics` is `standard`, and you
+cannot turn it off. With no list, no model is redacted this way.
+`trajectory doctor` and `trajectory status` show how many suffixes apply and
+where they come from.
 
-This redaction removes the model, reasoning effort, provider, route, and
-pricing tags. It also removes the tags that link cost to the model. It keeps
-the repository tags and the accounting and activity tags. It adds the tag
-`trajectory.model_disclosure:redacted`.
+This redaction removes the model, reasoning effort, service tier, provider,
+route, and pricing tags. It also removes the tags that link cost to the
+model. It keeps the repository tags and the accounting and activity tags. It
+adds the tag `trajectory.model_disclosure:redacted`.
 
 ### Exempt destinations and the security event stream
 
@@ -166,6 +172,22 @@ The stream sends one Datadog log for each Trajectory event. Its default
 Only managed config can set up security destinations. A project
 `publish.trajectory.yaml` file cannot change them. For details, run
 `trajectory user-guide security-event-stream`.
+
+### Agent Security checks during incognito
+
+Incognito does not stop Agent Security. If the AI Guard evaluator is on, it
+still checks your prompts and tool calls during incognito. For each check,
+Trajectory sends the current prompt, tool call, or tool result to the Datadog
+AI Guard service. This also happens in observe mode, where a check never
+blocks anything.
+
+During incognito, Trajectory holds back the saved session history. AI Guard
+receives only the current event. It does not receive the earlier prompts,
+tool calls, and responses of the session.
+
+AI Guard removes credentials from its request only when managed config sets
+`credential_redaction: true` for the evaluator. Without that setting, a
+credential that you type into a prompt reaches AI Guard.
 
 ## Opt Out of All Non-Security Use Cases
 
@@ -196,9 +218,10 @@ Trajectory saves the choice in `~/.trajectory/standard-publish.disabled`. It
 reads the change without a restart. While you are opted out:
 
 - Local JSONL capture and local processing continue.
-- Trajectory stops trace and log outputs.
+- Trajectory stops trace and log outputs, including managed operational logs.
 - Trajectory applies the incognito metric mode to destinations that are not
   exempt.
+- Trajectory stops the managed CLI command and MCP tool usage counts.
 - Approved `incognito_exempt` security or audit destinations still receive
   data.
 
@@ -283,33 +306,14 @@ like any other session from now on. Its new turns, its session end, replays
 and backfill are sent at each destination's capture level. Trajectory writes
 no new label and does not delete the stored ones.
 
-An older release can hold spans when you upgrade. These spans are sent once,
-to the destinations they were held for, at each destination's current capture
-level. They are sent at session end, or when an already ended session is
-recovered. This applies whatever label the session had. If sending keeps
-failing, Trajectory tries five times and then drops the spans. It drops them at
-once when they have nowhere to go:
+An older release can hold spans when you upgrade. These spans are not sent.
+Trajectory ignores them, whatever label the session had, and removes the old
+records with the rest of its local data. Metrics and event logs were not held,
+so they are unaffected.
 
-- the destination was removed or changed
-- the destination takes no spans at its current level
-- the session is incognito
-- the session's events are gone
-
-Spans of a session that had already ended before the upgrade are sent only if
-the older release had finished classifying it. If classification had not
-finished, they are dropped with the reason `ended_before_removal`.
-`trajectory serve` records each drop in its operational log as
-`serve.legacy_held_spans.cleared`, with the session, the reason and the number
-of failed attempts.
-
-Before it sends held spans, `trajectory serve` checks the whole session for
-incognito, including every captured event. A record in the session may be
-unreadable, or carry a privacy value that `serve` does not know. Then the spans
-are dropped with the reason `range_unavailable`.
-
-Reader v2 remote, where it is enabled (it is off by default), no longer blocks
-a session because of a stored label. Incognito and the persistent publish
-opt-out still block it.
+Reader v2 remote, where it is enabled (it is off by default), shows every
+session the local reader shows. Incognito and the persistent publish opt-out
+stop publishing to Datadog. They do not hide a session from the remote reader.
 
 ## Disable All Capture
 
@@ -334,10 +338,18 @@ Trajectory saves this state in `~/.trajectory/capture.disabled`. Running
 Trajectory servers discard new hook, watcher, and OTLP events right away. You
 do not need to restart the agent.
 
+What an agent did while capture was off stays out after `capture enable`.
+Trajectory saves each off period and skips the agent's records from it when it
+later reads the agent's files. A session used on both sides of the period keeps
+only its turns, tokens, cost, and text from outside it. See
+`trajectory user-guide config` for details.
+
 Managed capture policy can block or override capture disable for some clients.
 The `trajectory_disable_command` feature must be on for `disable` to work. It
-is on by default. To stop capture for one process only, set
-`TRAJECTORY_DISABLED=1` in its environment.
+is on by default. To stop capture for one command only, set
+`TRAJECTORY_DISABLED=1` in its environment. The session that command runs then
+stays out of Trajectory. This holds for Claude Code and Codex. See
+`trajectory user-guide config` for the other clients.
 
 ## Check Current Behavior
 

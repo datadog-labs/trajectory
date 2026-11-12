@@ -1,12 +1,20 @@
 export type AsyncQueueTask = () => void | Promise<void>;
 
+interface QueuedTask {
+	task: AsyncQueueTask;
+	lifecycle: boolean;
+	onDrop?: () => void;
+}
+
 export interface AsyncQueueSnapshot {
 	capacity: number;
 	depth: number;
 	pending: number;
 	running: boolean;
 	dropped: number;
+	failed: number;
 }
+
 /**
  * A bounded, serialized queue for best-effort extension work.
  *
@@ -15,10 +23,11 @@ export interface AsyncQueueSnapshot {
  */
 export class BoundedSerialQueue {
 	readonly capacity: number;
-	private readonly tasks: AsyncQueueTask[] = [];
+	private readonly tasks: QueuedTask[] = [];
 	private running = false;
 	private scheduled = false;
 	private dropped = 0;
+	private failed = 0;
 	private readonly idleWaiters = new Set<() => void>();
 
 	constructor(capacity: number) {
@@ -28,26 +37,69 @@ export class BoundedSerialQueue {
 		this.capacity = capacity;
 	}
 
-	enqueue(task: AsyncQueueTask): boolean {
-		if (this.depth() >= this.capacity) {
+	enqueue(task: AsyncQueueTask, onDrop?: () => void): boolean {
+		// Keep one slot available for SessionEnd so admitting the terminal
+		// event never evicts the newest settled TurnEnd. A capacity-one queue
+		// cannot reserve a second slot, but it must still admit one ordinary task.
+		const ordinaryCapacity = Math.max(1, this.capacity - 1);
+		if (this.depth() >= ordinaryCapacity) {
 			this.dropped++;
 			return false;
 		}
-		this.tasks.push(task);
+		this.tasks.push({ task, lifecycle: false, onDrop });
 		this.schedule();
 		return true;
 	}
 
-	/** Admit terminal work by replacing the newest pending item when full. */
-	enqueueTerminal(task: AsyncQueueTask): boolean {
-		if (this.depth() < this.capacity) return this.enqueue(task);
-		if (this.tasks.length === 0) {
+	/**
+	 * Admit ordered lifecycle work without letting ordinary message/tool volume
+	 * starve it. At capacity, replace only the newest pending ordinary task;
+	 * lifecycle tasks never evict one another.
+	 */
+	enqueueLifecycle(task: AsyncQueueTask, onDrop?: () => void): boolean {
+		if (this.depth() >= this.capacity) {
+			let ordinary = -1;
+			for (let i = this.tasks.length - 1; i >= 0; i--) {
+				if (!this.tasks[i].lifecycle) {
+					ordinary = i;
+					break;
+				}
+			}
+			if (ordinary < 0) {
+				this.dropped++;
+				return false;
+			}
+			this.dropPending(ordinary);
 			this.dropped++;
-			return false;
 		}
-		this.tasks.pop();
-		this.dropped++;
-		this.tasks.push(task);
+		this.tasks.push({ task, lifecycle: true, onDrop });
+		this.schedule();
+		return true;
+	}
+
+	/**
+	 * Terminal work has the highest pending priority. If lifecycle work already
+	 * fills the queue, replace the newest pending item so SessionEnd is retained.
+	 */
+	enqueueTerminal(task: AsyncQueueTask, onDrop?: () => void): boolean {
+		if (this.depth() >= this.capacity) {
+			if (this.tasks.length === 0) {
+				this.dropped++;
+				return false;
+			}
+			let replacement = -1;
+			for (let i = this.tasks.length - 1; i >= 0; i--) {
+				if (!this.tasks[i].lifecycle) {
+					replacement = i;
+					break;
+				}
+			}
+			if (replacement >= 0) this.dropPending(replacement);
+			else this.dropPending(this.tasks.length - 1);
+			this.dropped++;
+		}
+		this.tasks.push({ task, lifecycle: true, onDrop });
+		this.schedule();
 		return true;
 	}
 
@@ -58,7 +110,12 @@ export class BoundedSerialQueue {
 			pending: this.tasks.length,
 			running: this.running,
 			dropped: this.dropped,
+			failed: this.failed,
 		};
+	}
+
+	recordFailure(): void {
+		this.failed = Math.min(Number.MAX_SAFE_INTEGER, this.failed + 1);
 	}
 
 	async drain(timeoutMs: number): Promise<boolean> {
@@ -80,6 +137,26 @@ export class BoundedSerialQueue {
 		});
 	}
 
+	/**
+	 * Remove pending tasks after their owners have copied them into a detached
+	 * handoff. The currently running task is already outside the Pi callback.
+	 */
+	takePendingForHandoff(selected: ReadonlySet<AsyncQueueTask>): number {
+		let count = 0;
+		for (let index = this.tasks.length - 1; index >= 0; index--) {
+			if (!selected.has(this.tasks[index].task)) continue;
+			this.tasks.splice(index, 1);
+			count++;
+		}
+		if (!this.running && this.tasks.length === 0) this.notifyIdle();
+		return count;
+	}
+
+	private dropPending(index: number): void {
+		const [dropped] = this.tasks.splice(index, 1);
+		dropped?.onDrop?.();
+	}
+
 	private depth(): number {
 		return this.tasks.length + (this.running ? 1 : 0);
 	}
@@ -95,17 +172,18 @@ export class BoundedSerialQueue {
 
 	private async runNext(): Promise<void> {
 		if (this.running) return;
-		const task = this.tasks.shift();
-		if (!task) {
+		const queued = this.tasks.shift();
+		if (!queued) {
 			this.notifyIdle();
 			return;
 		}
 
 		this.running = true;
 		try {
-			await task();
+			await queued.task();
 		} catch {
 			// Capture is best-effort; one failed task must not poison the queue.
+			this.recordFailure();
 		} finally {
 			this.running = false;
 			if (this.tasks.length === 0) this.notifyIdle();

@@ -69,11 +69,10 @@ scripts that you map to your product's features.
 - An administrator computer with macOS, Linux, or Windows to run the
   `trajectory-mdm` helper.
 - The Trajectory release that you want to deploy.
-- Network access from each computer to GitHub and to Apple. The installer
-  downloads the release and checks its notarization online. See
-  [Apple notarization checks](#apple-notarization-checks) for the Apple hosts.
-- On macOS, Gatekeeper assessments turned on. Trajectory refuses to install
-  or update without Apple's notarization check.
+- Network access from each computer to GitHub, where the installer downloads
+  the release. The computers do not need to reach Apple's notarization
+  service. For the reason, see
+  [Apple notarization checks](#apple-notarization-checks).
 - For Jamf Pro destinations: your Datadog site and an API key for each
   destination.
 - For remote configuration: an HTTPS server that computers can reach without a
@@ -100,9 +99,9 @@ install it on employee computers.
    It runs at login, when the profile changes, and every minute.
 
 The helper reads only the release record and checksums. The installation
-script checks Datadog's Apple signature and notarization on each computer
-after it downloads the binary. Trajectory's updater does the same. Both refuse
-a binary that fails these checks.
+script checks the binary's checksum and Datadog's Apple signature on each
+computer after it downloads the binary. Trajectory's updater does the same.
+Both refuse a binary that fails these checks.
 
 ## Deploy Trajectory
 
@@ -132,6 +131,23 @@ from the release that you deploy:
 2. On macOS or Linux, make the file executable and rename it to
    `trajectory-mdm`.
 3. Run `trajectory-mdm version` to confirm the release version.
+
+The helper carries a setup guide for its release. To list its topics, run
+`trajectory-mdm user-guide`. It explains each choice in the intent file
+and says which files go to your MDM, which ones you host, and where API keys
+go. It is written for you and for a coding agent that helps you set up.
+
+To let a coding agent help you, run this command in your deployment folder,
+then open the agent there:
+
+```bash
+trajectory-mdm agent-instructions --dir .
+```
+
+It writes `AGENTS.md` and `CLAUDE.md`. They tell the agent to read the guide,
+to check each change with `validate` and `verify`, and never to ask for an API
+key. Agents that support plugins can also use the `trajectory-mdm-setup` skill
+from the `trajectory-mdm` plugin in the public Trajectory marketplace.
 
 Linux and Windows helpers have no Apple signature, so the checksum is their
 only check. Keep a copy of each helper that you deploy. You need it later to
@@ -199,10 +215,21 @@ To check the intent without creating a bundle, run
 `trajectory-mdm validate --file trajectory-managed.json`. It refuses a URL
 that still contains a placeholder in angle brackets, such as `<your-host>`.
 
+Text copied out of a document, an email, or a chat can bring characters you
+cannot see. Every command that reads an intent with `--file` refuses one that
+contains a zero-width character, a private-use character, or a non-breaking
+space in the indentation. The error names the character's code point, line, and column,
+for example `line 1, column 1: invisible character U+E907`. Delete the
+character and retype the line, or copy the file again from its source. A byte
+order mark at the very start of the file is allowed.
+
 You can also answer questions instead of writing JSON. Run
 `trajectory-mdm prepare --interactive` with the release file options from
-Step 4. It asks for the MDM product, the clients, and optional tags. It shows
-the whole deployment for review before it creates the bundle.
+Step 4. It asks for the MDM product, the clients, how to
+[migrate existing installations](#choose-how-to-migrate-existing-installations),
+and optional tags. For the default Jamf Pro and Intune installation script on
+macOS, the migration question also offers `replace_untrusted`. It shows the
+whole deployment for review before it creates the bundle.
 
 For Jamf Pro on macOS, the answers give the same kind of deployment as an
 intent file with `schema_version` 5. The helper also asks for these settings:
@@ -215,13 +242,14 @@ intent file with `schema_version` 5. The helper also asks for these settings:
   file. See [Choose who controls updates](#choose-who-controls-updates).
 - Your destinations and their keychain entry names. It never asks for API
   keys.
-- Automatic setup of clients that users install later, the task
-  segmentation interval, a service label for each destination, and the
-  optional launcher wrappers.
+- Your email domain for user identity, such as `@example.com`. Leave it
+  blank to leave `identity` out.
+- Automatic setup of clients that users install later, a service label for
+  each destination, and the optional launcher wrappers.
 
 If you have no HTTPS server, write the intent file instead. The review lists
 the settings that the questions leave out, such as `security_modules` and
-`identity`. To set them, write an intent file and run `prepare --file`.
+`publish_trust`. To set them, write an intent file and run `prepare --file`.
 
 #### Write the intent as commented YAML
 
@@ -312,6 +340,29 @@ The bundle has these files to upload:
 
 Do not edit generated files. To change the deployment, edit the intent and
 generate a new bundle.
+
+After the bundle, `prepare` prints the next steps. They list each file that
+you host at `config_source`, with its URL, and say which ones come from the
+bundle and which ones you write. For Jamf Pro, the last step names the script
+parameter that takes each API key.
+
+#### Warnings
+
+`validate`, `build`, and `prepare` print a warning for a setting that is
+accepted but sends less than you might expect. A warning does not stop the
+command. With `--format json`, the warnings are in the `warnings` field, each
+with a `code` and the `field` it refers to.
+
+| Code | When | What to do |
+| --- | --- | --- |
+| `markers_not_fetched` | `organization_sync.files` does not list `markers.yaml`, so computers never download `markers_path`. | Add the `markers.yaml` entry, or leave it out if you do not host a markers file. |
+| `releases_ignored_under_mdm` | `files` lists `RELEASES.json`, but `binary_update.authority` is `mdm` or not set. Your MDM installs each release, so computers do not use the file. | To approve releases with it, [delegate updates](#delegate-binary-updates-to-trajectory). On Windows, remove the entry. |
+| `deployment_json_selected` | `files` lists `deployment.json`. | To approve releases, host [`RELEASES.json`](#approve-releases-with-releasesjson) and list it instead. Under MDM authority, also [delegate updates](#delegate-binary-updates-to-trajectory). On Windows, remove the entry. |
+| `level_off` | A destination has `level: off`. It receives metrics but no LLM Observability traces. | For traces, set `level` to `standard`. A destination with Agent Security metrics needs `off`, so add a separate destination for traces. |
+| `markers_metrics_off` | A destination sets `markers.metrics: false`. It gets no turn, session, cost, or marker metrics. Its only metrics are session start counts and deployment heartbeats. | Set `markers.metrics` to `true`. |
+| `api_key_in_intent` | A destination's `api_key_ref` looks like an API key. | Set it to the name of the keychain entry, such as `dd-primary-api-key`. Enter the key itself only in your MDM. |
+| `minimum_version_older_releases` | The source settings file sets `deployment.minimum_version`. Computers that run 0.6.3-beta.5 or earlier refuse a profile or a hosted settings file that sets it. | Deploy the floor only after every computer runs a release that reads it. See [Roll out the version floor](MANAGED-ENDPOINT-SETTINGS.md#roll-out-the-version-floor). |
+| `minimum_version_not_a_version` | `deployment.minimum_version` is not a release version, so computers apply no floor. | Set a release version such as `0.6.3`. |
 
 ### Step 5: Assign the bundle in your MDM
 
@@ -434,6 +485,11 @@ Why these settings:
   other key failure prints `TRAJECTORY_RECONCILE_FAILED:`. Automatic re-run
   then runs the policy at a later check-in, and the daily credential refresh
   policy runs it again. The installation and the profile stay in place.
+- **A warning does not fail the run.** A Mac can have the configuration
+  profiles of more than one deployment. Reconcile then prints a
+  `TRAJECTORY_RECONCILE_WARNING:` line and applies the profile with the
+  highest revision. Remove the other deployments' profiles from the Mac's
+  scope.
 - **The profile must arrive before reconcile.** Jamf runs **Before** scripts,
   then packages, then **After** scripts, so the installer finishes before
   reconcile starts. The profile is not part of that sequence. MDM delivers it
@@ -617,7 +673,6 @@ ID from this table. The helper turns on any extra feature that a client needs.
 | `qoder` | Qoder CLI | Standard managed setup |
 | `zcode` | ZCode | Standard managed setup |
 | `kimi` | Kimi Code CLI | Standard managed setup |
-| `warp` | Warp/Oz CLI | Standard managed setup |
 | `vscode-copilot` | VS Code Copilot Chat | Standard managed setup |
 | `windsurf` | Windsurf | Standard managed setup |
 | `zed` | Zed | Standard managed setup |
@@ -716,12 +771,25 @@ A client counts as installed when one of these is true:
 Claude Desktop is not checked. Setup writes nothing for it, and it is ready
 once the user starts their first local-agent-mode session.
 
-Setup can run and still fail to set the client up, for example because it
-cannot find the client's command. Then managed setup tries again after 15
-minutes, 1 hour, 6 hours, and then every 24 hours. A new profile revision tries
-again at once. Status shows the time of the next try, and its JSON output shows
-the reason setup gave. To try now, run
+Setup can run and still fail to set the client up. Then managed setup tries
+again after 15 minutes, 1 hour, 6 hours, and then every 24 hours. A new profile
+revision tries again at once. Status shows the time of the next try, and its
+JSON output shows the reason setup gave. To try now, run
 `trajectory managed repair --scope user --yes` as the user.
+
+A client's settings folder can exist without its command, for example when
+another app of the same vendor made the folder. When setup cannot find a
+listed client's command, the client counts as not installed. Status reports it
+as `not_installed` with reason `client_not_found`, and it does not fail the
+policy. Managed setup tries again on the same schedule. Once the command
+appears in one of the folders setup searches, the next run sets the client up.
+
+A listed client can be installed but not set up for another reason. Then
+`trajectory managed reconcile` and `trajectory managed repair` report the same
+result as status:
+`drifted` with reason `managed_client_not_set_up`. They exit 1, so an MDM
+policy that runs the reconcile script records a failure, and an MDM set to
+re-run failed policies tries again.
 
 If the user removed a listed client with `trajectory uninstrument <client>`,
 this check does not set it up again, and status does not report it as drift.
@@ -731,13 +799,19 @@ Any later managed setup run, such as a new profile revision or
 The managed-only `managed_late_client_setup` feature flag is on by default.
 Turn it off to stop this check.
 
+#### Retired clients
+
+Trajectory no longer supports Warp/Oz. An intent or remote file that still
+names `warp` builds and loads, with a `retired_client` warning. Computers do
+not set it up, and managed setup removes the integration it installed earlier.
+Remove `warp` from the intent when you next change it.
+
 #### Preview clients
 
-Qoder, Kimi, Warp/Oz, Zed and VS Code Copilot Chat are off by default for
+Qoder, Kimi, Zed and VS Code Copilot Chat are off by default for
 users who set Trajectory up themselves. Listing one in `clients` turns on its
 feature flag, such as `qoder_cli_instrumentation`, `kimi_cli_instrumentation`,
-`warp_oz_instrumentation`, `zed_passive_history` or
-`vscode_copilot_instrumentation`. Do not ask users to turn these flags on
+`zed_passive_history` or `vscode_copilot_instrumentation`. Do not ask users to turn these flags on
 themselves.
 
 To stop a preview client, remove it from `clients` and from
@@ -753,11 +827,12 @@ also removes the client's integration if it installed it. See
   copy files into Qoder's plugin registry.
 - Zed: setup changes only Trajectory's MCP and skill entries. Do not copy,
   change or inventory Zed's thread database.
-- Warp/Oz: the current CLIs are `oz` and `oz-preview`. `warp-cli` is an old,
-  deprecated alias. Plan to move those computers to `oz`. Capture
-  covers Warp Desktop and local `oz agent run`, not `oz agent run-cloud`.
 - VS Code Copilot Chat: no installer should change user VS Code settings while
   the feature is off.
+- Zed and VS Code Copilot Chat: the Trajectory binary can move, for example
+  from a personal install to a managed one. Setup then rewrites its own MCP
+  entry with the new path. It still leaves alone a `trajectory` entry that it
+  did not write.
 
 #### The shim exception
 
@@ -773,6 +848,61 @@ To capture these clients, choose one approach:
 - Run that command as the signed-in user through a software workflow that your
   organization approves.
 - Use a saved-history mode that the client supports, and accept less capture.
+
+### Allow Trajectory's plugin marketplaces in Codex and Claude Code policies
+
+Setup installs Trajectory's plugins for Codex and Claude Code from two local
+folders in each user's Trajectory folder:
+
+| Client | Folder | Source type |
+| --- | --- | --- |
+| Codex | `~/.trajectory/codex-marketplace` | `local` |
+| Claude Code | `~/.trajectory/claude-marketplace` | `directory` |
+
+If your organization's Codex requirements or Claude Code managed settings
+allow only listed plugin marketplaces, list these folders too. Otherwise the
+client refuses Trajectory's marketplace. Codex then still records sessions
+through Trajectory's MCP server and session watcher, but its plugin hooks
+don't run, and Claude Code setup fails. See
+[Codex or Claude Code refuses Trajectory's plugin](#codex-or-claude-code-refuses-trajectorys-plugin).
+
+**Codex.** Codex matches a local marketplace source by its exact absolute
+path. It has no pattern for local folders, so add one entry for each user's
+folder. The keys are the same in an OpenAI workspace's managed requirements,
+a requirements file, and requirements that an MDM profile delivers. `path`
+must be absolute: Codex rejects `~`.
+
+```toml
+[marketplaces]
+restrict_to_allowed_sources = true
+
+[marketplaces.allowed_sources.trajectory_example]
+source = "local"
+path = "/Users/example/.trajectory/codex-marketplace"
+```
+
+**Claude Code.** In managed settings, `strictKnownMarketplaces` takes a
+`directory` entry with an absolute path, or a `pathPattern` entry. A
+`pathPattern` is a regular expression that Claude Code matches against the
+path of each `file` and `directory` source. This entry covers Trajectory's
+Claude Code folder for every user on macOS:
+
+```json
+{
+  "strictKnownMarketplaces": [
+    { "source": "pathPattern", "pathPattern": "^/Users/[^/]+/\\.trajectory/claude-marketplace$" }
+  ]
+}
+```
+
+You may already allow local folders by a pattern, so that teams can test
+their own plugins. That pattern covers Trajectory's folder only when it
+matches `/Users/<user>/.trajectory/claude-marketplace`. A pattern such as
+`^/Users/[^/]+/` does. A pattern that pins another folder, such as
+`^/Users/[^/]+/plugins/`, does not, so add the entry above to the list.
+
+If you moved the Trajectory folder, use that folder in place of
+`~/.trajectory` in both policies.
 
 ### Route ordinary `claude`, `codex`, and `copilot` commands through Trajectory
 
@@ -794,7 +924,11 @@ intent that lists `cc`, `codex`, or `copilot`:
 | `{"enabled": true}` | Managed setup installs wrappers and records which ones it installed. It also adds a marked block to the user's shell startup files that puts `~/.trajectory/bin` on `PATH`. |
 | Changed from on to off, or profile withdrawn | Managed setup removes only the wrappers that it recorded, and removes the startup file block. Client hooks stay. |
 
-Setup links the wrappers into `~/.trajectory/bin`. A wrapper works only when
+Setup links the wrappers into `~/.trajectory/bin`. Another file or link can
+already be at `~/.trajectory/bin/claude`, `codex`, or `copilot`. Setup then
+leaves it as it is and keeps the client set up. Its hooks
+still capture sessions. Setup names the file and says to move it aside and run
+`trajectory managed repair --scope user --yes`. A wrapper works only when
 a new terminal finds it before the real CLI on `PATH`. On a typical Mac,
 `PATH` does not list `~/.trajectory/bin`. So while the option is on, managed
 setup adds this block to the startup files of the user's login shell:
@@ -820,9 +954,10 @@ esac
 
 | Login shell | Files that get the block |
 | --- | --- |
-| `zsh` | `~/.zprofile` and `~/.zshrc`. When `~/.zshenv` sets `ZDOTDIR`, the same files in that folder. When a later file such as `.zlogin` moves `ZDOTDIR` again, none. Setup cannot tell which folder `zsh` read, so it says so and adds no block. It also adds none when it cannot ask the login shell. If one startup file sets `ZDOTDIR` and a later one unsets it, setup does not notice, and it can also write an unused block to `~/.zshrc`. |
+| `zsh` | `~/.zprofile` and `~/.zshrc`. When `~/.zshenv` sets `ZDOTDIR`, the same files in that folder. When a later file such as `.zlogin` moves `ZDOTDIR` again, none. Setup cannot tell which folder `zsh` read, so it says so and adds no block. A login shell can fail to report its `PATH`, as when `~/.zshrc` starts `fish`. Setup then starts `zsh` as a new terminal does, but stops it after its `.zshenv` files. When they leave `ZDOTDIR` unset, setup adds the block to the home's files. Otherwise, or when setup cannot ask the login shell at all, it adds no block to `zsh`'s files. If one startup file sets `ZDOTDIR` and a later one unsets it, setup does not notice, and it can also write an unused block to `~/.zshrc`. |
 | `bash` | `~/.bash_profile` and `~/.bashrc`. When `~/.bash_profile` does not exist but `~/.bash_login` or `~/.profile` does, setup uses the first of those instead. A new `~/.bash_profile` would stop `bash` from reading them. |
-| `fish` | `~/.config/fish/conf.d/trajectory.fish`, with the same block written for `fish`. |
+| `fish` | `~/.config/fish/conf.d/trajectory.fish`, with the same block written for `fish`. When `~/.config/fish` or another folder on the way is a symbolic link, `~/.local/share/fish/vendor_conf.d/trajectory-command-shims.fish` instead, for `fish` 3.5 or later. An older `fish` does not read that folder, so setup reports the link with the `fish_add_path` step. |
+| `zsh` or `bash`, and the user also runs `fish` | The files for the login shell, and also `~/.config/fish/conf.d/trajectory.fish`. A terminal app can start `fish` instead of the login shell. Setup treats the user as a `fish` user when `~/.config/fish` exists, which `fish` creates the first time it runs. Setup writes the `fish` file even when it adds no block to the `zsh` files. |
 | Any other shell | None. `trajectory managed status` reports `command_shim_path_unknown` for a wrapper a new terminal does not run. |
 
 Setup follows these rules for the block:
@@ -844,10 +979,26 @@ Setup follows these rules for the block:
   set. Setup writes the block only to `~/.config/fish/conf.d`, so a user whose
   `XDG_CONFIG_HOME` points elsewhere does not get it. When setup can see that
   setting, status reports the wrapper as not on `PATH`, never as active.
+- Dotfile managers often link startup files into a repository, and setup never
+  edits a link. While another file of the same shell can take the block, setup
+  leaves the link alone and names the file that holds the block:
+  - `~/.zlogin` when `~/.zshrc` is a link. `zsh` reads `~/.zlogin` after
+    `~/.zshrc` in a new terminal.
+  - `~/.zprofile` when `~/.zshrc` and `~/.zlogin` are both links.
+  - `~/.zshrc` when only `~/.zprofile` is a link.
+  - The other `bash` file when `~/.bashrc` or the login file is a link.
+  - `fish`'s `vendor_conf.d` file when a folder on the way to `conf.d` is a
+    link and `fish` is 3.5 or later. `fish` reads it after every `conf.d`
+    file. Setup asks `fish --version`, which reads no configuration.
+
+  The new-terminal check then shows whether a line in a linked file still
+  puts another folder first.
 - Setup edits startup files as the user, never as root. It changes nothing in
   a file that is a symbolic link, is not a regular file, is read-only or
   unreadable, or belongs to another account. It also skips a file in a folder
   that belongs to another account or that the user cannot open. Setup reports each such file with the step that fixes it.
+  It stops repeating that warning once a new terminal runs every wrapper, as
+  after the user adds the line by hand.
 - Setup writes the new content to a temporary file in the same folder. It
   keeps the file's permissions, owner, and group, and then replaces the file.
 - Reconciliation does not watch the block. If the user deletes it, it comes
@@ -858,6 +1009,11 @@ Setup follows these rules for the block:
   Claude Code, Codex, or Copilot wrapper remains. Each file then holds exactly
   what it held without the block. Setup deletes a file that it created for the
   block when the file holds nothing else.
+- A dotfiles manager can replace a startup file that holds the block with a
+  link. Setup never edits through the link. It reads the file the link points
+  to, and if that file holds no block, setup forgets the startup file. It no
+  longer warns about it or waits for it. When that file holds the block, setup
+  reports the link with the step that removes the block by hand.
 
 Deployments that already turn the option on get the block the next time
 managed setup runs after they update to this release. Setup runs when the
@@ -890,6 +1046,14 @@ shell which `PATH` it sets:
   or `trajectory managed reconcile`. That command returns at once without
   changing anything. Other commands that need setup's lock fail at once
   instead of waiting for it.
+- When the login shell is not `fish` but `~/.config/fish` exists, setup also
+  starts `fish` the same way, if `fish` is installed. Setup uses the first
+  `fish` that `/etc/shells` lists. Otherwise it looks in `/opt/homebrew/bin`,
+  `/usr/local/bin`, `/opt/local/bin`, `/run/current-system/sw/bin`,
+  `/usr/bin`, and `/bin`. A wrapper counts as active only when both shells
+  find it first. When only the login shell does, setup, status, and
+  `trajectory doctor` report it as not on `PATH` in a new `fish` terminal.
+  They then give a `fish` step.
 - If that `PATH` finds the wrapper first, setup reports the wrapper active.
 - Otherwise, if that `PATH` lists a home bin folder such as `~/.local/bin`,
   setup also links the wrapper there. Setup running as root never creates
@@ -908,7 +1072,10 @@ shell which `PATH` it sets:
 - The shell might fail, take too long, or not be one that setup supports.
   Setup supports `sh`, `bash`, `zsh`, `dash`, `ksh`, `mksh`, and `fish`. In
   those cases setup says that it could not check. It never reports the
-  wrapper active then.
+  wrapper active then. A user who also runs `fish` still gets the `fish`
+  check when the login shell started but reported no `PATH`. When `fish` does
+  not find the wrapper first, setup, status, and `trajectory doctor` report
+  it as not on `PATH` in a new `fish` terminal.
 
 After the user changes `PATH`, run
 `trajectory managed repair --scope user --yes` as the user so that status
@@ -1006,12 +1173,20 @@ which entry to look for. One bundle serves every Mac it is assigned to:
   `--personal-sha256`, it adopts that release and replaces the rest. A replaced
   Mac gets a fresh installation with no older release kept for rollback.
 
-`replace_untrusted` moves the old binary, its `bin/releases` image store and
-its runtime selection files into
+`replace_untrusted` moves the old binary and its runtime files into
 `~/.trajectory/release-installer/quarantine/replaced-<UTC time>/` without
-running them. It keeps settings, credentials, sessions, caches and pending
+running them. These are its `bin/releases` image store, its runtime selection
+files and the `<record>.quarantine.<time>` copies its updater set aside. It keeps settings, credentials, sessions, caches and pending
 uploads. For root-owned files that an earlier root-run installation left, see
 "Files left by an earlier root-run installation" in the administrator guide.
+
+Older installations can leave files, folders or symbolic links in
+`~/.trajectory/bin` under names that no release writes, such as
+`codex-watcher`. `replace_untrusted` moves these into the same folder. It
+moves a symbolic link as a link and never follows it. The other modes leave
+the entry in place and print a `TRAJECTORY_INSTALLER_WARNING` line that names
+it. When such an entry is present, `replace_untrusted` also replaces a binary
+that passes the adoption checks, because adopting it would keep the entry.
 <!-- END EXISTING PERSONAL INSTALLATIONS -->
 
 #### Replace an untrusted personal installation
@@ -1022,7 +1197,8 @@ it for a whole fleet. Otherwise:
 
 1. The script downloads and checks the new release. If a check fails, it stops
    before it changes anything.
-2. It moves the old binary and its runtime files to a private folder under
+2. It moves the old binary, its runtime files and any `~/.trajectory/bin`
+   entry that no release writes to a private folder under
    `~/.trajectory/release-installer/quarantine/`.
 3. It installs the new release. User settings, credentials, sessions, and
    client configuration stay.
@@ -1031,7 +1207,9 @@ it for a whole fleet. Otherwise:
 
 Review the quarantine folder, and delete it when you no longer need it. Until
 then, keep its user-only owner and permissions, because managed updates check
-them.
+them. Managed updates accept the symbolic links it holds. Releases from before
+`replace_untrusted` moved `~/.trajectory/bin` leftovers refuse them, so delete
+the folder before you move a Mac back to such a release.
 
 Assign the script with the profile or before it. Releases older than this mode
 reject a profile that uses it.
@@ -1050,11 +1228,10 @@ handles them like this:
 | `/usr/local/bin/trajectory` | The script reports it. Remove it with the tool that created it. |
 
 On a script-and-profile installation where something remains, `trajectory
-doctor` shows a "Legacy install leftovers" notice. It lists what remains,
+doctor --verbose` shows a "Legacy install leftovers" notice. It lists what remains,
 including a root-owned `/usr/local/bin/trajectory` link to the user's binary,
-with how to fix each. A notice is not a warning. `trajectory doctor --verbose`
-always shows the line and also lists the copies the script kept. Delete a kept
-copy when you no longer need it.
+with how to fix each. A notice is not a warning. The verbose report also lists
+the copies the script kept. Delete a kept copy when you no longer need it.
 
 #### System installations
 
@@ -1101,14 +1278,24 @@ releases. The updater runs as the user and keeps the binary in the same place.
 | `allow_rollback` | `false` (default). Keep `false`. It has no effect with `RELEASES.json` or with MDM scripts. To roll back, give control back to your MDM and use a [rollback script](#roll-back). |
 
 The profile has no ring setting. The remote `config.defaults.yaml` chooses
-the release ring. See [Update ring](#update-ring). `trajectory-mdm` rejects an
-intent that sets `binary_update.ring` with
-`field "binary_update" has unknown field "ring"`.
+the release ring. See [Update ring](#update-ring). `trajectory-mdm` ignores
+`binary_update.ring` and prints an `unknown_field` warning that says where the
+ring comes from.
 
 The updater installs only published releases that pass Datadog's checks and
 accept the current profile. By default, it installs each new release of the
 computer's [update ring](#update-ring). To approve releases yourself, see
 [Approve releases with `RELEASES.json`](#approve-releases-with-releasesjson).
+
+Delegate only on a Mac that already runs a published release. If the Mac runs a
+build that Datadog did not publish as a release, it does not apply the profile.
+It keeps its current settings, and your MDM still owns updates. `managed
+status` reports `blocked`, with reason
+`update_authority_requires_published_release` and next step
+`install_published_release`. Retrying does not change this. Run the `update`
+script for a published release that is newer than the build on the Mac. The
+script then applies the profile. Until such a release exists, keep `authority`
+at `mdm`.
 
 After you delegate, installer scripts for `update` and `rollback` fail. Other
 operations still work. To give control back to your MDM, set `authority` to
@@ -1193,8 +1380,8 @@ That includes a file in any of these cases:
 
 Users see the managed value. `trajectory config set auto_update false` and
 `trajectory config get auto_update` print a note that the value is managed,
-and `trajectory doctor` shows **Automatic updates** with the file that decided
-it. Setting `TRAJECTORY_AUTO_UPDATE=0` in a process environment always stops
+and `trajectory doctor --verbose` shows **Automatic updates** with the file
+that decided it. Setting `TRAJECTORY_AUTO_UPDATE=0` in a process environment always stops
 background checks for that process.
 
 Users can still run `trajectory update` when background updates are off.
@@ -1327,6 +1514,71 @@ default name for the provider and platform, such as
 reads at most 32 bundles from the folder and says when it skipped more. The
 bundle is still created.
 
+### Roll out in stages and run deployments again
+
+You can run a deployment's scripts again on the same Macs. You can also move
+Macs from one deployment to another, for example from a beta group to a
+stable group and back. A deployment here means one `deployment_id`.
+
+#### Run a deployment again
+
+The installation script and `reconcile-current-user.sh` are safe to run
+again at any time, also while the user works:
+
+- A Mac that already runs the script's release only checks the installation.
+- After a failed or interrupted run, the next run of the same script finishes
+  the work or puts back missing files.
+- If a run of another script stopped partway, this script stops with
+  `TRAJECTORY_INSTALLER_BLOCKED reason=interrupted_operation`. Keep the
+  script whose run stopped in scope until a run of it finishes.
+- Trajectory processes that already run, such as the background service and
+  coding-agent hooks, keep the old binary until they restart. Only
+  `clean_reinstall` refuses to run while they run. Use it only on Macs where
+  nobody uses Trajectory at that time.
+
+Do not delete `~/.trajectory` to fix a failed run. It does not remove
+Trajectory. It deletes the user's sessions and pending uploads, and the
+records that the scripts and managed setup keep. Rerun the script instead, and
+look up its result line in
+[Script messages and exit codes](#script-messages-and-exit-codes). To remove
+Trajectory, see [Remove Trajectory](#remove-trajectory).
+
+#### Move a Mac to another deployment
+
+To move a Mac from deployment A to deployment B:
+
+1. Generate B's bundle with a `--profile-revision` above every revision you
+   deployed to that Mac, in any deployment. A Mac compares revisions across
+   deployments. Use one counter for all your deployments. A date with a
+   number works, such as `--profile-revision 2026110301`.
+2. In your MDM, remove the Mac from A's scope in the same change that adds it
+   to B. Do this for the configuration profile, the login items profile and
+   the scripts.
+
+To move the Mac back to A, generate A's bundle with a revision above B's.
+
+Your MDM can install B's profile before it removes A's. While a Mac has the
+profiles of both deployments, it applies the one with the higher revision.
+That is the profile it would accept alone once the other one is gone:
+
+- `trajectory managed reconcile` prints a warning with reason
+  `configuration_profiles_overlap` that names each profile and the one it
+  applies. `trajectory managed status` reports the same reason for the policy.
+  `reconcile-current-user.sh` prints
+  `TRAJECTORY_RECONCILE_WARNING: reason=configuration_profiles_overlap`.
+- When two different profiles share the highest revision, the Mac applies
+  neither and keeps the settings it applied before. `trajectory managed
+  reconcile` then fails with reason `configuration_profiles_conflict`. Give
+  the profile of the deployment the Mac belongs to a higher revision.
+
+Remove the old deployment's profile even when the Mac applies the right one.
+A profile left in scope stays visible as a warning on every run.
+
+The installation script never changes the release a Mac runs. If B pins a
+newer release than A, assign B's update script. If B pins an older release,
+use a rollback script, or a remove script followed by B's installation script.
+See [Update Trajectory](#update-trajectory) and [Roll back](#roll-back).
+
 ### Change behavior without redeploying the profile
 
 You can publish behavior settings from your own HTTPS server and change them
@@ -1366,9 +1618,25 @@ trajectory-mdm remote-defaults --file trajectory-managed.json --output config.de
 trajectory-mdm check-remote-defaults --file trajectory-managed.json --defaults config.defaults.yaml
 ```
 
+Computers download the new file at their next sync, every
+`sync_interval_seconds`. To apply it at once on one computer, run this command
+there as the signed-in user:
+
+```text
+trajectory config sync
+```
+
+The command asks the running background service to download and apply every
+selected file now. It waits up to one minute and prints one result for each
+file, such as `file=config.defaults.yaml result=updated sha256=...`. The
+SHA-256 matches the one that `trajectory managed status` then reports for the
+file. If no service runs, the command reports `config.defaults.yaml` as
+`not_checked`. It names `trajectory serve ensure --client cli`, which starts a
+service. Run `trajectory config sync` again after it starts.
+
 Add `--interactive` to edit the behavior settings through questions. It asks
-about automatic client setup, the task segmentation interval, destination
-service labels, and the launcher wrappers. Change destinations and tags in the
+about automatic client setup, destination service labels, and the launcher
+wrappers. Change destinations and tags in the
 intent file. The file has no secrets. Computers replace their settings with the downloaded file, so a
 setting that you remove also goes away on the computers.
 
@@ -1377,17 +1645,58 @@ file, or any `config.defaults.yaml` with `org.files`, at a source that
 installations without a configuration profile also sync. From v0.6.0, such an
 installation accepts that file once and then refuses every later version.
 
-A remote file cannot change the sync source, the file list, `markers_path`,
-the sync interval, or the cohort. It also cannot change update authority,
-`auto_update`, the credential lookup mode, or `modules`. To change those, or
-the `clients` list, deploy a new profile. To add clients remotely, use `auto_instrument`. A remote file can
-choose the update ring.
+The remote file controls which files computers download (`org.files`),
+`markers_path`, and the sync interval. The profile's values for these are
+starter values: computers use them until they accept their first remote file.
+After that, change these settings in the remote file. A new profile with the
+same `config_source` does not change them.
+
+The profile keeps the sync source (`config_source`) and the credential lookup
+(`auth`). When a remote file sets either one, computers use the profile's
+value and apply the rest of the file. A remote file also cannot change the
+cohort, update authority, `auto_update`, or `modules`. To change those, or the
+`clients` list, deploy a new profile. To add clients remotely, use
+`auto_instrument`. A remote file can choose the update ring.
+
+Computers check the settings that the remote file controls:
+
+- The file list must keep `config.defaults.yaml` and cannot add
+  `cohort.yaml`. Otherwise computers keep the file list they use.
+- A `markers.yaml` entry must use the `markers_path` value. Otherwise
+  computers keep the file list and `markers_path` they use.
+- Only the profile can make a file required. A file that only the remote file
+  lists is always optional, so a missing file never holds back the next
+  version of the remote file.
+- The sync interval in effect stays between 60 seconds and 14400 seconds (4
+  hours). A computer gets a fix to the remote file only at its next sync, even
+  a fix to the interval. Computers use 14400 for a longer interval, and
+  `trajectory doctor` warns about it. For a value below 60 or above 86400,
+  computers keep the interval they use.
+- A setting that the remote file leaves out takes the profile's value.
+
+`trajectory doctor` lists each setting that a computer did not take from the
+remote file under `config.downloaded_settings_ignored`.
+
+#### Computers that run an earlier release
+
+A computer that runs an earlier release checks five settings against the
+profile: `config_source`, the file list, `markers_path`, the sync interval,
+and `auth`. If one differs, it rejects the whole remote file. It keeps the
+settings it last accepted and tries again at each sync. Change these settings in the remote file only after every
+computer runs a release that reads them from it:
+
+1. Keep the remote file repeating the profile's values.
+   `trajectory-mdm check-remote-defaults` lists every setting that differs
+   under `Differs from the deployed profile`.
+2. Once every computer reads `deployment.minimum_version`, set it to that
+   release in the remote file. Computers below it update.
+3. Check in Datadog that every computer reports that release or later.
+4. Change the settings in the remote file.
 
 Computers keep their current settings when they reject a file. The org sync
 log line `org sync: config.defaults.yaml: orgsync: reject managed core: ...`
-names each profile-owned field that the file changes, such as
-`org.files (missing)`. It also lists the first problem of every failing check,
-separated by `; `, so one new version can fix all of them.
+lists the first problem of every failing check. It separates them with `; `,
+so one new version can fix all of them.
 
 Managed status reports a rejected file as `failed`, with reason
 `organization_file_rejected` and next step
@@ -1451,9 +1760,10 @@ trajectory-mdm check-remote-defaults --file trajectory-managed.json --defaults c
 
 Use the intent of the profile that your computers have. The command runs the
 same checks a computer runs before it applies a downloaded file, for the
-intent's platform. If the intent lists `markers.yaml` or `pricing.yaml` in
-`organization_sync.files`, add `--markers markers.yaml` or
-`--pricing pricing.yaml` to check them too.
+intent's platform. If the intent lists `markers.yaml`, `pricing.yaml`, or
+`custom-pricing.yaml` in `organization_sync.files`, add
+`--markers markers.yaml`, `--pricing pricing.yaml`, or
+`--custom-pricing custom-pricing.yaml` to check them too.
 
 For each file it checks, the command prints whether computers would accept
 it, its SHA-256, and where to publish it. If a computer would reject a file,
@@ -1666,7 +1976,7 @@ the warning names as the user:
 
 - Claude Code: `claude plugin uninstall trajectory-security@trajectory --scope user`
 - Codex: `codex plugin remove trajectory-security@trajectory`
-- GitHub Copilot CLI: `copilot plugin uninstall trajectory-security@datadog-security`
+- GitHub Copilot CLI: `copilot plugin uninstall trajectory-security@trajectory`
 
 A `trajectory` MCP server in `~/.claude.json` that an older release wrote can
 still name the deleted binary. Claude Code reports it as a failed MCP server.
@@ -1679,6 +1989,22 @@ script cleans those folders too. Setup in earlier releases did not record
 them. If a user ran such a setup with a custom client folder, ask them to run
 `~/.trajectory/bin/trajectory uninstrument all` from their own shell before
 the script runs.
+
+Setup records up to 8 sets of these variables. When a user's terminals and
+apps bring a ninth set and every recorded folder still exists, setup stops
+recording the oldest set. Its output then gives the command that still
+cleans those folders, such as
+`env -u ... QWEN_HOME='/Users/example/qwen' trajectory uninstrument all`. The
+command unsets the other client folder variables, so the user's shell cannot
+point the cleanup elsewhere. `trajectory uninstrument all` leaves Agent
+Security. If that set moved a folder where Agent Security is set up, the output
+gives two commands with the same variables. The first is
+`trajectory plugins security disable --clients <client> --remove-hooks`, and
+`trajectory uninstrument all` follows it. Keep that order, because the second
+command deletes a record the first can need to find the client. The first
+command turns Agent Security off for every client on the computer, so set it up
+again for the clients that keep it. Ask the user to run these commands from
+their own shell before the script runs.
 
 A `remove` script from an earlier release deletes the binary but keeps every
 client integration, so those hooks then call a missing binary. If the computer
@@ -1711,7 +2037,7 @@ It keeps everything in this table. Run each command as the user, after the
 
 | What stays | Where | Delete it with |
 | --- | --- | --- |
-| Files that Trajectory's updater wrote next to the binary: release images in `releases/` and update records such as `runtime-selection.json`. `remove` refuses to run while this folder holds anything else. | `~/.trajectory/bin/` | `rm -rf ~/.trajectory/bin` |
+| Files that Trajectory's updater wrote next to the binary: release images in `releases/`, update records such as `runtime-selection.json`, and records its recovery set aside as `<record>.quarantine.<time>`. `remove` also leaves any other entry here in place, and prints a `TRAJECTORY_INSTALLER_WARNING` line that names it. | `~/.trajectory/bin/` | `rm -rf ~/.trajectory/bin` |
 | Launcher wrappers for the `claude`, `codex`, and `copilot` commands that the client cleanup left in place. After `remove`, no command links to them. | `~/.trajectory/client-shims/` | `rm -rf ~/.trajectory/client-shims` |
 | The plugin marketplace that Claude Code still registers, with the plugin version that has no capture hooks. | `~/.trajectory/claude-marketplace/` | `rm -rf ~/.trajectory/claude-marketplace`, after the Claude Code steps in [Clean up coding agents](#clean-up-coding-agents) |
 | The installer's records: the removed release's identity, a lock file, and `quarantine/`. `replace_untrusted` moves a replaced personal installation there without running it. | `~/.trajectory/release-installer/` | `rm -rf ~/.trajectory/release-installer` |
@@ -1725,6 +2051,10 @@ Delete `~/.trajectory/bin` and `~/.trajectory/release-installer` together.
 If `bin` still holds an unfinished update, such as `trajectory.old` or
 `trajectory.new`, and the installer's records are gone, a later installation
 refuses the home.
+
+If the user installs Trajectory again without your MDM after `remove`, that
+installation updates itself like any personal installation. The installer's
+records from the finished removal do not make it a managed installation.
 
 Deleting `~/.trajectory/managed` removes the user's profile history. A Mac
 that had a system installation can keep protected history in
@@ -1812,8 +2142,9 @@ Common reasons:
 | `configuration_refresh_failed` | A remote file did not download, or the computer rejected it. The computer keeps its last good settings and retries. If status reports `organization_file_rejected`, fix the file. Otherwise check that the computer can reach your HTTPS server. |
 | `organization_file_rejected` | The computer downloaded a file that the profile selects and rejected it. `configuration.file_results` names the file, and its `rejection_reason` gives the first failing check. Fix the file, [check it](#check-files-before-you-publish-them), and publish it again. |
 | `required_configuration_unverified` | A required remote file is missing or changed. Publish it at the expected URL. |
-| `client_command_shim_repair_failed` | Another file replaced a launcher wrapper. Remove that file, then run `managed repair`. |
-| `managed_client_not_set_up` | A listed client is installed but not set up. Managed setup sets it up at its next run, or at the retry time that `managed status` shows. To try now, run `managed repair` as the user. See [Clients installed later](#clients-installed-later). |
+| `client_command_shim_repair_failed` | Setup could not restore a launcher wrapper that a new terminal reached before. Run `managed repair`. A file or link of the user's at `~/.trajectory/bin/claude`, `codex`, or `copilot` does not cause this reason. Setup leaves it, names it, and says to move it aside, then run `managed repair`. |
+| `managed_client_not_set_up` | A listed client is installed but not set up. Managed setup sets it up at its next run, or at the retry time that `managed status` shows. To try now, run `managed repair` as the user. A client whose command setup cannot find never causes this; status reports it as `not_installed`. See [Clients installed later](#clients-installed-later). |
+| `update_authority_requires_published_release` | The profile delegates updates, but the Mac runs a build that Datadog did not publish as a release. The Mac did not apply the profile, and your MDM still owns updates. Run the `update` script for a newer published release, or keep `authority` at `mdm`. See [Delegate binary updates to Trajectory](#delegate-binary-updates-to-trajectory). |
 | `configuration_profile_invalid` | The computer refused the profile. Status reports every refused profile this way. Run `managed reconcile --scope user --dry-run` as the user to see why. |
 | `configuration_profile_stale`, `configuration_profile_revision_conflict`, `configuration_profile_source_conflict` | The profile revision is not higher than one the computer already received. Deploy the revision that the message names. See [Re-add a removed profile](#re-add-a-removed-profile). |
 | `profile_runtime_not_applied` | The background service still uses the previous settings. See [Settings wait for open sessions](#settings-wait-for-open-sessions). |
@@ -1847,8 +2178,8 @@ Managed status treats a rejected file and a missing file differently:
 In both cases the computer keeps its current settings. Status describes the
 last sync attempt for each file. If a download fails after a rejection, status
 shows the failed download until the next download. A sync that does not
-download the file at all, such as `trajectory config sync`, keeps the
-rejection.
+download the file at all keeps the rejection. An example is
+`trajectory config sync` on a computer where no background service runs.
 
 A required file that has never verified on the computer keeps reason
 `required_configuration_unverified`, because the profile cannot apply without
@@ -1911,7 +2242,7 @@ uses 8 when a file is also rejected. The list is absent while the
   {
     "client": "cc",
     "state": "failed",
-    "reason": "client_not_found",
+    "reason": "node_runtime_missing",
     "last_attempt_at": "2026-10-06T12:00:00Z",
     "next_attempt_at": "2026-10-06T12:15:00Z"
   },
@@ -1925,21 +2256,35 @@ uses 8 when a file is also rejected. The list is absent while the
 ```
 
 `last_attempt_at` is the managed setup run that last tried the client.
-`next_attempt_at` is when managed setup tries a failed client again.
+`next_attempt_at` is when managed setup tries a failed client, or a client
+whose command it could not find, again.
 
 | State | Meaning | What to do |
 | --- | --- | --- |
-| `set_up` | Setup finds the client set up. With reason `command_shim_not_on_path`, its launcher wrapper is installed, but when setup last checked, a new terminal ran another command or found none. With reason `command_shim_path_unknown`, setup could not read a new terminal's `PATH`. | Nothing for capture: hooks still capture sessions. To route the ordinary command through the wrapper, follow the step that `trajectory managed status` prints. See "Route ordinary `claude`, `codex`, and `copilot` commands through Trajectory". |
-| `not_installed` | Setup cannot find the client on this computer. | Nothing. If the user has the client, see `client_not_found` below. |
+| `set_up` | Setup finds the client set up. With reason `command_shim_not_on_path`, its launcher wrapper is installed, but when setup last checked, a new terminal ran another command or found none. For a user who also runs `fish`, that terminal can be a new `fish` terminal. With reason `command_shim_path_unknown`, setup could not read a new terminal's `PATH`. With reason `plugin_hooks_fallback`, Codex runs in fallback mode: Trajectory's MCP server and session watcher record its sessions, and its plugin hooks are off. `trajectory managed status` prints why. With reason `client_plugin_disabled`, the user or a Claude Code policy turned Trajectory's plugin off in the client, so its sessions are not captured. Managed setup keeps that choice. | Nothing for capture: hooks still capture sessions. To route the ordinary command through the wrapper, follow the step that `trajectory managed status` prints. See "Route ordinary `claude`, `codex`, and `copilot` commands through Trajectory". For `client_plugin_disabled`, the user runs the command that `trajectory managed status` prints, such as `claude plugin enable trajectory@trajectory --scope user`. |
+| `not_installed` | The client is not installed on this computer. With reason `client_not_found`, setup found the client's settings folder but not its command. It does not fail the policy, and the next run after the command appears sets the client up. | Nothing. If the user has the client, see `client_not_found` below. |
 | `pending` | The user installed the client after managed setup last ran. With reason `client_first_session_pending`, Claude Desktop has not run its first local agent mode session. | Wait for the next run, or run `managed repair` as the user. For Claude Desktop, the user starts a local agent mode session. |
 | `failed` | Managed setup ran but could not set the client up. | Fix the cause that `reason` names, then run `managed repair` as the user. |
 | `opted_out` | The user removed the client with `trajectory uninstrument`. | To set it up again, run `managed repair` as the user. |
+
+When Claude Code has Trajectory's plugin installed but its user settings no
+longer list it, Claude Code loads none of its hooks. A failed setup in an
+earlier release could leave a Mac this way. Managed setup counts Claude Code
+as not set up and turns the plugin back on at user scope. A plugin that the
+user or a policy turned off stays off, and `trajectory managed status` prints
+`client not capturing: cc` with the command to turn it on.
+
+Reasons for `not_installed`:
+
+| Reason | Meaning |
+| --- | --- |
+| `client_not_installed` | Setup finds neither the client's command nor its settings folder. |
+| `client_not_found` | Setup finds the client's settings folder but cannot find its command. Setup searches the PATH and the locations listed in [Where setup finds client commands](#where-setup-finds-client-commands). If the user has the client, install its command in one of those locations. |
 
 Reasons for `failed`:
 
 | Reason | Meaning |
 | --- | --- |
-| `client_not_found` | Setup cannot find the client's command. Setup searches the PATH and the locations listed in [Clients installed later](#clients-installed-later). |
 | `node_runtime_missing` | The client needs Node.js, and its command cannot find it. |
 | `launcher_missing_binary` | The client's launcher cannot find the program it starts. |
 | `timeout` | The client's command did not finish in time. |
@@ -1957,7 +2302,7 @@ ends with one `client.<client>=<state>` entry for each installed client in the
 profile. A failed client's entry also has its reason:
 
 ```text
-profile_revision=3;sync=succeeded;...;client.cc=failed:client_not_found;client.codex=set_up
+profile_revision=3;sync=succeeded;...;client.cc=failed:node_runtime_missing;client.codex=set_up
 ```
 
 Clients that are not installed are left out. The attribute is never longer
@@ -1967,6 +2312,13 @@ first, and then the client entries.
 To find the computers where a client failed, match its entry. For example, a
 Jamf Pro smart group with the criterion `like client.cc=failed` finds the
 computers where Claude Code setup failed.
+
+### Codex or Claude Code refuses Trajectory's plugin
+
+| What you see | Cause | What to do |
+| --- | --- | --- |
+| Setup and `trajectory doctor` say `Codex plugin hooks are off` because your Codex requirements allow only listed plugin marketplaces, and name a folder such as `/Users/example/.trajectory/codex-marketplace`. | Your OpenAI workspace's Codex requirements, or requirements from a file or an MDM profile, restrict plugin marketplaces, and Trajectory's folder is not listed. Codex still records sessions through Trajectory's MCP server and session watcher. Plugin hooks don't run. | Add the folder the message names as a `local` source, as [Allow Trajectory's plugin marketplaces in Codex and Claude Code policies](#allow-trajectorys-plugin-marketplaces-in-codex-and-claude-code-policies) shows. Then run `trajectory managed repair --scope user --yes` as the user. Background reconciliation does not retry it, because Codex still counts as set up. |
+| Claude Code setup fails with `is blocked by enterprise policy`, and the message lists `Allowed sources`. | Claude Code's `strictKnownMarketplaces` managed setting does not match `~/.trajectory/claude-marketplace`. | Add a `directory` or `pathPattern` entry that matches the folder, as the same section shows. Then run `trajectory managed repair --scope user --yes` as the user. |
 
 ### Settings wait for open sessions
 
@@ -2047,6 +2399,75 @@ To apply the settings now, run `trajectory serve restart` as the signed-in
 user. It stops every Trajectory process of that user, then starts the
 background service again.
 
+### Claude Code settings changes
+
+Setup registers the Trajectory plugin through Claude Code's own plugin
+manager. Before each plugin manager command, setup copies `~/.claude.json`
+and the `settings.json` and `settings.local.json` files in `~/.claude`, and
+in `CLAUDE_CONFIG_DIR` when it is set. After the command, setup compares
+each file.
+
+| What setup finds | What setup does | What to do |
+| --- | --- | --- |
+| Every setting the file had is still there. Values may have changed. | Keeps the change and prints a warning that names the file and each changed key. | Nothing. |
+| The file was empty before. | Keeps the settings Claude Code wrote and prints a warning that names the file. | Nothing. |
+| A setting the file had is gone. | Puts that file back byte for byte, and Claude Code setup fails with a message that names the file and the removed key. The other files keep their changes. | If the same message appears on every run, contact Datadog support and include the setup output. |
+| The file had comments or trailing commas, and the command rewrote it. | Puts the file back, because setup cannot tell what the rewrite kept. Claude Code setup fails. | Ask the user to make the file plain JSON, then run `managed repair` as the user. |
+| Setup cannot copy the file, for example a link to a missing file. | Leaves the file alone, runs the command, and prints a warning that names the file. | Ask the user to fix or remove the file. |
+
+When the Trajectory folder moved, setup removes the old Trajectory
+marketplace and adds the new one. Removing the marketplace's entry and the
+`trajectory@trajectory` plugin entry is part of that step, so it does not
+fail setup.
+
+### Client files linked by a dotfile manager
+
+Dotfile managers such as GNU Stow, chezmoi and Home Manager can replace a
+client's configuration file with a link into a dotfiles folder. Setup
+handles a linked file by what the file holds.
+
+| File | What setup does |
+| --- | --- |
+| A client's MCP server settings, such as ForgeCode's `.mcp.json` | Follows the link and edits the file it points to. Removal does the same and keeps the link. |
+| Muse Code's `~/.config/muse/settings.json` and Antigravity's `~/.gemini/config/import_manifest.json` | Follows the link only to a regular file that the user owns inside their home folder, and only when setup runs as the user. Otherwise setup stops with `refusing to write through the link <file> because <reason>`. |
+| A file or folder that Trajectory writes whole, such as a skill, a command, a hook file or a plugin folder | Never follows the link. Setup stops with `refusing to write symlinked setup target <file>` or a similar message. |
+
+When setup stops, ask the user to replace the link with a copy of the file
+it points to. For a configuration file, a link to a regular file in their
+home folder also works. Then run `managed repair` as the user.
+
+### The Trajectory folder was deleted
+
+Use this section when someone deleted `~/.trajectory` on a Mac. Deleting it
+does not remove Trajectory. The user LaunchAgent is
+in `~/Library/LaunchAgents`, so it stays installed and loaded. The next run of
+the installation script removes that LaunchAgent, prints
+`TRAJECTORY_INSTALLER_NOTICE: removed the user LaunchAgent that an installation left after ~/.trajectory was deleted`,
+and installs Trajectory again. Its own reconciliation then sets up the clients
+again.
+
+What the deletion lost stays lost:
+
+- The user's sessions and pending uploads.
+- The record of the highest profile revision. The Mac accepts any revision
+  again, including one it refused before.
+- The record of the clients that managed setup installed. Managed setup treats
+  them as clients the user set up, so it no longer removes them when you take
+  them out of the profile. To remove one, run `trajectory uninstrument <client>`
+  as the user.
+
+A Trajectory process that started before the deletion, such as the
+background service, keeps running until it exits. Ask the user to quit their
+coding agents, or restart the Mac.
+
+The script deletes the LaunchAgent only when it holds exactly what the script
+installs. An older release can leave a plist that differs. The script moves
+such a plist to `~/.trajectory/release-installer/quarantine/` and prints a
+`TRAJECTORY_INSTALLER_QUARANTINED` line for it. A
+leftover `~/.trajectory/managed/install-receipt.json` moves there too. A job
+that launchd loaded from another plist or for another program still stops the
+script with `TRAJECTORY_INSTALLER_BLOCKED reason=launchagent_failed`.
+
 ### No background service is running
 
 A coding agent starts the background service, and the service stops after
@@ -2108,6 +2529,16 @@ still runs and the reason the switch waits:
 trajectory update converge: the switch to release 0.6.1 did not finish (reason=active_sessions_deferred): serve owner pid 812 still runs release 0.6.0 (state OWNED, port 19222); the user LaunchAgent retries it
 ```
 
+When Trajectory updates itself, with update authority `trajectory`, the
+service that ran the update keeps the previous release. It switches at the
+next hook of a coding-agent session, or it stops after about 10 minutes
+without activity, which open sessions prevent. The update records the switch.
+`managed status` then reports `runtime_service_switch_pending`, or
+`runtime_service_waiting_for_sessions` while sessions are open. The user
+LaunchAgent retries the switch 2 minutes after an update, and at its next run,
+which comes every minute, after a rollback. You do not need to run the
+installer again.
+
 | Reason | State | Next step | What to do |
 | --- | --- | --- | --- |
 | `runtime_service_switching` | `blocked` | `wait_for_runtime_switch` | Nothing. The service is switching to the installed release now. Run `managed status` again in a minute. |
@@ -2122,6 +2553,19 @@ another build of the installed version also counts as not current. The
 `service:` line then says "another build". A service from a release that does
 not report its build is compared by version. The runtime layer then stays
 `compliant` with reason `runtime_service_version_only`.
+
+A background service that an earlier installation started can keep the
+capture port after that installation is gone. A `replace_untrusted`
+installation can leave it, when the personal installation it replaces still
+runs its service. Deleting `~/.trajectory` and installing again can leave it
+too. Releases before the serve
+coordinator never register their service, so the new installation cannot
+switch it. Coding-agent setup then reports that capture did not become ready
+in time. As the user, `trajectory doctor` reports
+`A background service this installation did not start holds the capture port`
+and names the service's process ID and version. Ask the user to quit every
+coding-agent session and then sign out of macOS and back in, or restart the
+Mac. The next coding-agent session starts the installed release.
 
 With no background service running, the runtime layer checks only the
 installed binary.
@@ -2140,12 +2584,61 @@ network or intake outage does not trip the check.
 | `publish_delivery.status` | `reason` | What to do |
 | --- | --- | --- |
 | `publishing` | | Nothing. Datadog accepted a send in the last 15 minutes. |
-| `starting` | | Nothing. The service started less than 15 minutes ago and has not had a send accepted yet. |
+| `starting` | | Nothing. The service started less than 15 minutes ago and has not had a send accepted yet. An in-place update counts as a start: a send accepted before it does not count for the new build. When the proxy refuses a send, the service reports `not_publishing` at once. When sends fail at least three times in a row over two minutes, because this build may not read the key's keychain item or because of a rejection such as HTTP 403, it reports `not_publishing` without waiting. A locked keychain, a key that is not stored yet, or refused metric data (HTTP 400, 413 or 422) can recover on its own, so the service waits out the 15 minutes. |
 | `no_destination` | | Nothing, unless you expect data. No destination is set to receive metrics, for example because metrics are off. |
 | `idle` | | Nothing. The destination receives only session and operational metrics, not the service's own every-minute metrics, and nothing was due to it in the last 15 minutes. |
 | `not_publishing` | `config_load_degraded` | The configuration did not load when the service started, so it runs on built-in defaults. Run `trajectory doctor`, fix the configuration problem it names, then run `trajectory serve restart`. |
 | `not_publishing` | `no_accepted_send` | Sends were due, and Datadog accepted none. When the check names the Datadog credentials as the cause, fix the key first; see [API keys were not stored](#api-keys-were-not-stored). |
+| `not_publishing` | `proxy_unreachable` | A send failed because the proxy it goes through refused the connection, and Datadog accepted nothing since. `cause` names the proxy, for example `proxy unreachable 127.0.0.1:50200`, and `egress_proxy` says whether the service may go around it. The proxy comes from `HTTPS_PROXY`, `HTTP_PROXY` or `ALL_PROXY` in the environment the service started in. Start that proxy, or restart the service from an environment without it. See `inherited_proxy_direct_fallback` in [Feature Flags](FEATURE-FLAGS.md). |
+| `not_publishing` | `keychain_authorization` | A keychain item holds the API key, but this build may not read it without a macOS prompt. As the signed-in user, run the `trajectory config set-secret` command that `trajectory doctor` prints in Terminal, and enter the key. It names the keychain account the service reads. |
+| `not_publishing` | `keychain_locked` | The keychain that holds the API key is locked. Unlock it by running `trajectory config secrets` in an interactive terminal as the signed-in user. |
+| `not_publishing` | `keychain_missing` | The API key's keychain item, or the user's keychain, is missing. Store the key with the `trajectory config set-secret` command that `trajectory doctor` prints. |
+| `not_publishing` | `credentials_unavailable` | The API key could not be read for another reason, such as a failed key command. Fix the key source that the "Datadog credentials" check in `trajectory doctor` names. |
+| `not_publishing` | `network` | Sends got no answer from the Datadog intake. Check that the machine reaches the intake that `trajectory ps --json` shows for each destination. |
+| `not_publishing` | `intake_rejected` | Datadog answered without accepting the data. `last_failure.http_status` gives the answer. For 401 or 403, check the destination's API key and site. For 400, 413 or 422, Datadog refused the metric data itself, so a new key does not help. The service sets those rows aside. |
 | `not_publishing` | `no_send_attempted` | A destination is set, but the service sent nothing. Run `trajectory doctor logs --grep "publish delivery"`, then `trajectory serve restart`. |
+
+`publish_delivery.destinations` has one entry for each Datadog destination
+that a send was due for. Each entry names the destination and how its sends
+travel:
+
+- `network_path` is `direct`, `proxy` or `local`. With `proxy`, `proxy` gives
+  the proxy's host and port. `local` means a loopback address, such as a local
+  Agent. While the service goes around a refused proxy (`egress_proxy.state`
+  is `direct_fallback`), the path is `direct`.
+- `last_accepted_at` is the newest send that Datadog accepted.
+- `last_failure` is the newest send that failed. Its `error_class` is
+  `credentials_unavailable`, `proxy_unreachable`, `network` or
+  `intake_rejected`.
+- `http_status` gives the intake's answer. `consecutive` counts the sends in a
+  row that failed since the last accepted one.
+- For `credentials_unavailable`, `detail` is the key's state as
+  `trajectory config secrets` prints it, such as `keychain_locked`.
+
+`publish_delivery.last_failure` repeats the newest failure across all
+destinations, with its `destination`.
+
+When a failed send says why the service is not publishing, `reason` names
+that cause instead of `no_accepted_send`, such as `keychain_locked`,
+`network` or `intake_rejected`. The managed endpoint contract lists every
+reason in its runtime delivery table. The same verdict and reason appear in
+four places:
+
+- `trajectory ps --json` gives each service a `delivery` object.
+- `trajectory status` prints a `Datadog delivery:` line, and its JSON has a
+  `delivery` object.
+- The "Datadog delivery" check in `trajectory doctor` starts its headline with
+  "Not publishing:" and puts the reason in its `reason` field.
+- `trajectory managed status` reports `runtime.delivery`.
+
+Each service also writes this state to `state/delivery/serve-<pid>.json` in
+its Trajectory home, `~/.trajectory` by default. The file stays after the
+service stops. An in-place update keeps it too. So the last accepted send and
+the last failure can still be read. `exec_accepted_at` is the newest send
+that Datadog accepted from the build running now. An in-place update starts it
+empty, so it never shows the previous build's send. `previous_execs` lists the
+builds the process ran before an in-place update. When a service starts, it removes the
+files that were last written more than 14 days ago.
 
 ### API keys were not stored
 
@@ -2255,7 +2748,7 @@ for every state and the `--json` output.
 ### Script messages and exit codes
 
 <!-- BEGIN SCRIPT MESSAGES -->
-<!-- A contract test checks every line the bundle's scripts print against this table. -->
+<!-- A contract test checks every result token the bundle's scripts print, and the exit code after it, against this table. -->
 
 Each script run prints one result line, and that line decides the exit code.
 Jamf Pro and Intune record exit code 0 as a success and any other code as a
@@ -2285,42 +2778,46 @@ step.
 | `TRAJECTORY_INSTALLER_BLOCKED reason=processes_running` | `installer.sh` | 1 | This user's Trajectory processes or client setup are still running. For `clean_reinstall`, ask the user to quit their coding sessions. Then run the script again. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=client_cleanup_failed` | `installer.sh` | 1 | `remove` could not remove a client's integration, so it kept the binary and the LaunchAgent and stopped. Capture stays off. The line before names the client. As the user, run `trajectory doctor`, fix that client's configuration, then run the `remove` script again. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=update_before_remove` | `installer.sh` | 1 | The signed-in user runs Trajectory 0.6.1-beta or earlier, which `remove` cannot remove safely. The script changed nothing. Run the `update` script for a newer release, then the `remove` script for that release. If Trajectory's own updater selects the binary, change the delegated deployment policy instead, then run the same `remove` script again. |
-| `TRAJECTORY_INSTALLER_BLOCKED reason=owned_path_unsafe` | `installer.sh` | 1 | A path the script owns, such as `~/.trajectory` or a file in it, is a symbolic link, belongs to another user, is writable by others, has an access control entry, or is a hard link. The script never changes these itself. Check the path with `ls -lde`, fix its owner, mode or access control entry, then run the script again. |
+| `TRAJECTORY_INSTALLER_BLOCKED reason=owned_path_unsafe` | `installer.sh` | 1 | A path the script owns, such as `~/.trajectory` or a file in it, is a symbolic link, belongs to another user, is writable by others, has an access control entry, or is a hard link. The line ends with the path, such as `symlink at owned path: ~/.trajectory`. The script never changes these itself. Check the path with `ls -lde`, fix its owner, mode or access control entry, then run the script again. An entry in `~/.trajectory/bin` under a name that no release writes, or a client command that setup writes, never stops the script. It gets a `TRAJECTORY_INSTALLER_WARNING` line instead. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=owned_path_not_directory` | `installer.sh` | 1 | A folder the script owns, usually `~/.trajectory`, is a file or a link that points nowhere. The script never moves user files. Ask the user to move it aside, for example with `mv ~/.trajectory ~/.trajectory.moved`, then run the script again. If `mv` fails, run `ls -ldO ~/.trajectory`: a `uchg` or `schg` flag makes the file immutable. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=parent_acl_unsafe` | `installer.sh` | 1 | An access control entry on `~/Library` or `~/Library/LaunchAgents` allows more than read access, or macOS did not list it completely. Remove that entry, then run the script again. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=download_failed` | `installer.sh` | 1 | The Mac could not download the Trajectory binary. The line names the last failure and what to check. The script retries network failures and HTTP 408, 425, 429 and 5xx responses first. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=binary_size` | `installer.sh` | 1 | The downloaded or staged binary is larger than the bundle allows, or its size could not be read. A proxy or captive portal may have answered instead of GitHub. Check the Mac's network, then run the script again. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=binary_digest_mismatch` | `installer.sh` | 1 | The binary's checksum differs from the one in the bundle. For a download, a proxy may have changed the file. For an existing personal installation, see [Check a Mac that already runs Trajectory](#check-a-mac-that-already-runs-trajectory). The script changed nothing. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=signature_invalid` | `installer.sh` | 1 | The binary failed Apple's code signature checks: Developer ID, Team ID, hardened runtime or secure timestamp. The script installed nothing. Check that the bundle came from a Trajectory release, then generate it again. |
-| `TRAJECTORY_INSTALLER_BLOCKED reason=notarization_rejected` | `installer.sh` | 1 | Gatekeeper rejected the binary or found no notarization for it. The script installed nothing. Check that the bundle came from a Trajectory release, then generate it again. |
-| `TRAJECTORY_INSTALLER_BLOCKED reason=notarization_unreachable` | `installer.sh` | 1 | Apple did not answer the notarization check, so the script installed nothing. Allow the Mac to reach `api.apple-cloudkit.com`, then run the script again. |
-| `TRAJECTORY_INSTALLER_BLOCKED reason=gatekeeper_disabled` | `installer.sh` | 1 | Gatekeeper assessments are turned off, so macOS cannot confirm that the binary is notarized. The script installed nothing. Turn Gatekeeper assessments back on, then run the script again. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=architecture_mismatch` | `installer.sh` | 1 | The binary does not run on this Mac's processor: `arm64` on an Intel Mac, `amd64` on Apple Silicon without Rosetta, or an architecture that could not be read. The script changed nothing. Generate the bundle again with `--architecture universal`, or install Rosetta. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=version_mismatch` | `installer.sh` | 1 | The binary did not report the bundle's version or source commit. The script installed nothing. Generate the bundle again from the same release. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=profile_incompatible` | `installer.sh` | 1 | This release does not support the configuration profile that this Mac already has. Select a release that supports it. Never reset `device-profile-state.json`. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=test_build_invalid` | `installer.sh` | 1 | The bundle points at a binary that is not a published release, and the script cannot use it: the file is missing, has no provenance record, or is at a path or address the script does not accept. Generate the bundle again from a published release. |
-| `TRAJECTORY_INSTALLER_BLOCKED reason=personal_installation` | `installer.sh` | 1 | The existing personal installation cannot be adopted or migrated the way the bundle's migration mode asks. See [Check a Mac that already runs Trajectory](#check-a-mac-that-already-runs-trajectory). |
+| `TRAJECTORY_INSTALLER_BLOCKED reason=personal_installation` | `installer.sh` | 1 | The existing personal installation cannot be adopted or migrated the way the bundle's migration mode asks. See [Check a Mac that already runs Trajectory](#check-a-mac-that-already-runs-trajectory). If the line names `~/.trajectory/bin/trajectory.old` or `trajectory.new` as left from an unfinished update, an older release's self-update stopped partway. Move only that file out of `~/.trajectory/bin`, then run the script again. A `trajectory.candidate` or `trajectory.candidate.download` left with no `trajectory.update-activation.json` does not stop the script: it moves them to its quarantine folder and prints `TRAJECTORY_INSTALLER_QUARANTINED`. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=interrupted_operation` | `installer.sh` | 1 | An earlier operation stopped partway. Run the `recover` script for the same release, or rerun the install when the line says so. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=wrong_operation` | `installer.sh` | 1 | The script's operation or release does not match what is installed. For example, installing a different release needs the `update` script. Run the script for the operation and release that this Mac needs. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=downgrade_refused` | `installer.sh` | 1 | The update script's release is older than the installed one, so the script changed nothing. Take that update script out of scope. To move back on purpose, see [Roll back](#roll-back). |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=installed_release_older` | `installer.sh` | 1 | The user runs a release older than the `install` script's own. `install` never replaces an installed release, so it left that release in place, restored its missing files, and did not report success. Run the `update` script for the same release, `update/installer.sh` in its bundle. Later runs of the `install` script then succeed. If the line says Trajectory owns binary selection, the `update` script refuses too: change the delegated deployment policy instead. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=installation_incomplete` | `installer.sh` | 1 | Installed files, their modes or the LaunchAgent are missing or changed. Run the `repair` script for the installed release. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=delegated_policy` | `installer.sh` | 1 | Trajectory's own updater selects the binary on this Mac. Change the delegated deployment policy instead of running `update` or `rollback`. |
-| `TRAJECTORY_INSTALLER_BLOCKED reason=launchagent_failed` | `installer.sh` | 1 | The script could not check, stop or start the user LaunchAgent, or found an unknown one loaded. Run the script again. If it stops the same way, run `launchctl print gui/$(id -u)/com.datadoghq.trajectory.managed-reconcile` as the user. |
-| `TRAJECTORY_INSTALLER_BLOCKED reason=binary_directory_unknown` | `installer.sh` | 1 | `~/.trajectory/bin` holds a file or folder that this script does not know. A script from an older release stops this way after setup writes client commands. Generate the bundle again with a current release. |
-| `TRAJECTORY_INSTALLER_BLOCKED reason=codex_hook_runtime_invalid` | `installer.sh` | 1 | Codex setup wrote files under `~/.trajectory/bin/codex-hook` that this script does not recognize. A script from an older release than the installed Trajectory stops this way. Generate the bundle again with a current release. The script never changes these files. |
+| `TRAJECTORY_INSTALLER_BLOCKED reason=launchagent_failed` | `installer.sh` | 1 | The script could not check, stop or start the user LaunchAgent, or found an unknown one loaded. Run the script again. If it stops the same way, run `launchctl print gui/$(id -u)/com.datadoghq.trajectory.managed-reconcile` as the user. If the line says `unknown loaded LaunchAgent identity`, another program runs under Trajectory's label. |
+| `TRAJECTORY_INSTALLER_BLOCKED reason=binary_directory_unknown` | `installer.sh` | 1 | A file in `~/.trajectory/bin` that the script or Trajectory's updater writes or runs has the wrong type, such as a folder named `runtime-selection.json`, a `releases` entry that is not a folder, or a retained release image that is not a regular file. The line names the path. With `replace_untrusted`, it can also mean that the script cannot read, list or name an entry it would move aside. The script changed nothing. Move only the named entry out of `~/.trajectory/bin`, then run the script again. Do not delete `~/.trajectory`: it holds the user's settings, credentials and captured sessions. |
 | `TRAJECTORY_INSTALLER_BLOCKED reason=restore_refused` | `installer.sh` | 1 | Restoring the replaced personal installation stopped because its files changed after they were moved. The script left both copies in place. Compare `~/.trajectory` with `~/.trajectory/release-installer/quarantine/` before you move anything. If the line says `retry`, run the script again. |
-| `TRAJECTORY_INSTALLER_BLOCKED reason=state_invalid` | `installer.sh` | 1 | The installer's own records in `~/.trajectory/release-installer` are damaged or were edited. Do not delete them. Run the `recover` script for the installed release. If it stops the same way, send the output of `ls -laR ~/.trajectory/release-installer` to Trajectory support. |
+| `TRAJECTORY_INSTALLER_BLOCKED reason=state_invalid` | `installer.sh` | 1 | The installer's own records in `~/.trajectory/release-installer` are damaged or were edited, or a file the script installs is at a path its records do not cover. The line names that path. Do not delete them. Run the `recover` script for the installed release. If it stops the same way, send the output of `ls -laR ~/.trajectory/release-installer` to Trajectory support. If someone deleted parts of `~/.trajectory`, see [The Trajectory folder was deleted](#the-trajectory-folder-was-deleted). |
 | `TRAJECTORY_SETUP_PENDING: installation verified` | `installer.sh` | - | Installed, but user setup did not finish. The user LaunchAgent retries setup at login and every minute, and less often after repeated identical failures; see [Background reconciliation failures](#background-reconciliation-failures). The run ends with `TRAJECTORY_INSTALLER_OK`. |
 | `TRAJECTORY_SETUP_PENDING reason=<reason>: installation verified` | `installer.sh` | - | Installed, but this Mac refused the configuration profile. Its revision is not higher than one the Mac already received. The line ends with the revision to deploy, such as `Generate the profile with --profile-revision 3 or higher and deploy it`. Setup runs when that profile arrives. See [Re-add a removed profile](#re-add-a-removed-profile). The run ends with `TRAJECTORY_INSTALLER_OK`. |
 | `TRAJECTORY_RUNTIME_PENDING: installation verified` | `installer.sh` | - | Installed, but the background service still runs the previous release. The user LaunchAgent retries the switch after 2 minutes, then at intervals that double up to one hour, unless managed setup is paused. You do not need to run the script again, unless the line ends with `rerun the installer to retry runtime convergence`. Until the switch, `managed status` reports the runtime layer as not compliant. See [The background service runs an older release](#the-background-service-runs-an-older-release). The run ends with `TRAJECTORY_INSTALLER_OK`. |
 | `TRAJECTORY_INSTALLER_NOTICE: <text>` | `installer.sh` | - | Information, such as a download retry, a command stopped at its time limit, a quarantine folder, a root-owned file, or a macOS version that `sw_vers` did not print. |
+| `TRAJECTORY_INSTALLER_NOTICE: removed the user LaunchAgent that an installation left after ~/.trajectory was deleted` | `installer.sh` | - | Someone deleted `~/.trajectory`, which left the user LaunchAgent with no installation. The script removed it and installs Trajectory again in the same run. See [The Trajectory folder was deleted](#the-trajectory-folder-was-deleted). |
 | `TRAJECTORY_INSTALLER_NOTICE: kept installed release <version>` | `installer.sh` | - | The user already had a newer release. `install` checked it and left it in place. Use an `update` or `rollback` script to change it. |
 | `TRAJECTORY_INSTALLER_NOTICE: another trajectory command at <path>` | `installer.sh` | - | A `trajectory` command that is not this installation is in `/opt/homebrew/bin`, `/opt/local/bin`, `~/.local/bin`, `~/bin`, `~/.bin` or `~/go/bin`, usually a manual copy or a source build. A shell that finds it first runs it instead of `~/.trajectory/bin/trajectory`. Managed setup writes `~/.trajectory/bin/trajectory` into the client hooks it manages. Ask the user to remove the other command. The script never runs or removes it. |
+| `TRAJECTORY_INSTALLER_WARNING reason=<code>: <text>` | `installer.sh` | - | The script left an entry in place and carried on. The line names the entry and the next step. The rows that follow give each code. |
+| `TRAJECTORY_INSTALLER_WARNING reason=binary_entry_unknown` | `installer.sh` | - | `~/.trajectory/bin` holds a file, folder or link under a name that no Trajectory release writes, such as `unknown binary directory entry: ~/.trajectory/bin/trajectory-studio`. Older installations and interrupted writes leave entries like this. The script never reads, runs or changes it. Shells can run commands from `~/.trajectory/bin`, so ask the user whether they need it, and move it out of that folder if not. A first installation with `replace_untrusted` moves these entries aside for you; see [Check a Mac that already runs Trajectory](#check-a-mac-that-already-runs-trajectory). |
+| `TRAJECTORY_INSTALLER_WARNING reason=client_command_unexpected` | `installer.sh` | - | A client command that setup writes in `~/.trajectory/bin`, such as `cursor-incognito` or the `claude` link, is not in the form setup writes it. For example, it is a folder, a symbolic link, writable by other users, or owned by another account. The line names the entry. The script never runs or changes it. Remove it unless the user made it on purpose. Setup writes it again when it configures that client. |
+| `TRAJECTORY_INSTALLER_WARNING reason=release_entry_unknown` | `installer.sh` | - | `~/.trajectory/bin/releases`, where Trajectory's updater keeps earlier releases for rollback, holds an entry that the updater does not write, such as `unknown runtime release entry: ~/.trajectory/bin/releases/notes.txt`. The updater never runs it, and the script never reads or changes it. Remove it unless the user needs it. |
+| `TRAJECTORY_INSTALLER_WARNING reason=codex_hook_runtime_unknown` | `installer.sh` | - | Codex setup wrote files under `~/.trajectory/bin/codex-hook` that this script does not recognize. The line says which part differs. A script from an older release than the installed Trajectory prints this for a newer layout. The script never runs, repairs or removes these files. Generate the bundle again with a current release. A link, another owner, a writable path or an access control entry there still stops the script with `owned_path_unsafe`. |
+| `TRAJECTORY_INSTALLER_WARNING reason=installer_leftover` | `installer.sh` | - | `verify` found a file that an interrupted run left, such as `<path>.trajectory-installer-tmp`, or a loaded LaunchAgent with nothing installed. `verify` changes nothing, so it only names it. The next `install`, `update`, `repair` or `recover` script moves the file to `~/.trajectory/release-installer/quarantine/`, or unloads the job. |
 | `TRAJECTORY_INSTALLER_RETIRED: <text>` | `installer.sh` | - | The script removed a root-owned `~/.trajectory/selfupdate.conf` that an earlier root-run installation left. The line says where it kept the record and whether it kept the install owner; see [Files left by an earlier root-run installation](#files-left-by-an-earlier-root-run-installation). |
 | `TRAJECTORY_INSTALLER_LOCK_WAIT: waited <seconds>s for the <lock>` | `installer.sh` | - | Another installer run or the user LaunchAgent held the installation lock, or a Trajectory update held the binary update lock. |
 | `TRAJECTORY_INSTALLER_UNTRUSTED: the personal binary failed adoption` | `installer.sh` | - | With `replace-untrusted`, the existing binary failed the checks. The script replaces it without running it. |
-| `TRAJECTORY_INSTALLER_QUARANTINED: <path>` | `installer.sh` | - | The script moved this file to `~/.trajectory/release-installer/quarantine/`. |
+| `TRAJECTORY_INSTALLER_UNTRUSTED: ~/.trajectory/bin holds entries no release writes` | `installer.sh` | - | With `replace-untrusted`, the binary passed the checks, but `~/.trajectory/bin` holds entries that an older installation left. The script replaces the installation without running anything and moves those entries aside. |
+| `TRAJECTORY_INSTALLER_QUARANTINED: <path>` | `installer.sh` | - | The script moved this file, folder or link to `~/.trajectory/release-installer/quarantine/`. A link's line ends with `-> <target>`. A line that ends with a reason, such as `temporary output left without its transaction`, names a file an interrupted run or an earlier installation left. Nothing moves it back. Managed updates delete these folders 30 days later. The script sets nothing aside that holds a link or that would leave more paths there than managed updates accept. It stops instead and names the path. |
 | `TRAJECTORY_INSTALLER_RESTORING: replacement stopped before commit` | `installer.sh` | - | The replacement failed after a `TRAJECTORY_INSTALLER_BLOCKED` line. The script moves the old installation back, and the run exits 1. |
 | `TRAJECTORY_INSTALLER_RESTORED: the personal installation is back at its original paths` | `installer.sh` | - | The old installation is back at its original paths. |
 | `TRAJECTORY_RECONCILE_PENDING: no graphical user is signed in` | `reconcile-current-user.sh` | 0 | Nobody was signed in. Setup did not run, and no API keys were stored. A later run after the user signs in finishes it. |
@@ -2329,6 +2826,8 @@ step.
 | `TRAJECTORY_RECONCILE_BLOCKED: the signed-in user has no ~/.trajectory/bin/trajectory` | `reconcile-current-user.sh` | 1 | Trajectory is not installed for this user. Check the result line of `installer.sh`. |
 | `TRAJECTORY_RECONCILE_BLOCKED: ~/.trajectory/bin/trajectory rejected 'managed reconcile --scope profile'` | `reconcile-current-user.sh` | 1 | The installed release is older than the script. Check the result line of `installer.sh`. |
 | `TRAJECTORY_RECONCILE_FAILED: state=failed reason=<reason> next_step=<next_step>. This Mac refused the configuration profile` | `reconcile-current-user.sh` | 1 | The profile's revision is not higher than one the Mac already received. Setup did not run, and no API keys were stored. The `managed reconcile:` line from Trajectory names the revision to deploy. See [Re-add a removed profile](#re-add-a-removed-profile). |
+| `TRAJECTORY_RECONCILE_FAILED: state=failed reason=<reason> next_step=<next_step>. This Mac has more than one Trajectory configuration profile` | `reconcile-current-user.sh` | 1 | Profiles of two or more deployments are installed, and the Mac cannot tell which one to apply: two of them share the highest revision with different settings, or this release cannot read one of them. The Mac keeps the settings it applied before. Setup did not run, and no API keys were stored. The `managed reconcile:` line names the profiles. See [Move a Mac to another deployment](#move-a-mac-to-another-deployment). |
+| `TRAJECTORY_RECONCILE_WARNING: reason=configuration_profiles_overlap` | `reconcile-current-user.sh` | - | Profiles of two or more deployments are installed. The Mac applies the one with the highest revision, and the run goes on. Remove the other deployments' profiles from the Mac's scope. The `managed reconcile:` line names each profile. |
 | `Managed user reconciliation is administratively paused` | `reconcile-current-user.sh` | 0 | An administrator paused managed setup. Do not reinstall. |
 | `Unable to resolve the signed-in user's identity and home` | `reconcile-current-user.sh` | 1 | macOS did not return a usable account or home folder for the signed-in user. |
 | `Trajectory managed user status could not be collected` | `reconcile-current-user.sh` | 1 | `trajectory managed status` failed. Run it as the user to see why. |
@@ -2444,8 +2943,10 @@ The installer limits how long each command it runs can take:
 
 - 30 seconds for the Trajectory version and compatibility checks, `launchctl`,
   `lipo` and `codesign --display`.
-- 60 seconds for `codesign --verify` and `spctl --assess`, and for the wait
-  for client setup to finish before a removal.
+- 30 seconds for recording that the background service still has to switch to
+  the new version.
+- 60 seconds for `codesign --verify`, and for the wait for client setup to
+  finish before a removal.
 - 120 seconds for user reconciliation, and 120 seconds for the switch to the
   new version.
 - 600 seconds for the client cleanup that removal runs before it deletes the
@@ -2478,12 +2979,14 @@ nothing. Generate the bundle again with a release that has the fix.
 Setup writes client commands into `~/.trajectory/bin`. Cursor, Goose,
 OpenHands, Cline, Amp Code, Kiro CLI, Grok Build, and each
 [shim client](#the-shim-exception) get an incognito command. Shim clients also
-get launcher wrappers. The script accepts these files only as the user's own
-regular files that only the user can write. It never runs or removes them, and
-it refuses any other entry there. A script from an older release stops with
+get launcher wrappers. The script expects each one to be a regular file that
+the user owns and only the user can write. It never runs or removes these
+files. It leaves one in another form, and any other entry there, in place with
+a `TRAJECTORY_INSTALLER_WARNING` line that names it. A script from an older
+release stops with
 `TRAJECTORY_INSTALLER_BLOCKED reason=binary_directory_unknown: unknown binary directory entry` on every run
 after setup writes one of these files. The script changed nothing. Generate the
-bundle again with a release that has the fix.
+bundle again with a current release.
 
 ### Background reconciliation failures
 
@@ -2528,59 +3031,31 @@ has installed the LaunchAgent.
 
 ### Apple notarization checks
 
-Before the installation script runs a downloaded binary, it asks macOS
-Gatekeeper whether Apple notarized it. Trajectory's updater asks the same
-question before it switches to a new release. A Trajectory release is a single
-file, so it cannot carry its notarization ticket. Gatekeeper gets the ticket
-from Apple over the network. If the check fails, the script installs nothing
-and exits with code 1, and the updater keeps the current release.
+Datadog confirms with Apple that each published macOS binary is notarized
+before it publishes the release. The release's checksum file names that
+binary's SHA-256.
 
-#### Allow the Apple hosts
+Before the installation script runs a downloaded binary, it checks that the
+binary's SHA-256 matches the release's checksum. It then checks Datadog's
+Developer ID signature: Datadog's Team ID, the hardened runtime and a secure
+timestamp. Trajectory's updater makes the same checks before it switches to a
+new release. If a check fails, the script installs nothing and exits with
+code 1, and the updater keeps the current release.
 
-Allow each Mac to reach the hosts below. Apple lists them in
-[Use Apple products on enterprise networks](https://support.apple.com/en-us/101555).
-`api.apple-cloudkit.com` serves the notarization ticket. The others serve
-certificate validation, which checks that the signing certificate is not
-revoked.
+The checksum ties the binary to the release that Datadog checked with Apple.
+So neither the script nor the updater asks Apple's notarization service from
+the Mac. You do not need to allow Apple's notarization host or exempt it from
+HTTPS inspection, and Gatekeeper's setting does not affect installation or
+updates.
 
-| Host | Port | Apple's description |
-| --- | --- | --- |
-| `api.apple-cloudkit.com` | 443 | App notarization |
-| `ocsp.apple.com` | 80 | Certificate validation |
-| `ocsp2.apple.com` | 443 | Certificate validation |
-| `crl.apple.com` | 80 | Certificate validation |
-| `valid.apple.com` | 443 | Certificate validation |
-| `certs.apple.com` | 80, 443 | Certificate validation |
-
-If Apple does not answer within 60 seconds, the script prints this line, and
-the updater reports `managed update Apple notarization check did not finish
-within 60 seconds`. Allow the hosts, then run the script again.
-
-```text
-TRAJECTORY_INSTALLER_BLOCKED reason=notarization_unreachable: Apple notarization check did not finish within 60 seconds; allow this Mac to reach api.apple-cloudkit.com, then rerun
-```
-
-#### Keep Gatekeeper assessments turned on
-
-When Gatekeeper assessments are turned off, Gatekeeper accepts every binary
-without checking it, so it cannot confirm notarization. Trajectory does not
-install or update without that check. The script prints this line, and the
-updater reports `managed update Gatekeeper assessments are turned off`.
-
-```text
-TRAJECTORY_INSTALLER_BLOCKED reason=gatekeeper_disabled: Gatekeeper assessments are turned off, so Apple notarization cannot be checked; turn them back on, then rerun
-```
-
-To check the setting, run `spctl --status` on the Mac. It prints
-`assessments enabled` or `assessments disabled`. To turn assessments back on:
-
-- If a configuration profile from your MDM turns Gatekeeper off, change or
-  remove that setting in the profile.
-- Otherwise, open **System Settings > Privacy & Security**. Under **Allow
-  applications from**, choose **App Store & Known Developers** (**App Store
-  and identified developers** on macOS 14 and earlier).
-
-When `spctl --status` prints `assessments enabled`, run the script again.
+Scripts and updaters from earlier releases asked Apple from the Mac. That
+lookup fails behind an HTTPS-inspection proxy, without a network path to Apple,
+or with Gatekeeper assessments turned off. Then an earlier script stops with
+`TRAJECTORY_INSTALLER_BLOCKED reason=notarization_rejected`,
+`notarization_unreachable` or `gatekeeper_disabled` and installs nothing.
+Generate the bundle again with a current release. A Mac that runs an earlier
+release behind HTTPS inspection can also refuse its own automatic updates.
+Assign it the `update` script from a current release.
 
 ### Metrics stay on the computer
 
@@ -2645,12 +3120,13 @@ completion.
 | `migration_mode` | 1 | See [Choose how to migrate existing installations](#choose-how-to-migrate-existing-installations). |
 | `tags` | 1 | Up to 64 tags that Trajectory adds to managed telemetry. Never put secrets in tags. |
 | `destinations` | 2 | Required from version 2. Jamf Pro on macOS only. |
-| `organization_sync` | 3 | Your remote configuration source. Required from version 4. |
+| `organization_sync` | 3 | Your remote configuration source. Required from version 4. With a remote `config.defaults.yaml`, its file list, `markers_path`, and interval are starter values. |
 | `cohort` | 3 | A cohort name for these users. Needs `organization_sync`. |
 | `sensitivity_scanning` | 3 | Removed. Accepted and ignored. See [Removed sensitivity settings](#removed-sensitivity-settings). |
 | `binary_update` | 4 | See [Choose who controls updates](#choose-who-controls-updates). |
 | `client_command_shims` | 5 | Launcher wrappers for `claude`, `codex`, and `copilot`. |
-| `auto_instrument`, `task_segmentation`, `features` | 5 | See [Organization settings](#organization-settings-schema-version-5). |
+| `auto_instrument`, `features` | 5 | See [Organization settings](#organization-settings-schema-version-5). |
+| `task_segmentation` | 5 | Read only by releases older than 0.6.1, such as `enabled: false` to turn their segmentation off. Current releases ignore it. |
 | `security_modules` | 5 | First configuration of security modules. |
 | `identity` | 5 | `user_email_suffix`, your email domain for user identity. |
 | `publish_trust`, `pricing`, `historical_replay`, `user_guide_overrides` | 5 | Advanced settings. See the [settings reference](MANAGED-ENDPOINT-SETTINGS.md#settings). |
@@ -2669,7 +3145,8 @@ completion.
 | `incognito_exempt` | `true` lets the destination receive data in incognito mode. Needs `level` `full` and markers off. |
 | `markers`, `operational_logs`, `tags` | Marker, log, and tag settings. See the JSON Schema. |
 | `privacy` | Removed. Accepted and ignored. See [Removed sensitivity settings](#removed-sensitivity-settings). |
-| `service`, `segmentation`, `module_spans` | Version 5. Service name, segmentation output, and module spans. |
+| `service`, `module_spans` | Version 5. Service name and module spans. |
+| `segmentation` | Version 5. Read only by releases older than 0.6.1. Current releases ignore it. |
 | `agent_security` | Version 5. `metrics`, `findings`, and `disclosure_profile`. |
 | `event_stream` | Version 5. `enabled` and `privacy_profile` (`security` or `full`). Needs `incognito_exempt`. |
 | `ai_usage` | Version 5. `enabled` and an optional HTTPS `endpoint`. Not allowed with `incognito_exempt`. |
@@ -2677,6 +3154,31 @@ completion.
 
 Put AI Usage on a separate destination from Agent Security findings and the
 event stream. The `full` event stream profile includes private fields.
+
+#### What the destination settings send
+
+| Setting | What it controls on this destination |
+| --- | --- |
+| `level` | LLM Observability spans. `off` sends no spans. |
+| `markers.enabled` and `markers.metrics` | Marker metrics. |
+| `markers.enabled` and `markers.logs` | Marker event logs. |
+| `markers.metrics: false` | Also stops turn and session metrics. `trajectory publish status` then shows `metrics disabled` for the destination. Session start counts and deployment heartbeats still go. |
+| `agent_security` | Agent Security metrics and findings. |
+| `operational_logs` | Operational log events. |
+| `tags` | Tags added to this destination's spans and metrics. |
+
+The operational dashboard counts a computer from its deployment heartbeats,
+`trajectory.ops.binary.heartbeat` and `trajectory.ops.convergence.heartbeat`.
+No marker setting controls them. Each computer sends them once an hour to every
+Datadog destination that takes metrics. A destination receives them while
+`export.metrics` is on, which is the default, or while its marker metrics are
+on. Incognito mode stops them.
+Heartbeats carry the intent's `tags` and the destination's `tags`, so a
+dashboard filtered by those tags includes them.
+
+When no destination can take a heartbeat, the computer retries every 10
+minutes. Its serve log says `deployment heartbeat: not sent` at most once an
+hour.
 
 ### Removed sensitivity settings
 
@@ -2735,13 +3237,20 @@ disagree. An older release does not.
 }
 ```
 
-`config_source` must use HTTPS. `sync_interval_seconds` is 60 to 86400. From
-version 4, `files` lists up to 8 files to sync. Supported names are
+`config_source` must use HTTPS. `sync_interval_seconds` is 60 to 86400.
+Computers sync at least once every 14400 seconds, and `validate` warns about a
+longer interval. From
+version 4, `files` lists up to 9 files to sync. Supported names are
 `markers.yaml`, `pricing.yaml`, `provider-pricing.yaml`,
 `model-equivalence.yaml`, `cohort.yaml`, `RELEASES.json`, `deployment.json`,
-and `config.defaults.yaml`. To approve releases with `RELEASES.json`, see
+`config.defaults.yaml`, and `custom-pricing.yaml`. To approve releases with
+`RELEASES.json`, see
 [Approve releases with `RELEASES.json`](#approve-releases-with-releasesjson).
 This guide does not describe `deployment.json`.
+
+`custom-pricing.yaml` is your organization's custom rate card: prices for your
+organization that apply on top of the default rate card. Computers download it
+only when `files` names it. They check the whole file before they install it.
 
 Computers download each file from a `latest/` folder next to its path. For
 example, `rules/markers.yaml` comes from
@@ -2770,8 +3279,15 @@ Computers download the files every `sync_interval_seconds`. When a new profile
 changes `config_source` or `files`, computers do not wait for the interval.
 The background service downloads from the new source or file list when it
 applies the profile, or when it next starts. If a download fails, it tries
-again after 1 minute. The wait then doubles after each failure, up to
-`sync_interval_seconds`.
+again after 1 minute. The wait then doubles after each failure, up to the
+interval in effect. To download the files at once on one computer, run
+`trajectory config sync` there.
+
+When `files` lists `config.defaults.yaml`, the remote file's `files`,
+`markers_path`, and sync interval replace the profile's once a computer
+accepts it. Computers download the files that a newly accepted file adds, and
+delete the ones it drops, in the same sync. See
+[Change behavior without redeploying the profile](#change-behavior-without-redeploying-the-profile).
 
 ### Organization settings (schema version 5)
 
@@ -2784,7 +3300,6 @@ These settings can also come from the remote `config.defaults.yaml`.
 | `auto_instrument.interval_seconds` | Seconds between setup passes, 300 to 86400. |
 | `auto_instrument.allow_clients` | Client IDs to set up, or `all`. |
 | `auto_instrument.deny_clients` | Client IDs never to set up. |
-| `task_segmentation.interval` | Turns between task segmentation passes, 1 to 1000. |
 | `features.periodic_auto_instrument` | `false` pauses periodic client setup. |
 | `features.agent_security_ai_edr_v2` | Makes the AI-EDR evaluator available. It turns on no module. |
 

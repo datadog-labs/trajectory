@@ -19,7 +19,8 @@
 # Install-only flags (not passed through to `trajectory setup`):
 #   --security   After baseline setup, enable the Datadog Security product
 #                plugin for the coding agents this installer detected that
-#                support it (Claude Code, Codex, Cursor).
+#                support it (Claude Code, Codex, GitHub Copilot CLI, Cursor,
+#                Kiro CLI).
 #
 #                Defaults to ENFORCE mode, which can block agent actions that
 #                violate policy. Passing --security is the explicit intent
@@ -566,9 +567,9 @@ enable_security_modules() {
     info ""
     if [ "${#clients[@]}" -eq 0 ]; then
         warn "--security was requested, but none of the security-supported clients were detected."
-        warn "      Datadog Security supports Claude Code, Codex, and Cursor."
+        warn "      Datadog Security supports Claude Code, Codex, GitHub Copilot CLI, Cursor, and Kiro CLI."
         warn "      Enable it later for an explicit client list:"
-        warn "        $BINARY_COMMAND plugins security setup --mode $SECURITY_MODE --clients cc,codex,cursor$confirm"
+        warn "        $BINARY_COMMAND plugins security setup --mode $SECURITY_MODE --clients cc,codex,copilot,cursor,kiro$confirm"
         return 0
     fi
 
@@ -885,6 +886,7 @@ fi
 
 # Kiro CLI configuration (handled by setup wizard)
 if command -v kiro-cli >/dev/null 2>&1 || command -v kiro >/dev/null 2>&1; then
+    SECURITY_CLIENTS+=("kiro")
     info "      Kiro CLI detected - configuration is handled by the setup wizard."
     info "      To refresh Kiro CLI wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients kiro"
     PLUGIN_INSTALLED=1
@@ -953,17 +955,6 @@ if command -v code >/dev/null 2>&1 || command -v code-insiders >/dev/null 2>&1 |
     info "      VS Code Copilot Chat detected - preview instrumentation is disabled by default."
     info "        1. ~/.trajectory/bin/trajectory config features enable vscode_copilot_instrumentation"
     info "        2. ~/.trajectory/bin/trajectory setup --clients vscode-copilot"
-fi
-
-# Warp/Oz CLI preview guidance (explicit opt-in; installer does not enable or mutate it)
-if command -v oz >/dev/null 2>&1 || command -v oz-preview >/dev/null 2>&1 || command -v warp-cli >/dev/null 2>&1; then
-    info "      Warp/Oz CLI detected - preview instrumentation is disabled by default."
-    info "      Enable Warp/Oz explicitly, then run setup:"
-    info "        1. ~/.trajectory/bin/trajectory config features enable warp_oz_instrumentation"
-    info "        2. ~/.trajectory/bin/trajectory setup --clients warp"
-    PLUGIN_INSTALLED=1
-else
-    info "      Warp/Oz CLI not detected - skipping Warp/Oz preview guidance."
 fi
 
 # Windsurf preview guidance (explicit opt-in; installer does not mutate it)
@@ -1082,9 +1073,6 @@ if [ "$PLUGIN_INSTALLED" = "0" ]; then
     info "    Kimi preview (explicit opt-in):"
     info "      1. ~/.trajectory/bin/trajectory config features enable kimi_cli_instrumentation"
     info "      2. ~/.trajectory/bin/trajectory setup --clients kimi"
-    info "    Warp/Oz preview (explicit opt-in):"
-    info "      1. ~/.trajectory/bin/trajectory config features enable warp_oz_instrumentation"
-    info "      2. ~/.trajectory/bin/trajectory setup --clients warp"
     info "    Windsurf preview (explicit opt-in):"
     info "      1. ~/.trajectory/bin/trajectory config features enable windsurf_instrumentation"
     info "      2. ~/.trajectory/bin/trajectory setup --clients windsurf"

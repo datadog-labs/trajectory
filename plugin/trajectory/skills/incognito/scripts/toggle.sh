@@ -1,13 +1,36 @@
 #!/bin/bash
-# Toggle incognito mode for the current session through the capture server.
-# When enabled: local capture continues, non-exempt Datadog publish is suppressed.
-# Resets on session end.
+# Turn incognito on or off for the current session through the capture server.
+# While incognito is on, Trajectory still records events locally to JSONL and
+# still sends accounting and activity metrics, by default without model and
+# repository names. Trace and log content is not sent to Datadog destinations,
+# except exempt ones. Session incognito turns off when the session ends.
 set -e
 
 ACTION="${1:-on}"
 TRAJECTORY_HOME_DIR="${TRAJECTORY_HOME:-${HOME}/.trajectory}"
 STATE_DIR="${TRAJECTORY_HOME_DIR}/state"
-PORT="${TRAJECTORY_PORT:-19222}"
+# A Claude Code plugin pins the capture port in its hooks. Use that port, so a
+# session started with its own TRAJECTORY_PORT still reaches the capture
+# server that records it. Hooks that run through a shell name the port as
+# TRAJECTORY_HOOK_PORT. Hooks that Claude Code starts directly carry it in
+# their args, so there the port comes from the plugin's native HTTP hook URLs,
+# which name the same one.
+installed_capture_port() {
+    local hooks port
+    hooks="$(dirname "${BASH_SOURCE[0]}")/../../../hooks/hooks.json"
+    [ -f "$hooks" ] || return 1
+    port="$(grep -o "TRAJECTORY_HOOK_PORT='[0-9][0-9]*'" "$hooks" 2>/dev/null | head -n 1)" || port=""
+    port="${port#TRAJECTORY_HOOK_PORT=\'}"
+    port="${port%\'}"
+    if [ -z "$port" ]; then
+        port="$(grep -o "http://127\.0\.0\.1:[0-9][0-9]*/capture/" "$hooks" 2>/dev/null | head -n 1)" || port=""
+        port="${port#http://127.0.0.1:}"
+        port="${port%/capture/}"
+    fi
+    [ -n "$port" ] || return 1
+    printf '%s\n' "$port"
+}
+PORT="$(installed_capture_port || printf '%s\n' "${TRAJECTORY_PORT:-19222}")"
 CLIENT_HINT="${TRAJECTORY_CLIENT_HINT:-${TRAJECTORY_INCOGNITO_CLIENT:-claude-code}}"
 PROJECT_HINT="${TRAJECTORY_PROJECT_ROOT:-${CODEX_PROJECT_DIR:-${PWD}}}"
 RESOLVE_ATTEMPTS="${TRAJECTORY_INCOGNITO_RESOLVE_ATTEMPTS:-10}"
@@ -114,6 +137,16 @@ json_field() {
         return 0
     fi
     sed -n 's/.*"'"$field"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$file" 2>/dev/null | head -1
+}
+
+json_field_text() {
+    local text="$1"
+    local field="$2"
+    if command -v jq >/dev/null 2>&1; then
+        printf '%s' "$text" | jq -r --arg field "$field" '.[$field] // empty' 2>/dev/null || true
+        return 0
+    fi
+    printf '%s' "$text" | sed -n 's/.*"'"$field"'"[[:space:]]*:[[:space:]]*"\([^"\\]*\)".*/\1/p' | head -1
 }
 
 session_id_from_env() {
@@ -291,23 +324,6 @@ discover_from_heartbeat() {
     printf '%s\n' "$BEST_SESSION_ID"
 }
 
-discover_from_sentinel() {
-    local file name session_id count best
-    [ -d "$STATE_DIR" ] || return 1
-    count=0
-    best=""
-    for file in "$STATE_DIR"/incognito-*; do
-        [ -f "$file" ] || continue
-        name="${file##*/}"
-        session_id="${name#incognito-}"
-        is_safe_session_id "$session_id" || continue
-        count=$((count + 1))
-        best="$session_id"
-    done
-    [ "$count" -eq 1 ] || return 1
-    printf '%s\n' "$best"
-}
-
 active_session_summary() {
     local active_dir file session_id client project_dir last_event count seen_dirs
     count=0
@@ -347,9 +363,20 @@ resolve_session_id() {
         [ "$rc" -ne 2 ] || return 2
     fi
 
+    # A switch-off must never reach another workspace's session, so it accepts
+    # only an exact client and workspace match. Without one, the capture
+    # server resolves the session from the same client and workspace hints.
+    local modes="client_project client project any" heartbeat_modes="client any"
+    case "$ACTION" in
+        off|disable|disabled|resume|"resume publish"|toggle)
+            modes="client_project"
+            heartbeat_modes=""
+            ;;
+    esac
+
     attempt=1
     while [ "$attempt" -le "$RESOLVE_ATTEMPTS" ]; do
-        for mode in client_project client project any; do
+        for mode in $modes; do
             if id="$(discover_from_active_files "$mode")"; then
                 RESOLUTION_SOURCE="active_registry:${mode}"
                 printf '%s\n' "$id"
@@ -361,22 +388,13 @@ resolve_session_id() {
                 return 0
             fi
         done
-        for mode in client any; do
+        for mode in $heartbeat_modes; do
             if id="$(discover_from_heartbeat "$mode")"; then
                 RESOLUTION_SOURCE="heartbeat:${mode}"
                 printf '%s\n' "$id"
                 return 0
             fi
         done
-        case "$ACTION" in
-            off|disable|disabled|resume|"resume publish"|toggle)
-                if id="$(discover_from_sentinel)"; then
-                    RESOLUTION_SOURCE="existing_sentinel"
-                    printf '%s\n' "$id"
-                    return 0
-                fi
-                ;;
-        esac
         [ "$attempt" -ge "$RESOLVE_ATTEMPTS" ] && break
         sleep "$RESOLVE_SLEEP" 2>/dev/null || sleep 1
         attempt=$((attempt + 1))
@@ -417,11 +435,33 @@ else
     if [ "$resolve_rc" -eq 2 ]; then
         exit 1
     fi
+    # The capture server owns the live process-local session map. If the MCP
+    # registry projection is delayed or unavailable, let the server resolve a
+    # single-session enable/disable request instead of making the user discover
+    # an internal session ID. Explicit toggle still requires a local ID because
+    # its current state cannot be inferred safely by the server endpoint.
+    if [ "$ENABLE" != "toggle" ] && command -v curl >/dev/null 2>&1; then
+        if SERVER_RESPONSE="$(curl -fsS -X POST --get \
+            --data-urlencode "enable=${ENABLE}" \
+            --data-urlencode "client=${CLIENT_HINT}" \
+            --data-urlencode "project_dir=${PROJECT_HINT}" \
+            --data-urlencode "source=slash_command" \
+            "http://localhost:${PORT}/session/incognito" 2>/dev/null)"; then
+            SERVER_SESSION_ID="$(json_field_text "$SERVER_RESPONSE" session_id)"
+            if [ -n "$SERVER_SESSION_ID" ] && is_safe_session_id "$SERVER_SESSION_ID"; then
+                echo "Incognito mode $( [ "$ENABLE" = "true" ] && printf 'ENABLED' || printf 'DISABLED' ) -- capture server resolved the active session; standard metric, trace, and log publish is suppressed (${RESOLUTION_SOURCE:-capture-server})"
+            else
+                echo "Incognito mode changed -- capture server resolved the active session; standard metric, trace, and log publish is suppressed (${RESOLUTION_SOURCE:-capture-server})"
+            fi
+            exit 0
+        fi
+    fi
+
     SUMMARY="$(active_session_summary 2>/dev/null || true)"
     if [ -n "$SUMMARY" ]; then
         echo "Incognito mode could not be changed: no active session matched client=${CLIENT_HINT:-unknown} project_dir=${PROJECT_HINT:-unknown}. Active sessions seen: ${SUMMARY}" >&2
     else
-        echo "Incognito mode could not be changed: no active session id was available after ${RESOLVE_ATTEMPTS} attempts. Set TRAJECTORY_SESSION_ID or run 'trajectory mcp sessions --active --json' from the workspace." >&2
+        echo "Incognito mode could not be changed: the capture server could not resolve an active session after ${RESOLVE_ATTEMPTS} attempts. Keep the agent session active, set TRAJECTORY_SESSION_ID, or run 'trajectory mcp sessions --active --json' from the workspace." >&2
     fi
     exit 1
 fi
@@ -442,28 +482,26 @@ if [ "$ENABLE" = "toggle" ]; then
 fi
 
 if command -v curl >/dev/null 2>&1; then
-    if curl -fsS -X POST "http://localhost:${PORT}/session/incognito?session_id=${SESSION_ID}&enable=${ENABLE}" >/dev/null 2>&1; then
+    if curl -fsS -X POST "http://localhost:${PORT}/session/incognito?session_id=${SESSION_ID}&enable=${ENABLE}&source=slash_command" >/dev/null 2>&1; then
         if [ "$ENABLE" = "true" ]; then
-            echo "Incognito mode ENABLED -- Datadog publish suppressed for session ${SESSION_ID}; local JSONL capture continues (${RESOLUTION_SOURCE:-resolved})"
+            echo "Incognito mode ENABLED -- standard metric, trace, and log publish suppressed for session ${SESSION_ID}; local JSONL capture continues (${RESOLUTION_SOURCE:-resolved})"
         else
-            echo "Incognito mode DISABLED -- Datadog publish resumed for session ${SESSION_ID} (${RESOLUTION_SOURCE:-resolved})"
+            echo "Incognito mode DISABLED -- standard metric, trace, and log publish resumed for session ${SESSION_ID} (${RESOLUTION_SOURCE:-resolved})"
         fi
         exit 0
     fi
 fi
 
-mkdir -p "$STATE_DIR"
 if [ "$ENABLE" = "true" ]; then
+    mkdir -p "$STATE_DIR"
     printf 'incognito\n' | atomic_write_file "$SENTINEL"
     case "$SESSION_ID" in
         devin-*) printf '%s\n' "$SESSION_ID" | atomic_write_file "$PROVIDER_EVIDENCE" ;;
     esac
-    echo "Incognito mode ENABLED via local sentinel -- Datadog publish suppressed for session ${SESSION_ID}; local JSONL capture continues (${RESOLUTION_SOURCE:-resolved})"
+    echo "Incognito mode ENABLED via local sentinel -- standard metric, trace, and log publish suppressed for session ${SESSION_ID}; local JSONL capture continues (${RESOLUTION_SOURCE:-resolved})"
 else
-    rm -f "$SENTINEL"
-    case "$SESSION_ID" in
-        devin-*) ;;
-        *) rm -f "$PROVIDER_EVIDENCE" ;;
-    esac
-    echo "Incognito mode DISABLED via local sentinel -- Datadog publish resumed for session ${SESSION_ID} (${RESOLUTION_SOURCE:-resolved})"
+    # Only the capture server records a switch-off, so without it incognito
+    # stays on and nothing changes.
+    echo "Incognito mode could not be turned off: the capture server is not running, and only it can record the switch-off. Incognito stays on for session ${SESSION_ID}. Start Trajectory and run /incognito off again." >&2
+    exit 1
 fi

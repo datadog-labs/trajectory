@@ -155,6 +155,12 @@ PR attribution uses only local data. It needs no credentials and does not call
 GitHub or GitLab. The cost per PR covers AI work that Trajectory linked to a PR
 or MR. It is not the provider bill or the full engineering cost.
 
+A session whose full data aged out still counts as a session. The cache keeps
+the PRs it touched but not their cost. A PR that only such sessions touched
+is counted on its own line, without cost, and in `summary_only_prs` in the
+JSON. See
+[What reports show for an aged session](CONFIGURATION.md#what-reports-show-for-an-aged-session).
+
 `--json` prints the `trajectory.outcomes.v3` schema. The JSON includes
 methodology strings that explain how each value is computed.
 
@@ -297,7 +303,7 @@ stops.
 | `--repair-only` | Repairs local data and never runs a model. Use it with `--yes` |
 | `--details` | Prints repair diagnostics and the estimate assumptions |
 | `--json` | Prints one JSON document |
-| `--db` | Uses another local cache and sends nothing to Datadog |
+| `--db` | Uses another local cache |
 
 Before you use `--period all`, read the estimate. That window can include every
 session you kept.
@@ -307,10 +313,10 @@ A confirmed run does these steps:
 1. It repairs local data first. This step makes no model calls. See
    [How repair works](#how-repair-works).
 2. It classifies each completed top-level session that is missing task or turn
-   coverage.
-3. It evaluates the markers again from local data.
-4. For the standard cache, it sends Agent Console task metrics to Datadog. See
-   [Task metrics in Datadog](#task-metrics-in-datadog).
+   coverage, and saves the results in the local cache.
+
+The run sends nothing to Datadog. Trajectory no longer publishes task metrics.
+To republish retained history, run `trajectory publish history`.
 
 To repair local data only, run this command. It never runs a model:
 
@@ -327,20 +333,9 @@ shows only the repair totals.
 The run can stop and resume. It records each successful and failed attempt
 with its cost.
 
-### Task metrics in Datadog
-
-For the standard cache, your confirmation also covers sending task metrics to
-Agent Console. The window is the last 30 complete UTC days, limited by capture
-retention. Trajectory sends the metrics through Datadog historical ingestion.
-For more about this replay, run `trajectory user-guide backfill`.
-
-- If you pass `--db`, Trajectory keeps everything local and sends nothing.
-- If the replay fails, the command reports a partial result and exits non-zero.
-  The local classification work is kept, and the next run resumes it.
-
-When the run ends, the summary shows how many sessions it refreshed, deferred,
-or could not read. It also reports replay delivery. Repeated warnings are
-capped so that they do not flood the terminal or the JSON.
+When the run ends, the summary shows how many sessions it analyzed, how many
+were already classified or in progress elsewhere, and how many failed. It also
+shows the analysis cost to date for the window.
 
 ### If the estimate changes
 

@@ -268,19 +268,13 @@ the events, confirm that they appear in Datadog.
 
 **Your dashboard has no skill data.** Check that metrics are publishing.
 
-1. Check the metrics for your latest session:
-
-   ```bash
-   trajectory doctor metrics session --latest
-   ```
-
-2. Send a test metric to confirm that metrics reach Datadog:
+1. Send a test metric to confirm that metrics reach Datadog:
 
    ```bash
    trajectory doctor metrics canary
    ```
 
-3. Show whether the current config is expected to publish metrics:
+2. Show whether the current config is expected to publish metrics:
 
    ```bash
    trajectory publish status

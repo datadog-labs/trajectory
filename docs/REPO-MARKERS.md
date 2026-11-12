@@ -17,7 +17,7 @@ A repo marker setup usually has two files:
 
 | File | Purpose |
 | --- | --- |
-| `.trajectory/markers.yaml` | Defines or overrides marker points, ranges, measures, and tags for sessions in this repo. |
+| `.trajectory/markers.yaml` | Defines or overrides marker points, ranges, measures, and tags for commands you run in this repo. Captured sessions use it only through `TRAJECTORY_PROJECT_MARKERS_PATH`. |
 | `publish.trajectory.yaml` | Selects or limits trusted publish destinations, adds safe destination tags, and turns on marker metrics for those destinations. |
 
 Put marker rules only in `.trajectory/markers.yaml`. Put Datadog destination
@@ -48,6 +48,11 @@ publish_trust:
 If you set `require_committed: true`, commit `publish.trajectory.yaml` before
 you expect it to apply. If the trust policy blocks a repo publish overlay,
 `trajectory publish validate` reports it.
+
+Trajectory also ignores a publish overlay in a repository nested inside the
+one where a session started, including a submodule. It writes the reason to its
+log. Put the overlay in the outer repository, or start the session in the
+nested one.
 
 ## Step 1: add repo marker rules
 
@@ -97,10 +102,15 @@ trajectory patterns markers validate --config .trajectory/markers.yaml
 trajectory patterns markers explain --config .trajectory/markers.yaml migration-file-edited
 ```
 
-New sessions in the repo load the project marker file without any extra step.
-Trajectory looks for it in the nearest parent directory that contains `.git/`.
-To test a different project marker file on your machine, set
-`TRAJECTORY_PROJECT_MARKERS_PATH`.
+Commands you run in the repo, such as `trajectory patterns markers`, load the
+project marker file without any extra step. Trajectory looks for it in the
+nearest parent directory that contains `.git/`.
+
+`trajectory serve` evaluates captured sessions and does not run in any repo, so
+it does not load this file on its own. To apply a project marker file to
+captured sessions on your machine, set `TRAJECTORY_PROJECT_MARKERS_PATH` in the
+environment that starts serve. That file then applies to every session on the
+machine.
 
 ## Step 2: enable marker metrics for the repo
 
@@ -170,11 +180,11 @@ in Datadog:
 
 ```bash
 trajectory doctor publish --session <session-id>
-trajectory publish metrics audit --session <session-id> --builtin-details
+trajectory publish queue --kind metrics
 ```
 
 You can change marker definitions after a session finishes. If you do,
-re-evaluate the local cache before you audit or republish older metrics:
+re-evaluate the local cache before you check or republish older metrics:
 
 ```bash
 trajectory patterns markers reevaluate --session <session-id>
@@ -189,8 +199,8 @@ Trajectory loads marker config layers in this order:
    `~/.trajectory/org/markers.yaml`.
 3. User add-ons from `~/.trajectory/markers.d/*.yaml`.
 4. User markers from `TRAJECTORY_MARKERS_PATH` or `~/.trajectory/markers.yaml`.
-5. Project markers from `TRAJECTORY_PROJECT_MARKERS_PATH` or
-   `.trajectory/markers.yaml`.
+5. Project markers from `TRAJECTORY_PROJECT_MARKERS_PATH`, or, for commands you
+   run in the repo, `.trajectory/markers.yaml`.
 
 If two layers define a marker with the same name, the later layer wins. The
 exception is an enforced org marker. No local layer can override it.

@@ -194,10 +194,7 @@ tags.
 
 | Metric | Type | Tags | What it reports |
 |---|---|---|---|
-| `trajectory.publish.active_destinations` | gauge | Standard tags plus top-level and destination tags on Datadog destinations | The number of active destinations seen for a session |
 | `trajectory.ops.required_destination.health` | gauge | Serve tags plus fleet tags, `destination`, `incognito_exempt`, `destination_state` | Whether each required destination is active |
-| `trajectory.ops.managed_capture.control_override` | gauge | Fleet tags plus `client`, `control` | `1` for each user or process watcher control that an enforce policy overrides |
-| `trajectory.ops.managed_capture.required_destination.binding` | gauge | Fleet tags plus `destination`, `binding_state`, `reason` | Whether each destination that an enforce policy names is set up correctly |
 | `trajectory.ops.org_sync.success_age_seconds` | gauge | Serve tags plus fleet tags, `verified`, `sync_status`, `failure_reason`, `failure_scope`, `fetch_error_class`, `http_status_class`, `failure_streak` | Seconds since the last successful managed configuration sync |
 | `trajectory.ops.config_migration.heartbeat` | gauge | Deployment heartbeat tags plus `migration_state`, `reason`, `trajectory.version` | Once an hour: the state of managed user-configuration reconciliation. It carries no configuration content. |
 
@@ -211,7 +208,7 @@ and privacy controls apply.
 `trajectory.ops.required_destination.health` has one series for each required
 destination name. You can query an inactive destination by name. This
 includes traces-only destinations without an opt-out, which
-`trajectory.publish.active_destinations` never counts.
+The destination health gauge records policy-required destinations.
 
 The value matches the `Required destinations` result in `trajectory doctor`:
 
@@ -247,29 +244,6 @@ The `destination_state` values mean:
 When live processes disagree, the worst state wins. A host with no running
 serve process sends nothing. Doctor shows nothing for `out_of_scope`.
 
-#### Managed capture policy
-
-`trajectory.ops.managed_capture.control_override` sends `1` for each active
-user or process watcher control that a valid enforce policy overrides for a
-selected client. `control` is the control name from a fixed list. Values,
-paths, identities, and captured content are never sent. When Trajectory
-selects detected clients, it treats the client's runtime hook as proof of
-detection.
-
-`trajectory.ops.managed_capture.required_destination.binding` has one series
-for each destination that a valid enforce policy names.
-
-- `1` means the managed required destination exists. It is full fidelity and
-  incognito-exempt. It also has a full-fidelity security event stream.
-- `0` means `missing`, `invalid`, or `unknown`, with a reason from a fixed
-  list.
-
-This gauge checks configuration only. It does not check credentials or live
-processes. Use it with `trajectory.ops.required_destination.health`.
-
-The policy provider for both gauges is not available in production yet.
-Ordinary installs therefore send no series.
-
 #### Managed configuration sync
 
 `trajectory.ops.org_sync.success_age_seconds` reports whole seconds since the
@@ -302,11 +276,19 @@ tags. The exact HTTP status appears only in the structured operational event.
 | `trajectory.ops.resource.cpu_percent.avg` | gauge | Resource-window tags | Mean CPU over a complete five-minute window aligned to UTC |
 | `trajectory.ops.resource.cpu_percent.max` | gauge | Resource-window tags | The largest 15-second CPU interval in the same window |
 
-These metrics are a planned option. No released build sends them, even with
-the `resource_observation` control on. That control is off by default.
+The runtime sends resource-window metrics behind the default-on
+`resource_observation` control. Turning it off stops collection on an endpoint.
 
 For both metrics, 100% is one busy core. Values can be higher than 100%. Use
 `max` rollups for `cpu_percent.max`, and never `.as_count()`.
+
+On Apple Silicon Macs, releases up to 0.6.3-beta.5 read the kernel's CPU
+counters in the wrong unit and reported about 42 times too little CPU. That
+affects these two metrics, `trajectory.ops.resource.exit_remainder_cpu_seconds.total`
+and `trajectory.instrumentation.serve.cpu_seconds_per_hour`, tagged
+`os.type:darwin` or `os:darwin`. Later releases report the real figure, so a
+Mac series steps up at the upgrade. Intel Macs, Linux and Windows were always
+right. Compare Mac CPU only between releases after 0.6.3-beta.5.
 
 ### Serve process and capture
 
@@ -315,8 +297,6 @@ For both metrics, 100% is one busy core. Values can be higher than 100%. Use
 | `trajectory.serve.process.start_total` | count | `start_source` | The capture server listener started |
 | `trajectory.serve.process.exit_total` | count | `exit_reason`, optional `signal` | The capture server exited normally or with an error, before publishing shut down |
 | `trajectory.serve.capture.request_error_total` | count | `client`, `event_type`, `error_kind`, `http_status_class` | A capture HTTP request returned 4xx or 5xx, or the handler failed |
-| `trajectory.serve.codex_capture.inflight` | distribution | Serve tags plus `trajectory.client_source:codex`, `stage` | Once a minute: unfinished Codex capture requests in each stage of one process |
-| `trajectory.serve.codex_capture.oldest_stage_age_seconds` | distribution | Same as above | Once a minute: how long the oldest request has stayed in its current stage |
 | `trajectory.serve.operational_log.dropped_total` | count | `reason:queue_full` plus serve tags | Operational events dropped because the in-process queue was full |
 | `trajectory.serve.goroutine.panic_recovered_total` | count | `goroutine`, `action` | A serve background task panicked and recovered. `action` is `restart` or `give_up`. |
 
@@ -326,9 +306,6 @@ stopped. Trajectory cannot record a forced kill directly. A later
 
 Trajectory sends `operational_log.dropped_total` on the owner's next
 maintenance pass. The events were dropped before Trajectory saved them.
-
-For the two `codex_capture` metrics, see
-[Unfinished Codex capture](#unfinished-codex-capture).
 
 ### Local state
 
@@ -341,7 +318,8 @@ Trajectory reads these gauges during the local-state health scan.
 | `trajectory.serve.local_state.serve_log_bytes` | gauge | Serve tags plus `stage`, `warning`, `scan_error` | The size of `trajectory-serve.log` in bytes |
 | `trajectory.serve.local_state.serve_diag_bytes` | gauge | Serve tags plus `stage`, `warning`, `scan_error` | The size of `serve-diag.ndjson` in bytes |
 | `trajectory.serve.local_state.publish_ledger_held_claims` | gauge | Serve tags plus `artifact_scope` | Publish claims still held long after any live publish could need them |
-| `trajectory.serve.local_state.publish_ledger_held_claims_detail` | gauge | Serve tags plus `artifact_type`, `claim_scope`, `age_bucket`, `hold_reason` | The held claims, split by type, scope, age, and reason |
+| `trajectory.serve.local_state.publish_ledger_held_claims_detail` | gauge | Serve tags plus `artifact_type`, `claim_scope`, `age_bucket`, `hold_reason` | The held claims, split by type, scope, age, and bounded reason, including ambiguous export, unrecorded completion, missing legacy evidence, unverified owner identity, and a disabled reclaimer |
+| `trajectory.instrumentation.publish.ledger_recovery` | count | `component:publish`, `signal:final_session`, `outcome`, `reason` | One record for each durable dead-owner reclaim and each first operator-required classification. Repeated retries do not increment it |
 
 #### Held publish claims
 
@@ -379,18 +357,57 @@ To recover, run `trajectory publish queue claims`, then
 When a session ends, Trajectory finalizes it. If a step fails, Trajectory keeps
 a receipt and retries later. These gauges and counts track that work.
 
+Recovery's cost does not grow with the number of receipts. A receipt gets at
+most five attempts. An attempt that its 110-second deadline cuts off counts as
+one. Only serve stopping returns an attempt.
+
+A receipt the running serve process wrote in the last six hours is retried
+as before. Serve looks every minute and runs one attempt, whatever sessions
+are open.
+
+Every other receipt waits for the five-minute look. That covers older
+receipts and those a serve process that is gone left. The look runs at most
+one attempt, at low disk and CPU priority. While a session is open or a
+backfill pass runs, it runs at most once an hour. A host that is never idle
+still recovers what a restart or an update left. All serve processes of a home share a limit of
+eight failed attempts per UTC day. An attempt that recovers its session does
+not count against the eight.
+
+Serve retires a receipt without a further attempt in three cases. The receipt
+used its five attempts. Its session's last event is more than 60 days old. Or
+its session file is gone. Retiring removes the receipt's registry row and
+publishes nothing. The session's incognito records stay. The daily backfill
+still sends the session's metrics when the session is inside the backfill
+window.
+
 | Metric | Type | Tags | What it reports |
 |---|---|---|---|
 | `trajectory.serve.terminal_recovery.pending` | gauge | Serve tags plus `feature` | Ended sessions with receipts that still wait for finalization |
-| `trajectory.serve.terminal_recovery.pending_detail` | gauge | Serve tags plus `feature`, `reason`, `retry_state` | The pending work, split by cause and retry state |
+| `trajectory.serve.terminal_recovery.pending_detail` | gauge | Serve tags plus `feature`, `reason`, `retry_state`, `age_bucket` | The pending work, split by cause, retry state, and the age of the session's last event |
 | `trajectory.serve.terminal_recovery.oldest_age_seconds` | gauge | Serve tags plus `feature` | The age of the oldest pending receipt in each feature |
-| `trajectory.serve.terminal_recovery.attempt_total` | count | Serve tags plus `feature`, `outcome` | Retries that Trajectory reserved for a receipt. `outcome` is `success` or `failure`. |
+| `trajectory.serve.terminal_recovery.attempt_total` | count | Serve tags plus `feature`, `outcome` | Recovery attempts that ran for a receipt, and receipts retired without one. `outcome` is `success`, `failure`, `retired_spent` (the receipt used its five attempts), `retired_old` (the session's last event is more than 60 days old), or `retired_no_file` (the session file is gone). |
 | `trajectory.serve.terminal_recovery.success_age_seconds` | gauge | Serve tags plus `feature` | Whole seconds since the last successful repair for each feature |
 
 `feature` is `finalization`, `sensitivity`, or `segmentation`. The
 `finalization` count includes every pending receipt. The owner sends healthy
-zero series on every health sweep. Healthy features report `0` for
-`oldest_age_seconds`.
+zero series on every health sweep, which runs every 10 minutes. Healthy
+features report `0` for `oldest_age_seconds`.
+
+`age_bucket` is `under_7d`, `7d_to_30d`, `30d_to_60d`, or `60d_plus`, from the
+time of the session's last event. It is `unknown` when the receipt records no
+such time, and `none` on the healthy zero series. A `60d_plus` receipt waits
+for the next look to retire it.
+
+While a receipt waits, the owner also sends these gauges every minute. It
+sends them once more when the last receipt clears. With nothing pending, the
+minute check sends nothing and opens no database, so an idle serve sends these
+gauges every 10 minutes. If a submission fails, the next minute check sends
+it again.
+
+Serve keeps the receipts in memory. A receipt this serve process adds or
+clears shows at the next minute check. Serve reads the receipts from disk
+again every 10 minutes, so a change that another process makes can take up to
+10 minutes to show.
 
 For `pending_detail`, `reason` gives the cause:
 
@@ -429,10 +446,10 @@ succeeded.
 
 | Metric | Type | Tags | What it reports |
 |---|---|---|---|
-| `trajectory.serve.backfill.failure_total` | count | Serve tags plus `stage`, `reason`, `failure_scope`, `error_class`, `http_status_class`, `transport` | A managed backfill step failed, or an outbox sweep that backfill started saw a failure |
+| `trajectory.serve.backfill.failure_total` | count | Serve tags plus `stage`, `reason`, `failure_scope`, `error_class`, `http_status_class`, `transport` | A managed backfill step failed, or an outbox drain pass that backfill started saw a failure |
 
-Trajectory counts one failure for each failed step or sweep. It does not count
-each row, destination, or HTTP request. A sweep failure can be a submission
+Trajectory counts one failure for each failed step or drain pass. It does not count
+each row, destination, or HTTP request. A drain failure can be a submission
 error or a local condition that blocks publishing.
 
 `stage` is `config`, `policy`, `engine`, `runtime`, `campaign`,
@@ -496,114 +513,15 @@ Datadog separately. A client with no failure metrics can still be unhealthy.
 Approving backfill locally does not turn on Historical Metrics Ingestion in
 Datadog. It also does not show that Datadog received the historical points.
 
-### Background LLM calls
-
-Trajectory makes its own model calls for segmentation and sensitivity
-classification. These metrics track those calls.
-
-| Metric | Type | Tags | What it reports |
-|---|---|---|---|
-| `trajectory.serve.llm_capacity.calls.total` | count | `feature`, `backend`, `gen_ai.request.model`, `pass`, `cost_source` | Classifier calls that Trajectory makes. `feature` includes `segmentation`, `sensitivity`, and user-requested `user_driven_segmentation` backfill. |
-| `trajectory.serve.llm_capacity.cost.usd.total` | count | `feature`, `backend`, `gen_ai.request.model`, `pass`, `cost_source` | Estimated USD cost of priced background calls |
-| `trajectory.serve.llm_capacity.duration_ms` | distribution | `feature`, `backend`, `gen_ai.request.model`, `pass`, `outcome`, `reason`, `attempt` | How long each segmentation provider decision or attempt took |
-| `trajectory.serve.llm_capacity.failures.total` | count | `feature`, `pass`, `error_class`, `reason` | Failed classifier operations, including saved historical-analysis attempts |
-| `trajectory.serve.segmentation.failure_total` | count | `stage`, `error_class`, `reason` | An incremental or final segmentation pass failed |
-
-#### Cost and attribution
-
-Trajectory estimates cost from the prompt and output size and the model
-pricing table. Use it for spend trends. Do not use it to match provider
-invoices. When the model is hidden or has no price, Trajectory still sends the
-call count with `cost_source:pricing_unknown`.
-
-Every call and cost point also carries `host`, `os.type`,
-`trajectory.version`, and `trajectory.user`. It carries
-`trajectory.user_email` when the managed identity resolver can find it. These
-tags describe the process that made the call. If a shared service account made
-the call, do not treat it as the end user for billing.
-
-#### Duration
-
-For `llm_capacity.duration_ms`, `outcome` is `success`, `timeout`,
-`canceled`, `denied`, or `error`. A hard-stop denial happens before the
-process starts. `attempt` is `1` or `2` within one operation. Timeout samples
-stop at the configured deadline for each call, so the real duration can be
-longer.
-
-`reason` is one of `provider_quota_missing`, `provider_quota_stale`,
-`provider_quota_exhausted`, `request_bound_missing`, `unsettled_spend`,
-`budget_exhausted`, `auth`, `rate_limit`, `timeout`, `canceled`,
-`empty_output`, or `execution_failed`.
-
-#### Segmentation failures
-
-Trajectory excludes its own classifier and segmenter sessions before
-segmentation. They never add to `trajectory.serve.segmentation.failure_total`
-or `trajectory.serve.llm_capacity.failures.total`. Serve segmentation failures
-add the same `reason` to `llm_capacity.failures.total`.
-
-`reason` tells you what to fix. Raw provider errors are never tags. It is one
-of these values:
-
-- quota and budget: `provider_quota_missing`, `provider_quota_stale`,
-  `provider_quota_exhausted`, `request_bound_missing`, `unsettled_spend`,
-  `provider_hard_stop_denied`, `budget_exhausted`, `budget_unavailable`,
-  `admission_unavailable`
-- provider: `no_provider`, `model_discovery`, `auth`, `rate_limit`,
-  `upstream`, `provider_unavailable`, `fallback_exhausted`
-- result: `empty_output`, `execution_failed`, `response_parse`, `validation`,
-  `storage`
-
-Trajectory classifies a provider hard-stop denial before the shared
-`budget_exhausted` reason. A hard-stop denial does not keep a completed session
-open just for optional enrichment. The outer `fallback_exhausted` reason wins
-over a nested provider's `execution_failed`. You can then tell a whole failed
-fallback chain from one failed backend attempt.
-
 ### Unfinished Codex capture
 
-A latency metric cannot show a request that has not finished. The two
-`codex_capture` distributions report Codex HTTP capture requests that are
-admitted but not finished. They use the same count and byte limits as request
-admission.
+Local health retains `codex_capture_progress` with per-stage counts and ages.
+A request that stays in a stage for more than ten minutes emits one
+`trajectory.instrumentation.watchdog.gap_detected{client_source:codex,reason:capture_stage_stuck}`
+count with a bounded `stage` tag. A stage reports again only after an observation
+below the threshold. Idle processes send no progress samples.
 
-A request stays counted after the client cancels it. For a SessionEnd
-request, the slot moves to the background SessionEnd processing. It stays
-counted until that work finishes. Watcher work outside HTTP admission is not
-counted.
-
-`stage` is one of `accepted`, `read_body`, `prepare_body`,
-`delivery_coordination`, `worker_wait`, `session_wait`, `terminal_admission`,
-`terminal_quiescence`, `context_resolution`, `rollout_lock`,
-`rollout_reconcile`, `canonical_capture`, `delivery_receipt`, or `response`.
-
-- Age measures time in the current stage. It does not measure total request
-  or session age.
-- The stage shows a region of the code. It does not show the system call or
-  the cause of a stall.
-- A background SessionEnd response does not replace its processing stage. Its
-  response-side receipt write is not a separate admitted request.
-
-Each owner process sends all stage counts and ages in one best-effort OTLP
-batch for each eligible destination. It sends them at startup and once a
-minute. A separate loop sends them, outside the capture workers. The existing
-serve metric destination and privacy controls apply. No PID, session ID,
-delivery ID, request content, or file path becomes a tag.
-
-A distribution keeps the values from several processes. Use `max` to see the
-busiest process or the oldest stage. Query `max` by host and stage, so a stuck
-process stays visible next to healthy ones. Never sum the samples into a fleet
-total of requests or events. Short waits between samples can go unseen. Zero
-means the process saw no request in that stage.
-
-Missing points mean unknown. An old binary, a stopped owner, or a failed
-metric transport does not report a healthy zero. Limit queries to versions that
-report these metrics, and to fresh samples. One healthy process does not mean
-every process on that host is healthy.
-
-`/health` and the health file of each process show local
-`codex_capture_progress` snapshots with `schema_version: 1`. A missing field or
-an old or unsupported health record does not count as healthy. These metrics
-do not change acknowledgements, retry policy, or admission limits.
+The event marks a new stall. Read the local health snapshot to check whether
+the stage remains stuck.
 
 Return to the [Metrics Reference index](../METRICS-REFERENCE.md).

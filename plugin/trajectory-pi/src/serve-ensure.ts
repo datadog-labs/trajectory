@@ -42,6 +42,7 @@ export type ServeEnsureOptions = {
   binary: string;
   client: string;
   port: number;
+  env?: NodeJS.ProcessEnv;
   wait?: string;
   timeoutMs?: number;
 };
@@ -68,6 +69,7 @@ export async function ensureTrajectoryServe(options: ServeEnsureOptions): Promis
       killSignal: "SIGKILL",
       maxBuffer: 64 * 1024,
       windowsHide: true,
+      env: options.env,
     }, (error, stdout, stderr) => {
       const parsed = parseServeEnsureResponse(stdout, options.port);
       if (!parsed) {

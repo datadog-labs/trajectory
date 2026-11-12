@@ -2,7 +2,9 @@
 # Request the shared serve coordinator. Never launch or own serve directly.
 set -u
 
-PORT="${TRAJECTORY_PORT:-19222}"
+# Without TRAJECTORY_PORT, serve ensure picks the port by the shared rule:
+# config server.port, then 19222.
+PORT="${TRAJECTORY_PORT:-}"
 BINARY="${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}"
 WAIT="${TRAJECTORY_SERVE_RESTART_WAIT:-5s}"
 HARD_TIMEOUT_SECONDS="${TRAJECTORY_SERVE_ENSURE_TIMEOUT_SECONDS:-7}"
@@ -31,7 +33,8 @@ node - "$BINARY" "$PORT" "$WAIT" "$HARD_TIMEOUT_SECONDS" <<'JS' || true
 const { spawnSync } = require("node:child_process");
 
 const [binary, portRaw, wait, timeoutRaw] = process.argv.slice(2);
-const port = Number(portRaw);
+const port = portRaw === "" ? null : Number(portRaw);
+const validPort = (value) => Number.isInteger(value) && value >= 1 && value <= 65535;
 const timeoutMs = Number(timeoutRaw) * 1000;
 
 function bounded(value) {
@@ -45,7 +48,7 @@ function blocked(detail) {
   process.exit(0);
 }
 
-if (!Number.isInteger(port) || port < 1 || port > 65535 || !Number.isInteger(timeoutMs) || timeoutMs < 1000) {
+if ((port !== null && !validPort(port)) || !Number.isInteger(timeoutMs) || timeoutMs < 1000) {
   blocked("invalid adapter configuration");
 }
 
@@ -54,8 +57,7 @@ const args = [
   "ensure",
   "--client",
   "claude-code",
-  "--port",
-  String(port),
+  ...(port === null ? [] : ["--port", String(port)]),
   "--wait",
   wait,
   "--format",
@@ -102,7 +104,9 @@ if (!statuses.has(response.status)) blocked("unknown v1 status");
 if (typeof response.reason_code !== "string" || response.reason_code.length < 1 || response.reason_code.length > 256) {
   blocked("invalid v1 reason_code");
 }
-if (typeof response.ready !== "boolean" || response.port !== port) blocked("invalid v1 readiness or port");
+if (typeof response.ready !== "boolean" || !validPort(response.port) || (port !== null && response.port !== port)) {
+  blocked("invalid v1 readiness or port");
+}
 
 const readyStatuses = new Set(["satisfied_ready", "satisfied_external", "reserved_and_started"]);
 if (completed.status === 0 && response.ready && readyStatuses.has(response.status)) process.exit(0);

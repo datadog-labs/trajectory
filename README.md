@@ -23,8 +23,8 @@ Markers are Trajectory's signature feature: YAML-defined measurements for agent
 behavior. Write a rule once, then evaluate it across turns, sessions, tasks,
 commits, and pull requests.
 
-Example: add this to `.trajectory/markers.yaml` in a repo to turn an agent
-force-push into a measurable signal.
+Example: add this to `~/.trajectory/markers.yaml` to turn an agent force-push
+into a measurable signal.
 
 ```yaml
 version: 2
@@ -168,7 +168,7 @@ Trajectory supports:
 - Cline CLI
 - Codex CLI
 - GitHub Copilot CLI beta
-- Antigravity CLI (`agy`)
+- Antigravity CLI (`agy`) on macOS and Linux
 - Aider
 - Continue CLI
 - Mistral Vibe
@@ -194,7 +194,6 @@ Trajectory supports:
 - Oh My Pi (preview)
 - Qoder CLI (preview)
 - VS Code Copilot Chat (preview)
-- Warp/Oz CLI (preview)
 - Windsurf (preview)
 - ZCode (preview)
 - Zed (preview)
@@ -253,6 +252,7 @@ This repository accepts changes to public docs, marketplace metadata, plugin ass
 - [docs/USER-GUIDE.md](docs/USER-GUIDE.md): CLI workflows and day-to-day operation
 - [docs/WHY-TRAJECTORY.md](docs/WHY-TRAJECTORY.md): product scope and how Trajectory complements the rest of the observability stack
 - [docs/REPORTS.md](docs/REPORTS.md): summary, outcomes, Patterns, historical analysis, and session drilldown
+- [docs/OTLP.md](docs/OTLP.md): send traces, metrics, and logs to any OpenTelemetry collector
 - [docs/CONFIGURATION.md](docs/CONFIGURATION.md): config files, managed defaults, environment overrides, and common settings
 - [docs/API-APP-KEY-MANAGEMENT.md](docs/API-APP-KEY-MANAGEMENT.md): Datadog API/application key storage, resolution, permissions, and rotation
 - [docs/MANAGED-ENDPOINTS.md](docs/MANAGED-ENDPOINTS.md): managed endpoint bundle preparation and endpoint verification

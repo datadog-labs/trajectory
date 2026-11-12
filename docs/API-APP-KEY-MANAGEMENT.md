@@ -117,8 +117,8 @@ Interactive `set-secret` hides what you type. For automation, use `--stdin` to
 send the key through a protected pipe. Do not use `--value=...` for real keys,
 because the value becomes a command-line argument.
 
-`config secrets` reports each known account as set, not set, unknown, or not
-checked:
+`config secrets` reports known accounts and custom accounts from its ownership
+ledger as set, not set, unknown, or not checked:
 
 - A failed lookup shows as unknown, and the command exits with status 1.
 - A disabled lookup shows as not checked.
@@ -172,7 +172,9 @@ normal publish engine does not look up or send an application key.
 
 The `bearer_destination_auth` feature is off by default. When it is on, custom
 intake and forwarder destinations can use `bearer_token_ref` in place of
-`api_key_ref`. A destination can set only one of the two fields. Bearer
+`api_key_ref`. A collector in the `destinations:` list of a user's own
+`config.yaml` can use it without the feature, unless the feature is explicitly
+disabled. A destination can set only one of the two fields. Bearer
 references follow the configured source policy. But they read only the named
 environment variable, keychain account, or destination command. They never
 fall back to `DD_API_KEY`, `DATADOG_API_KEY`, or the default Datadog key
@@ -232,8 +234,10 @@ field by field:
 - If the managed file leaves a field unset, the user's value stays.
 
 Every command and `trajectory serve` follow the same rule. Org sync cannot set
-`auth.key_command`, because remote defaults reject settings that hold a
-command.
+`auth.key_command`. It removes that setting from a downloaded document and
+installs the rest. Trajectory ignores one in a copy already on the machine. Only a
+`config.defaults.yaml` placed on a machine with no org source, or `config.yaml`,
+can set it.
 
 A managed `export.site` also replaces the user's site. The key and the site
 then come from the same file. So Trajectory never sends a managed key to a
@@ -539,7 +543,7 @@ Each use of an application key needs a specific permission:
 
 | Command or feature | Application key permission |
 | --- | --- |
-| `trajectory doctor metrics canary --publish --readback`, metrics audit, and backfill readback | Metrics query (`timeseries_query`) |
+| `trajectory doctor metrics canary --publish --readback` and backfill readback | Metrics query (`timeseries_query`) |
 | `trajectory publish sync` | Log configuration write |
 | Optional `agent-security` AI Guard evaluator | AI Guard API access, as the service's application key policy defines it |
 
@@ -584,9 +588,26 @@ an "Always Allow" grant. Without this cache, each read would show a new prompt.
 Processes that read managed keychain secrets by exact name also read each
 reference once and keep it in memory. This includes the long-running `serve`
 process. A configuration reload clears that cache, so a reload that rotates a
-reference takes effect. `serve` turns off the other keychain reads at startup,
+reference takes effect. `trajectory config set-secret` and
+`trajectory config delete-secret` also clear it in a running `serve`, as
+[Long-running processes and rotation](#long-running-processes-and-rotation)
+describes. `serve` turns off the other keychain reads at startup,
 so it never prompts for them. The default key provider keeps its key in memory
 and in a shared file cache.
+
+An unreadable publish credential pauses its destination. Authorization failures,
+a locked keychain, and missing keychains or items retry after 30 seconds, then
+back off to five minutes. Waiting drains skip the backlog scan and claim.
+The log prints remediation once when the failure changes. Health and status
+keep showing the credential wait.
+
+A credential configuration change or a secret written with `config set-secret`
+allows another attempt on the next drain. Unlocks or ACL changes made outside
+Trajectory are picked up by the next scheduled attempt. A successful attempt
+resumes delivery and clears the wait.
+
+Use `trajectory config delete-secret <name> --exact-name` to delete an account
+saved with `set-secret --exact-name`. This preserves hyphens in custom names.
 
 Secrets stay in memory only for the life of the process that reads them.
 
@@ -608,7 +629,8 @@ To rotate a key, do these steps:
    configured ref the same.
 3. If the key source is tied to the process or cached in memory, reload the
    configuration. Then restart long-running Trajectory processes in the
-   supported way.
+   supported way. A managed key that you store with
+   `trajectory config set-secret` needs neither step.
 4. For an API key, run `trajectory publish validate`. For an application key,
    run the command that needs its permission: the metrics read-back command or
    `trajectory publish sync`.
@@ -618,6 +640,23 @@ API keys from a command refresh when their TTL ends. Keys from the
 environment or the keychain can stay in a long-running process. So rotating
 them includes a process restart or reload. Trajectory also caches managed
 exact-name keys in memory after a successful read.
+
+`trajectory config set-secret` and `trajectory config delete-secret` record
+that a stored key changed, in `~/.trajectory/state/credential-generation.json`.
+A running `trajectory serve` checks that record each time it writes its health
+record, which is at least once a minute, and on each configuration reload.
+When the record changed, `serve` drops every key it cached from the keychain.
+The next request reads the new key. The Jamf reconcile script stores keys with
+`set-secret`, so a rotated key reaches running Macs on the next run of the
+script. `trajectory ps` shows the key as available within a minute. The
+check reads only that record, never the keychain, so it cannot show a keychain
+dialog.
+
+`trajectory managed reconcile` also compares the record with the generation
+each running `serve` reports. A `serve` that still holds an older key is not
+compliant, so reconcile reloads it. A daily Jamf run often stores the key the
+keychain already holds. Then `set-secret` leaves the record unchanged, and a
+running `serve` needs no reload.
 
 ### Failure-driven refresh (managed serve paths)
 
@@ -665,9 +704,17 @@ A config reload applies the key policy again. It clears **both** the managed
 exact-name cache and the managed API key cache. So Trajectory picks up a
 reload that rotates a managed reference without waiting for a request to fail.
 
-Log-based metric sync uses failure-driven refresh. Metric submission and
-metric read-back do not yet. They keep one key until a configuration reload
-clears it.
+Log-based metric sync uses failure-driven refresh. Metric read-back does not
+yet. It keeps one key until a configuration reload clears it.
+
+The managed API key has its own rule. `serve` marks its cached API key as
+rejected in two cases. Datadog answers a metric request with 401 or 403. Or
+the stored value is not a 32-character Datadog API key. `serve` keeps using a
+rejected key until 30 seconds after it read the key, then reads the keychain
+again once. So a key Datadog revoked is read again within 30 seconds of a
+rejection. A key that stays rejected costs at most one keychain read every 30
+seconds. `serve` does not retry the request at once. Other errors, such as
+`429`, `5xx`, network errors, and timeouts, do not mark the key.
 
 ## Diagnostics and safe troubleshooting
 
@@ -682,7 +729,7 @@ trajectory doctor metrics canary --destination <name> --publish --readback
 trajectory publish sync
 ```
 
-- `config secrets` reports which known keychain accounts are present. It shows
+- `config secrets` reports which known and tracked custom keychain accounts are present. It shows
   a failed or disabled lookup differently from a missing key. It does not
   print values or raw errors. `config secrets <ref>...` checks only the named
   accounts, exactly as typed, without a prompt.

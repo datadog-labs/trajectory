@@ -2,7 +2,14 @@
 
 This plugin adds Agent Security to the existing Trajectory marketplace, next to
 the core `trajectory` plugin. You can install it on its own. It supports the
-`agent-security` module in Claude Code, Codex, and Cursor.
+`agent-security` module in Claude Code, Codex, and Cursor. Kiro CLI does not
+use this plugin: `trajectory plugins security setup --clients kiro` writes its
+own hook file, `~/.kiro/hooks/trajectory-security.json`. In enforce mode it
+can block a tool call and tell the model to refuse a prompt, and it observes
+everything else. GitHub Copilot CLI does not use this plugin either. On macOS
+and Linux, `trajectory plugins security setup --clients copilot` installs
+`trajectory-security@trajectory` from Trajectory's local Copilot marketplace in
+`~/.trajectory/copilot-marketplace`.
 
 The plugin does not need the core plugin. It needs only the Trajectory binary
 at `~/.trajectory/bin/trajectory`, or at the path in `TRAJECTORY_BINARY`.

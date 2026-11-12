@@ -1,0 +1,27 @@
+{
+  "name": "trajectory-mdm",
+  "version": "0.1.0",
+  "description": "Helps IT administrators set up Trajectory for managed computers with the trajectory-mdm helper.",
+  "author": {
+    "name": "Datadog",
+    "url": "https://github.com/datadog-labs/trajectory"
+  },
+  "homepage": "https://github.com/datadog-labs/trajectory",
+  "repository": "https://github.com/datadog-labs/trajectory",
+  "license": "Apache-2.0",
+  "keywords": ["trajectory", "mdm", "datadog", "managed-endpoints"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Trajectory MDM Setup",
+    "shortDescription": "Set up Trajectory for managed computers.",
+    "longDescription": "Walks an IT administrator through writing a trajectory-mdm intent file, checking it, preparing and verifying the MDM bundle, and placing each file. It uses only trajectory-mdm commands and never asks for an API key.",
+    "developerName": "Datadog",
+    "category": "Developer Tools",
+    "capabilities": [],
+    "websiteURL": "https://github.com/datadog-labs/trajectory",
+    "defaultPrompt": [
+      "Help me set up Trajectory for our managed computers",
+      "Check my trajectory-mdm intent file"
+    ]
+  }
+}

@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PreToolUse >/dev/null 2>&1 || true; printf '%s\\n' '{\"decision\":\"allow\"}'",
+            "command": "printf '%s\\n' '{\"decision\":\"allow\"}'; TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PreToolUse >/dev/null 2>&1 || true",
             "timeout": 5
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PostToolUse >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
+            "command": "printf '%s\\n' '{}'; TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PostToolUse >/dev/null 2>&1 || true",
             "timeout": 5
           }
         ]
@@ -27,21 +27,21 @@
     "PreInvocation": [
       {
         "type": "command",
-        "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PreInvocation >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
+        "command": "printf '%s\\n' '{}'; TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PreInvocation >/dev/null 2>&1 || true",
         "timeout": 5
       }
     ],
     "PostInvocation": [
       {
         "type": "command",
-        "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PostInvocation >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
+        "command": "printf '%s\\n' '{}'; TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s PostInvocation >/dev/null 2>&1 || true",
         "timeout": 5
       }
     ],
     "Stop": [
       {
         "type": "command",
-        "command": "TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-19222}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s Stop >/dev/null 2>&1 || true; printf '%s\\n' '{}'",
+        "command": "printf '%s\\n' '{}'; TRAJECTORY_HOME=\"${TRAJECTORY_HOME:-${HOME}/.trajectory}\" TRAJECTORY_PORT=\"${TRAJECTORY_PORT:-}\" \"${TRAJECTORY_BINARY:-${HOME}/.trajectory/bin/trajectory}\" capture-hook --client agy --ensure-serve --ensure-serve-wait 2s --wait-notify 2s Stop >/dev/null 2>&1 || true",
         "timeout": 10
       }
     ]

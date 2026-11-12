@@ -32,7 +32,7 @@ function shouldIntercept(url) {
     }
     // dd-apm-test-agent also instruments custom Anthropic-compatible gateways
     // by matching Anthropic API paths instead of only the public API host.
-    return /^\/v1\/(messages|complete)(\/|$)/.test(parsed.pathname);
+    return /^\/(?:launch\/[^/]+\/)?v1\/(messages|complete)(\/|$)/.test(parsed.pathname);
   } catch {
     return false;
   }
@@ -229,22 +229,40 @@ function extractResponseSummaryFromMessage(payload) {
 
 function extractTokenUsageFromMessage(payload) {
   const usage = payload?.usage || {};
+  const tokens = {
+    input_tokens: Number.isFinite(usage.input_tokens) ? Math.trunc(usage.input_tokens) : 0,
+    output_tokens: Number.isFinite(usage.output_tokens) ? Math.trunc(usage.output_tokens) : 0,
+    cache_read_input_tokens: Number.isFinite(usage.cache_read_input_tokens)
+      ? Math.trunc(usage.cache_read_input_tokens)
+      : 0,
+    cache_creation_input_tokens: Number.isFinite(usage.cache_creation_input_tokens)
+      ? Math.trunc(usage.cache_creation_input_tokens)
+      : 0,
+  };
+  const breakdown = usage.cache_creation;
+  if (breakdown && typeof breakdown === 'object') {
+    let known = false;
+    if (Object.prototype.hasOwnProperty.call(breakdown, 'ephemeral_5m_input_tokens')) {
+      tokens.cache_creation_5m_tokens = Number.isFinite(breakdown.ephemeral_5m_input_tokens)
+        ? Math.trunc(breakdown.ephemeral_5m_input_tokens)
+        : 0;
+      known = true;
+    }
+    if (Object.prototype.hasOwnProperty.call(breakdown, 'ephemeral_1h_input_tokens')) {
+      tokens.cache_creation_1h_tokens = Number.isFinite(breakdown.ephemeral_1h_input_tokens)
+        ? Math.trunc(breakdown.ephemeral_1h_input_tokens)
+        : 0;
+      known = true;
+    }
+    if (known) tokens.cache_creation_breakdown_known = true;
+  }
   return {
     model: typeof payload?.model === 'string' && payload.model.length > 0 ? payload.model : 'unknown',
     stop_reason:
       typeof payload?.stop_reason === 'string' && payload.stop_reason.length > 0
         ? payload.stop_reason
         : 'unknown',
-    tokens: {
-      input_tokens: Number.isFinite(usage.input_tokens) ? Math.trunc(usage.input_tokens) : 0,
-      output_tokens: Number.isFinite(usage.output_tokens) ? Math.trunc(usage.output_tokens) : 0,
-      cache_read_input_tokens: Number.isFinite(usage.cache_read_input_tokens)
-        ? Math.trunc(usage.cache_read_input_tokens)
-        : 0,
-      cache_creation_input_tokens: Number.isFinite(usage.cache_creation_input_tokens)
-        ? Math.trunc(usage.cache_creation_input_tokens)
-        : 0,
-    },
+    tokens,
   };
 }
 
@@ -317,6 +335,8 @@ async function processSSEBranch({
         ttfb_ms: computeTTFBMs(startNs, parsedSSE.firstChunkNs),
         duration_ms: computeDurationMs(startNs, endNs),
       },
+      request_body: requestBody,
+      response_body: parsedSSE.events,
       request_summary: requestSummary,
       response_summary: responseSummary,
       rate_limit: rateLimit,
@@ -361,6 +381,8 @@ async function processJSONBranch({
         ttfb_ms: computeTTFBMs(startNs, endNs),
         duration_ms: computeDurationMs(startNs, endNs),
       },
+      request_body: requestBody,
+      response_body: payload,
       request_summary: requestSummary,
       response_summary: responseSummary,
       rate_limit: rateLimit,
