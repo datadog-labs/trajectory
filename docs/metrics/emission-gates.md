@@ -57,4 +57,31 @@ It sends them to each eligible destination through agentless OTLP, on a
 best-effort basis. These counters do not depend on trace export. Turning
 incognito on or off sends no metric to ordinary destinations.
 
+An eligible destination is a Datadog destination that takes metrics. A
+destination with `incognito_exempt: true` never takes metrics, so serve sends
+none of these metrics while incognito mode stays on for the user. Most serve
+metrics also need the destination's marker metrics, `markers.enabled` and
+`markers.metrics`.
+
+The deployment fleet gauges do not need markers:
+
+- `trajectory.ops.binary.heartbeat`
+- `trajectory.ops.convergence.heartbeat`
+- `trajectory.ops.config_migration.heartbeat`
+- `trajectory.ops.update.wait_age_seconds`
+
+A destination receives them when `export.metrics` is on, which is the default.
+It also receives them when its own marker metrics are on. Marker settings never
+withhold them, so the operational dashboard sees every computer that runs
+Trajectory. If no destination can take them, serve does not count the hourly
+heartbeat as sent. It tries again 10 minutes later. It logs
+`deployment heartbeat: not sent` at most once an hour.
+
+Serve metrics carry the `tags` from your configuration and managed settings,
+and the destination's `tags`. Session metrics carry these tags too, so a
+dashboard filtered by your own tags includes both. The one exception is
+`trajectory.ops.update.wait_age_seconds`. It carries only the destination's
+`tags`, so the final `0` of a wait always lands in the series the wait
+started.
+
 Return to the [Metrics Reference index](../METRICS-REFERENCE.md).

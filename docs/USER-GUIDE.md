@@ -62,7 +62,7 @@ current command names.
 | Find and explain problems | `trajectory doctor` |
 | Show the full low-level doctor report | `trajectory doctor --verbose` |
 | Explain capture, mapping, and publish expectations | `trajectory doctor publish` |
-| Preview metrics for sessions you already have | `trajectory doctor metrics session --latest` |
+| List the metric rows waiting to be sent | `trajectory publish queue --kind metrics` |
 | Send test metrics and read them back from Datadog | `trajectory doctor metrics canary --publish --readback` |
 | View capture server logs | `trajectory doctor logs [-f] [--grep PAT]` |
 | Write a redacted support ZIP | `trajectory flare` |
@@ -106,7 +106,7 @@ list.
 | Claude Code | `trajectory setup --clients cc` |
 | Codex | `trajectory setup --clients codex` |
 | GitHub Copilot CLI (beta, live capture) | `trajectory setup --clients copilot` |
-| Antigravity CLI | `trajectory setup --clients agy` |
+| Antigravity CLI (macOS and Linux) | `trajectory setup --clients agy` |
 | Goose | `trajectory setup --clients goose` |
 | Cline CLI | `trajectory setup --clients cline` |
 | Aider (command shim) | `trajectory setup --clients aider --install-client-shims` |
@@ -126,24 +126,23 @@ list.
 | gptme (preview) | `trajectory config features enable gptme_instrumentation`, then `trajectory setup --clients gptme` |
 | CodeWhale (preview) | `trajectory config features enable codewhale_instrumentation`, then `trajectory setup --clients codewhale` |
 | ForgeCode (passive-history preview) | `trajectory config features enable forgecode_instrumentation`, then `trajectory setup --clients forgecode` |
-| Warp Desktop and local Oz CLI (preview) | `trajectory config features enable warp_oz_instrumentation`, then `trajectory setup --clients warp` |
 | VS Code Copilot (fixture preview) | `trajectory config features enable vscode_copilot_instrumentation`, then `trajectory setup --clients vscode-copilot` |
 | Windsurf (preview) | `trajectory config features enable windsurf_instrumentation`, then `trajectory setup --clients windsurf` |
 
 ### Turn on saved-history sync for a client
 
 Some clients save their own session history on disk. Trajectory can read that
-history to fill gaps in live capture. Most of these clients have a feature
-flag for this, and its name ends in `_durable_history`.
+history to fill gaps in live capture. For Hermes Agent, Amp Code, OpenCode,
+Kilo Code, and Qwen Code, it does this whenever the client is installed, with
+no feature flag. Most other clients have a feature flag for it, and its name
+ends in `_durable_history`.
 
 | Client | Commands | What it does |
 | --- | --- | --- |
 | Aider | `trajectory config features enable aider_durable_history`, then `trajectory session import aider` | Imports Aider history from the folders you configure |
-| Kilo Code | `trajectory config features enable kilo_durable_history`, then `trajectory session import kilo` | Imports Kilo SQLite and JSON history |
+| Kilo Code | `trajectory session import kilo` | Imports Kilo SQLite and JSON history |
 | ZCode | `trajectory session import zcode` | Repairs ZCode history that is already on disk |
 | Kiro CLI | `trajectory config features enable kiro_durable_history`, then `trajectory config reload --yes` | Syncs Kiro JSONL and SQLite history in passes of limited size |
-| OpenCode | `trajectory config features enable opencode_durable_history`, then `trajectory config reload --yes` | Watches for new and changed OpenCode sessions |
-| Amp Code | `trajectory config features enable amp_durable_history`, then `trajectory config reload --yes` | Syncs Amp thread history in passes of limited size |
 | cursor-agent CLI | `trajectory config features enable cursor_agent_durable_history`, then `trajectory config reload --yes` | Syncs cursor-agent transcripts in passes of limited size |
 
 Run `trajectory config reload` without `--yes` first to preview the change.
@@ -379,7 +378,6 @@ Use these commands for more detail:
 | `trajectory cost inspect --session <id>` | Cost and tokens for each turn of one session |
 | `trajectory cost observations --session <id>` | The cost facts recorded for one session |
 | `trajectory cost validate` | Cost coverage for recent sessions |
-| `trajectory cost audit --latest` | Whether the queued cost metrics match the client's own records |
 | `trajectory cost hotspots` | Files that agents read and edit most, with folder totals |
 
 For windows, repair, pricing, and accuracy details, run
@@ -408,38 +406,6 @@ change stored attribution. A `*` marks those values.
 `trajectory cost pricing --since <window>` shows the source, match method,
 assumptions, and unresolved data for each price. Codex credits stay separate
 from USD.
-
-### Check cost metrics against the client's records
-
-The `trajectory cost audit` check compares the client's own records with a
-newly built session and the saved outbox. The outbox is the local queue of
-metrics waiting to go to Datadog. To run it, turn on the preview flag first:
-
-```bash
-trajectory config features enable cost_contract_reconciliation
-trajectory cost audit --latest
-```
-
-To audit the last day as JSON, run
-`trajectory cost audit --since 24h --summary-only --json`.
-
-The audit works like this:
-
-- It never compares against old cost rows that have no source tag.
-- It reports four kinds of problems separately: client-to-capture mismatches,
-  capture-to-outbox over- or undercounts, timestamp or time-bucket errors, and
-  delivery state.
-- If client or saved data is missing, the result is `inconclusive`. It does not
-  count as a pass.
-- It reads saved outbox schemas without migrating them. It turns off side
-  effects of rebuilding sessions.
-- If a finished transcript cannot be used, it reports
-  `session_materialization_failed` and checks the other sessions.
-- Codex records above 8 MiB go to private temporary files. The audit then reads
-  only the cost fields, so no record is too large to check.
-- Billable aborted and superseded requests stay in the comparison.
-- A repeated cumulative snapshot that did not change counts as usage from the
-  turn before. It does not count as new usage.
 
 ### See what kind of work agents did
 
@@ -535,31 +501,17 @@ classifier's reasons. Add `--json` for the stable
 `trajectory.patterns.session.v4` schema. The command only reads local data, and
 it works when incognito is on.
 
-### Automatic task segmentation is off by default
+### Automatic task segmentation was removed
 
-Automatic task segmentation is off by default.
-While it is off, Trajectory makes no segmentation LLM calls. Session end
-never waits on segmentation. No `trajectory.task.*` metrics are published,
-including from managed task backfill. Settings such as
-`segmentation.enabled`, `segmentation.interval`, and
-`segmentation.publish_metrics`, from your own config or from managed or org
-defaults, do not turn it on. Task rows that are already stored stay readable
-in local reports.
+`trajectory serve` never splits sessions into tasks or classifies them, and it
+makes no LLM calls. Session end never waits on classification. The
+`automatic_task_segmentation` feature flag and the `segmentation.*` settings
+were removed. A configuration file that still names them loads, and
+Trajectory ignores those entries. Task rows that are already stored stay
+readable in local reports.
 
-To turn it on, enable the feature flag and reload serve:
-
-```bash
-trajectory config features enable automatic_task_segmentation
-trajectory config reload --yes
-```
-
-A managed or org `features.disabled` entry for the flag wins over a user
-enable. Explicit `trajectory segment` and `trajectory patterns analyze --yes`
-runs still work while the flag is off. They store task rows locally, but
-Trajectory does not publish task metrics from them until the flag is on.
-`trajectory publish history --yes` leaves out task metrics while the flag is
-off. A session it publishes then is not published again after you turn the
-flag on, so its task metrics are not sent.
+Trajectory no longer publishes task metrics. To classify tasks, run
+`trajectory patterns analyze --yes`. It stores task rows locally.
 
 ### Classify past sessions
 
@@ -593,9 +545,8 @@ A confirmed run does these steps:
    classifies a complete session again.
 5. It reconciles PR-work data and evaluates deterministic markers again from
    the finished local record.
-6. It backfills only metrics that are not distributions. When
-   `automatic_task_segmentation` is on, it also repairs saved Agent Console
-   task metrics through Datadog historical ingestion.
+6. It backfills only metrics that are not distributions. It sends no task
+   metrics.
 
 Trajectory decides that a session is complete from its stored rows and its
 Work Insights v1 task and turn coverage. Sometimes coding coverage needs new
@@ -622,7 +573,7 @@ prompt uses the same transcript and turns, but takes its task groups from the
 checked coding pass.
 
 The dollar amount is a planning estimate. It is not a provider invoice. To run
-only the local session and cost repair, use `--yes --repair-only`.
+only the local session repair, use `--yes --repair-only`.
 `--details` and JSON show short repair diagnostics with no session content.
 Each one has the session ID, client, repair step, and a reason code.
 
@@ -637,7 +588,7 @@ reports show the total analysis cost for the window, including failed tries.
 In a terminal, `trajectory patterns` commands print their current step to
 stderr. Reports show steps such as client history discovery, window selection,
 tool and marker scans, PR attribution, GitHub pages, and rendering. Analysis
-shows prompt planning, local and cost repair, permission checks,
+shows prompt planning, local repair, permission checks,
 classification, and metric publishing. If a client's history cannot be read,
 the report prints a short warning and still reports cached sessions.
 
@@ -812,11 +763,32 @@ The command writes a redacted ZIP file under `~/.trajectory/` that you can
 share. The ZIP contains doctor output, process state, metric diagnostics,
 config files, and managed `config.defaults.yaml`. It also has cohort overlay
 files, the end of each log, and version and pricing details.
+On a managed installation, the ZIP also has the records of managed client
+setup, the client refresh after an update, and the last background reconcile.
+On macOS, it adds the status of the managed reconcile LaunchAgent. The status
+says whether the LaunchAgent is loaded, how often it ran, and its last exit
+code. The ZIP's `manifest.json` lists under `absent` each of these
+records that the computer does not have.
 
 If support needs the raw data for one session, run
 `trajectory flare --privileged --session <id>`. Review that ZIP before you
 share it. For the older single-JSON support summary, run
 `trajectory doctor --support-bundle`.
+
+If `trajectory serve` uses a lot of CPU, add a CPU profile to the ZIP:
+
+```bash
+trajectory flare --cpu-profile 30s
+```
+
+The running `serve` process records a Go CPU profile for the duration you
+give, up to 60 seconds. The command can take up to 15 seconds longer. The
+profile holds function names, file paths, and sample counts, but no session
+content. Review it before you share it. If no `serve` process is running,
+flare warns and writes the ZIP without the profile. To see what every
+goroutine in `serve` is doing, run `trajectory flare --goroutine-dump`. Both
+modes take `--pid` to pick one `serve`, also one that yielded to a
+`dev serve` or that an update replaced in place.
 
 ### Check the client and capability inventory
 
@@ -957,20 +929,9 @@ To see what Trajectory would publish, run `trajectory publish preview`.
 
 ### Check that metrics reach Datadog
 
-Start with these two commands when you first set up metrics.
-
-To preview metrics for your newest session, run:
-
-```bash
-trajectory doctor metrics session --latest
-```
-
-This command rebuilds the metrics that Trajectory derived from the local
-cache. It prints the metric names, the main session tag filters, and the outbox
-status. It does not send old metrics to Datadog. Sessions older than 24 hours
-are always local-only previews. Sending old metrics and reading them back is
-not reliable during first setup. To preview another session, use
-`--session <id>`.
+Start with the canary when you first set up metrics. Datadog does not
+reliably accept or return metrics with old timestamps, so the canary sends new
+test points instead of replaying an old session.
 
 To send test metrics, run:
 
@@ -992,8 +953,7 @@ To open its Metrics Explorer URL again, run `trajectory doctor metrics open`.
 Trajectory saves local-only runs for diagnosis, but `metrics open` refuses
 them because they sent no points to Datadog.
 
-If `metrics session` reports no eligible destinations, turn on base metrics
-first:
+If the canary reports no eligible destinations, turn on base metrics first:
 
 ```bash
 trajectory config set export.metrics true
@@ -1012,58 +972,13 @@ trajectory config set-secret dd_app_key --stdin
 trajectory doctor metrics canary --publish --destination <name> --readback
 ```
 
-### Audit published metrics
+### Check the metric rows Trajectory queued
 
-For a deeper check that only reads data, run:
-
-```bash
-trajectory publish metrics audit --latest
-```
-
-Add `--builtin-details` to list every built-in metric. Each metric is marked
-`observed`, `not_observed`, or `out_of_scope` for the local data you chose.
-
-The audit leaves out `content_length_estimate` token and cost rows from the
-expected values. It warns when your sessions have those rows, so you can see
-why the estimated cost is lower.
-
-To query Datadog for stable dashboard metrics outside first setup, save an
-application key and add `--readback`:
+To see the metric rows Trajectory queued and their delivery state, run:
 
 ```bash
-trajectory config set-secret dd_app_key --stdin
-trajectory publish metrics audit --latest --readback
+trajectory publish queue --kind metrics
 ```
-
-For CI, canaries, or incident follow-up, add
-`--readback-all --strict-fidelity`. Every sent outbox group must then read back
-from Datadog with the same values. This includes duration and last-seen
-metrics, which change often. Strict mode fails in these cases:
-
-- expected rows with source tags are missing
-- extra rows are present
-- rows are not `sent`
-- a source label is unknown
-- the read from Datadog is incomplete
-
-Older sessions can have rows from before the current metric catalog added its
-source tags. The audit reports those rows as `historical_contract_drift`. It
-still shows the counts of missing and unexpected rows. This state is normal for
-old rows. On a new session or canary, it means the current code is not sending
-the required source tags.
-
-### Audit cost metrics for an incident
-
-For a cost-only incident, use `trajectory cost audit`. It works differently
-from the broad audit:
-
-- It does not build both sides of the comparison from the live local cache.
-- It rebuilds the session from its JSONL.
-- It checks the client's own records where Trajectory supports that.
-- It reads the saved outbox without setting it up or migrating it.
-
-It only reads local data. To check whether sent points are visible in Datadog,
-use the broad audit with `--readback`.
 
 ### Create log-based metrics
 
@@ -1102,14 +1017,6 @@ The canary works like this:
 If you configure more than one Datadog metric destination, pick one with
 `--destination <name>`.
 
-If an OTLP destination loses task scores of zero, add
-`--zero-task-score-probe`. The canary then saves a separate
-`trajectory.task.risk_score=0` row in its own outbox. It checks the encoded
-OTLP point and sends it through the normal outbox. It reports two results
-separately: whether Datadog intake accepted the point, and whether a Datadog
-query returns it. The probe needs OTLP metrics transport. It works with only
-one destination.
-
 For the publish runbook, run `trajectory user-guide publish`. It covers
 validate, status, preview, missing Datadog data, `publish sync`, and publish
 ledger repair.
@@ -1129,7 +1036,7 @@ queries for your destination.
 ### How publish retries work
 
 Trace and final-session retries use a local outbox at
-`~/.trajectory/state/trace-publish-outbox.sqlite`. The outbox stores only
+`~/.trajectory/state/delivery-outbox.sqlite`. The outbox stores only
 metadata, not session content.
 
 A `trajectory serve` process can capture an event without Datadog credentials.
@@ -1145,7 +1052,13 @@ another endpoint or credential. The live hook claims its row before it sends,
 so a periodic retry cannot send the same turn at the same time.
 
 `trajectory doctor` reports trace outbox rows that are pending, retryable,
-failed, stale, or dropped.
+failed, stale, or dropped. Failed rows expire after 14 days and keep a counted
+`failed_expired` drop reason for three more days. Selected temporary failures
+retry within that window while attempts remain. Retries still check the publish
+ledger, so a completed upload stays suppressed and a held claim blocks its
+output. When a row reaches the 14-day limit without being sent, doctor fails
+the trace outbox check for the next three days. Older expired failures do not
+count, even before the next cleanup runs.
 
 ### Build cost dashboards
 
@@ -1236,15 +1149,39 @@ drops new hook, watcher, and OTLP events and writes no JSONL for them. Servers
 that are already running drop them too. To start capture again, run
 `trajectory config capture enable`.
 
+What a coding agent did while capture was off stays out after you turn capture
+back on. `capture enable` saves the period in
+`~/.trajectory/state/capture-off-windows.json`. When Trajectory later reads the
+agent's own files, it skips every record the agent wrote in a saved period. A
+session used before and after the period keeps only what happened outside it.
+A session that ran only inside the period is never imported. If you delete
+`capture.disabled` by hand, Trajectory has no record of the period.
+
+The file records when capture was turned off and by which command, with its
+process ID and the name of the process that started it. `trajectory doctor`,
+`trajectory status`, and the capture server's `/health` report it. For
+example: "capture disabled for every coding agent since 2026-10-07 04:14 PDT
+by `trajectory uninstrument all --for-uninstall` (pid 4242, started by
+install-release)". After 24 hours, doctor and `/health` show it as a warning.
+
 To stop capture for one process tree only, set `TRAJECTORY_DISABLED=1`. This
 environment variable overrides the saved user setting. Unset it before you
 start that process again.
 
+The capture server does not run with the variable. A hook that runs with it
+marks its session under `~/.trajectory/state/capture-disabled-sessions/`, and
+the server then leaves that session out. This holds for Claude Code and Codex.
+It does not hold for a client that starts no hook process, such as OpenCode or
+Qwen. For those, use `trajectory config capture disable`. A marked session
+stays out when you resume it later without the variable.
+
 During compatibility updates, Trajectory can write a special internal marker
 to the same path. This marker stops capture in older released clients. Current
 clients go on to check each client's policy, and that check decides. Current
-hooks treat only that special marker as selective. A symlink, bad contents, or
-any other marker still turns off all capture.
+hooks and the capture server apply the same check. A client that is turned off
+loses all of its events, never only some of them. Current hooks treat only
+that special marker as selective. A symlink, bad contents, or any other marker
+still turns off all capture.
 
 ### Override feature flags for one process
 
@@ -1357,7 +1294,11 @@ For `type: otlp`, set a base collector `endpoint`. Trajectory adds
 
 Some modules record their own APM-style spans. For example, AI Guard records a
 span for each hook check. Normal LLM Obs turn traces do not use this setting.
-Trajectory saves these spans locally in `~/.trajectory/modules/spans.jsonl`.
+Trajectory saves these spans locally, one file per session, under
+`~/.trajectory/modules/by-session/`. Serve removes a session's file a week
+after its last write once the session's final publish has sent it. Otherwise
+it removes the file after session retention removes the session and no
+destination still waits for it.
 
 To publish them, a managed or trusted destination sets
 `module_spans.enabled: true`. Publishing works like this:
@@ -1507,6 +1448,22 @@ To stop local-ui from starting automatically across a fleet, deploy
 User `config.yaml` cannot override a managed `false`. The
 `trajectory local-ui` command still works.
 
+### Use Trajectory on a computer people share
+
+Trajectory trusts the other accounts on a computer. It does not protect you from
+them in these two cases:
+
+- **Reading your sessions.** Another account, or a sandboxed process that can
+  reach loopback, can read your session content through local-ui. Turn off
+  automatic start with `trajectory config set local_ui.auto_start false`, and
+  run `trajectory local-ui` only while you need it.
+- **Answering Claude Code's tool hooks.** While `trajectory serve` isn't running,
+  another account can listen on the capture port. It then receives the tool data
+  those hooks send, and its reply can approve or change a tool call, which runs
+  code as you.
+
+Don't use Trajectory on a computer you share with accounts you don't trust.
+
 ## Update Trajectory and recover processes
 
 ### Update to the latest release
@@ -1614,8 +1571,16 @@ A serve process can start normally and find a pending probation selector for
 another version. It then keeps running as a normal capture owner. It does not
 claim or promote that version, which stays pending for a later activation.
 
-If no registered client calls a hook, the old process keeps serving on purpose.
-The activation stays pending.
+A hook call comes only while a coding agent uses Trajectory. When no session
+has used the old process in the last few minutes, Trajectory waits 90 seconds
+for a hook. Then the update hands over by itself. It checks the new version
+and stops only the old process. It starts the new version and confirms that
+one serve owner is ready. When a session uses the old process, the update waits
+for that session's next hook instead.
+
+`trajectory update` prints `installed v<version>` when the new binary is in
+place. It prints `updated to v<version>` only when no older Trajectory service
+still runs. Otherwise it says that the service still uses the previous version.
 
 ### Turn off automatic process replacement
 
@@ -1637,6 +1602,11 @@ trajectory update converge --yes --force --target-version VERSION --source manag
 
 If that version is older than the release the runtime selected, the command
 prints a warning and still switches to it.
+
+Run `update converge` from the installed binary, `$TRAJECTORY_HOME/bin/trajectory`,
+which is `~/.trajectory/bin/trajectory` by default. Run from another copy,
+such as a downloaded binary, it changes nothing and prints the command to run
+from the installed binary.
 
 To preview what convergence would do, run
 `trajectory update converge --dry-run`. With `--target-version`, the preview
@@ -1668,7 +1638,10 @@ trajectory serve
 ```
 
 To hand capture to a development binary for a while, run
-`trajectory dev serve` from that binary.
+`trajectory dev serve` from that binary. If the development binary cannot
+refresh its handoff for 15 seconds, it prints the reason and how to resume,
+then exits with status 1. The installed capture server then takes the port
+back.
 
 ## Uninstall
 
@@ -1701,8 +1674,8 @@ For the full reference, run `trajectory user-guide install`.
 ### Use incognito
 
 Use `/incognito` when the current session must not send content to normal
-Datadog observability destinations. Local JSONL capture continues. Task
-segmentation and semantic analysis also continue.
+Datadog observability destinations. Local JSONL capture and semantic analysis
+continue.
 
 Trace and log outputs are not sent to Datadog destinations, except exempt
 ones. These outputs include traces, records, and AI-usage events. Accounting
@@ -1719,10 +1692,14 @@ repository names. The metrics keep these fields:
 - host and OS
 - cost method
 
-Set the mode to `standard` to send the normal metric tags. Some models are
-always model-redacted in metrics and AI Usage events, even in `standard`
-mode. Those metrics carry `trajectory.model_disclosure:redacted`. There is
-no metric-off mode, because cost and token accounting always continues.
+Set the mode to `standard` to send the normal metric tags.
+`export.redacted_model_suffixes` can list model ID suffixes. Models whose IDs
+end in one of them are always model-redacted in metrics and AI Usage events,
+even in `standard` mode. Those metrics carry
+`trajectory.model_disclosure:redacted`. With no list, no model is redacted
+this way. `pricing.unbilled_model_suffixes` is a separate list that only
+organization configuration sets: those models cost $0. There is no metric-off mode, because cost and token accounting
+always continues.
 
 Session incognito turns off when the session ends. Organization-managed
 destinations with `incognito_exempt: true` can still receive events for
@@ -1753,10 +1730,8 @@ Use backfill for maintenance tasks:
 
 - importing past sessions
 - refreshing the local UI cache
-- checking how past metrics were derived, on your computer only
 
 You do not need backfill to start using metrics. For that, run
-`trajectory doctor metrics session --latest` and
 `trajectory doctor metrics canary` first.
 
 Normal backfill does not send past token and cost data again. When backfill
@@ -1771,13 +1746,40 @@ Corrections move forward in time.
 | Refresh the local UI from cached sessions | `trajectory session refresh-local` |
 | Import Codex rollouts, newest first, from active and archived folders | `trajectory session import codex --limit 100` |
 | Import GitHub Copilot CLI history | `trajectory config features enable copilot_durable_history`, then `trajectory session import copilot` |
-| Repair one Hermes session from `state.db` | `trajectory config features enable hermes_durable_history`, then `trajectory session import hermes --session <id>` |
+| Repair one Hermes session from `state.db` | `trajectory session import hermes --session <id>` |
 | Import one OpenCode session from SQLite or saved JSON | `trajectory session import opencode --session <id>` |
-| Import one Qwen session from active or archived chat JSONL | `trajectory config features enable qwen_durable_history`, then `trajectory session import qwen --session <id>` |
-| Check past metrics locally, without sending | `trajectory publish metrics audit` |
-| Fill gaps in live cost, session, and task metrics | `trajectory publish history --last 30d --yes` |
+| Import a date range of Claude Code, Codex, Pi, or OpenCode history | `trajectory session import pi --since 2026-07-24 --until 2026-08-23` |
+| Import one Qwen session from active or archived chat JSONL | `trajectory session import qwen --session <id>` |
+| Fill gaps in live cost and session metrics | `trajectory publish history --last 30d --yes` |
 
 Each feature flag above needs to be turned on only once.
+
+`--since` and `--until` select sessions by when the client was working in them.
+They do not look at when a file was last written. A session that started before
+`--since` and continued into the range is imported in full. `--until` is the
+first date to leave out.
+
+These clients accept both dates:
+
+- `claude`, `claude-desktop`, `codex`, `pi`, `omp`
+- `opencode`, `kilo`, `zcode`
+- `aider`, `grok`, `mistral-vibe`, `openclaw`, `codebuff`
+- `hermes`, `openhands`, `copilot`, `qwen`, `gemini`, `ddHarness`
+
+`cursor` accepts the same dates, with one difference. Cursor agent transcripts
+carry no times of their own. For those, Trajectory reads each file's write time
+instead, both to select the chat and to timestamp what it imports. Cursor
+`store.db` chats and older chat logs keep their own times, and Trajectory
+selects them by those times.
+
+`aider` keeps several runs in one history file and records when each run
+started, but not when it ended. `--until` therefore selects exactly, while
+`--since` keeps a run whose last activity Aider never wrote down.
+
+`antigravity` refuses a date range. Its saved times come from its own files
+rather than from the client, so a date range there would only repeat what the
+filesystem says. Import its whole retained history, or one session with
+`--session`.
 
 For Claude Code, imports and token repair use `CLAUDE_CONFIG_DIR` when it is
 set. Trajectory then reads transcripts from `$CLAUDE_CONFIG_DIR/projects` and
@@ -1802,8 +1804,7 @@ current activity before it converts a file. You can retry sources that failed.
 Files that appear during an import may need another run. Background recovery
 lists sources again on each page.
 
-For modes, local UI repair, local checks of past metrics, and record backfill,
-read the full guides:
+For modes, local UI repair, and record backfill, read the full guides:
 
 ```bash
 trajectory user-guide backfill
@@ -1853,11 +1854,14 @@ Trajectory loads markers in layers, in this order:
 2. Org markers.
 3. User add-ons in `~/.trajectory/markers.d/*.yaml`.
 4. User markers in `~/.trajectory/markers.yaml`.
-5. Project markers in `.trajectory/markers.yaml`.
+5. Project markers from `TRAJECTORY_PROJECT_MARKERS_PATH`, or, for commands you
+   run in a repository, `.trajectory/markers.yaml`.
 
-To roll out markers for a repository, put the marker definitions in
-`.trajectory/markers.yaml`. Put destination choices and marker metric settings
-in `publish.trajectory.yaml`.
+To apply markers to captured sessions, use org or user markers. A repository's
+`.trajectory/markers.yaml` applies only to commands you run in that repository.
+`trajectory serve` does not read it unless `TRAJECTORY_PROJECT_MARKERS_PATH`
+names it. Put destination choices and marker metric settings in
+`publish.trajectory.yaml`.
 
 To add the optional security markers, run:
 
@@ -1957,7 +1961,8 @@ into the binary: `agent-security` and `frontier-ai-gateway`.
 | `trajectory plugins modules records --module <id>` | Shows the module's foreground evaluator decisions |
 
 Trajectory saves module decisions locally in
-`~/.trajectory/modules/decisions.jsonl`.
+`~/.trajectory/modules/decisions.jsonl`. The file starts over at 16 MiB and
+keeps the previous 16 MiB in `decisions.jsonl.1`.
 
 Normal `trajectory setup --clients ...` installs only observability and
 passive module files. Some modules can respond, pause, protect, or block. You
@@ -2094,8 +2099,8 @@ tags:
 ```
 
 Trajectory adds these tags when it publishes. It adds them to Datadog LLM Obs
-spans and to Trajectory's Datadog metrics for base, marker, heartbeat, and
-task metrics. It does not add them in these places:
+spans and to Trajectory's Datadog metrics for base, marker, and heartbeat
+metrics. It does not add them in these places:
 
 - local JSONL
 - OTLP exports
@@ -2149,17 +2154,16 @@ as populations in Metrics Explorer. Use percentile functions such as `p95:`
 only on current distributions. First turn on Datadog percentile aggregations
 for the metric.
 
-- `trajectory.turn.duration_ms.total`: how long a finished turn took, when the
-  client gives it or Trajectory can work it out.
+- `trajectory.turn.cost.usd.total`: the cost of a finished, priced turn.
 
 Related turn and session metrics:
 
+- `trajectory.turn.duration_ms`: how long a finished turn took, when the
+  client gives it or Trajectory can work it out. It is a gauge tagged with
+  `trajectory.turn_id`.
 - `trajectory.turn.permission_wait_ms.additive`: the estimated time a person
   spent approving actions in a finished turn. Trajectory sends it when it can
   work out a permission wait.
-- `trajectory.turn.duration_ms.excluding_human_wait.additive`: the turn
-  duration minus the waits it saw for a person, such as approvals and
-  elicitations.
 - `trajectory.turn.permission_prompts.additive`: permission prompt counts by
   `decision`, `permission_mode`, and `approval_path`. The `approval_path`
   values are `manual_prompt`, `auto_mode_prompt`, `auto_classifier`, or a few
@@ -2170,11 +2174,9 @@ Related turn and session metrics:
   cost so far, and at the end.
 - `trajectory.turn.prs`: one count for the turn that created a PR or MR. It is
   tagged with the PR or MR identity, `session_id`, and `trajectory.turn_id`.
-- `trajectory.pr.interactions.total`, `trajectory.pr.work_turns.additive`,
-  `trajectory.pr.work_duration_ms.additive`, and
-  `trajectory.pr.work.{cost.usd,input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens}.additive`:
-  PR and MR interactions, and the primary assignment of work to a PR. These
-  stay correct after corrections.
+- `trajectory.pr.interactions.total`, `trajectory.pr.work_turns.additive`, and
+  `trajectory.pr.work.cost.usd.additive`: PR and MR interactions, and the
+  turns and cost assigned to each PR. These stay correct after corrections.
 - `trajectory.session.last_seen.unix`: the time of the latest session event,
   in Unix seconds. Use it to sort session tables by recency. Turn on
   Historical Metrics Ingestion for this gauge before you replay sessions older
@@ -2188,9 +2190,9 @@ they upgrade. If you still see them, some clients run an older version.
 
 To compare with Claude Code, note what each metric measures:
 
-- `trajectory.turn.duration_ms.total` is the total time of an agent turn.
-- The permission-wait and excluding-human-wait metrics above show the human
-  wait that Trajectory can work out.
+- `trajectory.turn.duration_ms` is the total time of an agent turn.
+- The permission-wait metric above shows the approval wait that Trajectory can
+  work out.
 - Claude's own `claude_code.active_time.total` leaves out time in the
   foreground and idle time.
 
@@ -2293,7 +2295,7 @@ To ask for raw Markdown in a terminal, pass `--format md`.
 | `trajectory user-guide clients/codebuff` | Codebuff command shim and chat-history import |
 | `trajectory user-guide clients/qwen` | Qwen Code native HTTP hooks |
 | `trajectory user-guide clients/kilo` | Kilo Code plugin and OTLP relay |
-| `trajectory user-guide clients/kiro` | Kiro CLI agent command hooks |
+| `trajectory user-guide clients/kiro` | Kiro CLI agent (V2) and global (V3) command hooks |
 | `trajectory user-guide clients/devin` | Devin CLI source sync |
 | `trajectory user-guide clients/qoder` | Qoder CLI plugin and source sync |
 | `trajectory user-guide clients/zcode` | ZCode wake hooks, SQLite sync, and repair |
@@ -2303,7 +2305,6 @@ To ask for raw Markdown in a terminal, pass `--format md`.
 | `trajectory user-guide clients/gptme` | gptme native plugin and saved sources |
 | `trajectory user-guide clients/codewhale` | CodeWhale saved sessions and runtime store (preview) |
 | `trajectory user-guide clients/forgecode` | ForgeCode passive history (preview) |
-| `trajectory user-guide clients/warp` | Warp Desktop and local Oz provider store |
 | `trajectory user-guide clients/windsurf` | Windsurf Cascade hooks and source sync |
 | `trajectory user-guide clients/pi` | Pi |
 | `trajectory user-guide clients/opencode` | OpenCode |
@@ -2315,13 +2316,11 @@ which privacy features apply. They are not the client registry. For current
 setup and support levels, see [SUPPORTED-CLIENTS.md](SUPPORTED-CLIENTS.md).
 
 Trajectory applies incognito on its server. So incognito works for any
-captured session once it is on for that session. Local capture, task
-segmentation, semantic analysis, and accounting metrics continue. Trace and
+captured session once it is on for that session. Local capture, semantic
+analysis, and accounting metrics continue. Trace and
 log content does not go to Datadog destinations, except exempt ones. Metrics
 leave out model and repository names by default. The privacy table shows
 whether setup gives each client its own way to turn incognito on.
-
-Headless sessions always skip segmentation.
 
 Many rows mention a client's saved history. That is the session data the
 client writes to disk. A feature flag whose name ends in `_durable_history`
@@ -2334,7 +2333,7 @@ controls whether Trajectory reads it.
 | Claude Code | Native HTTP hooks for tools and messages, plus command hooks with receipts | Yes | Yes | Transcript backfill and live-event repair | Yes |
 | Codex CLI | Command hooks, with the rollout watcher as fallback | Yes | Yes | Codex rollout backfill | Yes |
 | GitHub Copilot CLI | Beta plugin command hooks. Optional session-state watcher, off by default. Native OTel with content turned off. | Hooks give lifecycle, prompt, tool, and session events. History adds assistant text, reasoning, tool results, permissions, and subagents. | Native `chat` spans give usage per request, and public-rate USD when both managed features are on. Shutdown totals are the fallback. | Bulk backfill. Automatic discovery needs `copilot_cli_durable_history`. | Not yet |
-| Antigravity CLI (`agy`) | Native plugin command hooks | Tool calls, results, errors, and Stop metadata. With `antigravity_durable_history`, also user prompts, timestamps, workspaces, and models. | Live provider rows give token counts per request and public-rate USD. Saved history does not produce metrics. | Optional watcher for saved JSONL and SQLite rows, off by default. Backfill repairs older history. | No setup-managed resume |
+| Antigravity CLI (`agy`) | Native plugin command hooks | Prompts, tool calls, errors, and Stop metadata, but no tool output. With `antigravity_durable_history`, also models and the prompts the hooks did not record. | Live provider rows give token counts per request and public-rate USD. Saved history does not produce metrics. | Optional watcher for saved JSONL and SQLite rows, off by default. Backfill repairs older history. | No setup-managed resume |
 | Goose | Open Plugins command hooks | Session, prompt, assistant, and tool events. Hooks omit tool IDs and result bodies, so matching tools with the same name is best effort. | Hooks omit usage. `goose_durable_history`, on by default, adds model, tokens, and compaction. Only complete provider-reported USD counts. | Read-only SQLite sync through `goose_durable_history` | Native hooks start a new generation with the same ID on resume. No setup-managed resume command. |
 | Cline CLI | File hooks | Lifecycle, prompt, tool, assistant-message, turn, and session-end events | Not in current hook payloads (`turn_end.tokens_status=unavailable`) | Not yet | No setup-managed resume |
 | Aider | Opt-in command shim. Optional sync of native Markdown history from folders you name, off by default. | The wrapper gives lifecycle, prompt, assistant, and turn events. History adds prompt, assistant, model, and status text, but no structured tool calls. | The wrapper keeps provider usage and cost. History counts mix provider data and local estimates, rounded for display. Printed cost is the client's own figure. | Watcher plus `session import aider`, behind `aider_durable_history` | No setup-managed resume. History has no end marker. |
@@ -2345,16 +2344,16 @@ controls whether Trajectory reads it.
 | Cursor Desktop | Command hooks | Yes | Native input, output, cache-read, and cache-write tokens. Live rate-card cost needs a synced rate card. Child usage attaches only from complete child data. | Cursor chat import. Backfill uses live metric names with original timestamps. | Yes |
 | cursor-agent CLI | Native command hooks when dispatched, plus a shared passive JSONL watcher | Text, thinking, tool requests, tool results, and turn markers | Same native token set as Desktop. Passive records have no token data and stay unpriced. | Current and older JSONL layouts. Backfill uses live metric names with original timestamps. | No setup-managed resume |
 | Factory Droid | Beta Factory plugin command hooks | Documented lifecycle, prompt, tool, notification, compaction, stop, and subagent-stop events | Not in current documented hook payloads | Not yet | Not yet |
-| Pi | TypeScript extension | Yes | Yes | Import from `.pi/agent/sessions`. Optional `pi_history_backfill`, off by default, picks up idle files that were never captured. | Yes |
+| Pi | TypeScript extension | Yes | Yes | Import from `.pi/agent/sessions`. An automatic import picks up idle files that were never captured. | Yes |
 | Oh My Pi (`omp`) | Preview native extension plus history sync, behind a feature flag | Lifecycle, prompts, assistant and model, tool results and errors, compaction, and session links from headers | Native input, output, cache, and total tokens, plus provider cost when present | Profile-aware v3 sync plus full-history repair | Native resume, switch, and branch. Trajectory records them but does not start resume. |
-| Hermes Agent | Observer plugin hooks, plus optional history sync, off by default | Yes | Live usage when present. Saved history keeps session totals without per-turn attribution. | Read-only `state.db` watcher plus backfill | No setup-managed resume |
-| Amp Code | Setup-managed system plugin | Yes | Live events omit usage. Optional saved history, off by default, adds model and token data. Provider credits are not counted as USD. | `T-*.json` thread sync behind `amp_durable_history`. Native plugin traces win. | No setup-managed resume |
-| Qwen Code | Native HTTP hooks, plus optional history sync, off by default | Yes | Yes, from Qwen `usageMetadata` with transcript fallback | Chat JSONL watcher plus manual backfill, including archives | No setup-managed resume |
+| Hermes Agent | Observer plugin hooks, plus history sync | Yes | Live usage when present. Saved history keeps session totals without per-turn attribution. | Read-only `state.db` watcher plus backfill | No setup-managed resume |
+| Amp Code | Setup-managed system plugin | Yes | Live events omit usage. Saved history adds model and token data. Provider credits are not counted as USD. | `T-*.json` thread sync. Native plugin traces win. | No setup-managed resume |
+| Qwen Code | Native HTTP hooks, plus history sync | Yes | Yes, from Qwen `usageMetadata` with transcript fallback | Chat JSONL watcher plus manual backfill, including archives | No setup-managed resume |
 | OpenHands | Command hooks, plus optional history sync | Hooks give lifecycle, prompt, and tool events. Saved bundles add assistant text, thinking, tool input and results, model, and CWD. | Hooks have no usage. `base_state.json` gives provider totals and cost per session only. | `trajectory session import openhands` plus a watcher behind `openhands_durable_history` | Native resume uses the same conversation ID. No setup-managed resume command. |
-| OpenCode | Plugin SDK events | Yes | Yes | `session import opencode` for JSON storage and SQLite. Optional watcher for new and changed sessions. | Yes |
-| Kilo Code | Plugin SDK events | Yes | Native model, provider, input, output, reasoning, cache-read, and cache-write tokens, and cost. Optional native OTLP. | `session import kilo` plus an optional SQLite and JSON watcher, off by default | No setup-managed resume |
+| OpenCode | Plugin SDK events | Yes | Yes | `session import opencode` for JSON storage and SQLite. A watcher for new and changed sessions. | Yes |
+| Kilo Code | Plugin SDK events | Yes | Native model, provider, input, output, reasoning, cache-read, and cache-write tokens, and cost. Optional native OTLP. | `session import kilo` plus a SQLite and JSON watcher | No setup-managed resume |
 | ZCode | Preview wake hooks plus SQLite sync | Session ID, parent, CWD, prompt, assistant and thinking text, model, provider, and tools | Tokens per attempt and per turn, including reasoning and cache. Cost only when a known rate applies. | Automatic sync plus `session import zcode` | Active updates keep a session open. Only archived data can end a session. |
-| Kiro CLI | Agent command hooks | Prompt, tool, assistant response, and saved models and timestamps | Not in hooks or saved stores. Trajectory does not estimate it. | Optional JSONL and SQLite sync through `kiro_durable_history`, off by default. Native hook traces win. | Native `--resume-id`. No setup-managed resume. |
+| Kiro CLI | Agent command hooks (V2), global command hooks (V3) | Prompt, tool, and saved models and timestamps. V2 also has the assistant response, and on V3 `Stop` reads the turn's reply from Kiro's own session store | No tokens. On V3, per-turn credits, read once the `Stop` hook returns. Credits are not counted as USD. | Optional JSONL and SQLite sync through `kiro_durable_history`, off by default. Native hook traces win. | Native `--resume-id`. No setup-managed resume. |
 | CommandCode | Preview watcher. Native hooks start the transcript sync. | Prompt, assistant, thinking, tools and results, CWD when given, and Stop turn boundaries. No terminal SessionEnd. | No native usage or cost. Later estimates stay marked as estimates. | Existing and changed transcripts sync in passes of limited size | Native resume only. No setup-managed resume. |
 | gptme | Preview watcher. Metadata-only hooks start the sync. | Prompt, assistant, thinking, tools and results, model, and lifecycle | Native per-message tokens, added up for each user turn. Recorded cost has computed provenance. | Existing and changed sources sync in passes of limited size | Native gptme resume. No setup-managed resume. |
 | ForgeCode | Preview read-only `.forge.db` sync | System, prompt, assistant, reasoning, tools, results, failures, model, CWD, and child conversations | Actual native values count as real. Approximate values stay marked as estimates. Provider cost keeps its source label. | Existing and changed conversations sync in passes of limited size | No setup-managed resume. Provider rows do not mark sessions as live or ended. |
@@ -2362,40 +2361,41 @@ controls whether Trajectory reads it.
 
 ### Privacy and derived features
 
-In the coverage notes, the segmentation hard-stop test checks two things for a
-client. Trajectory captures and finishes the client's sessions. Automatic
-segmentation makes no model provider call. A provider hard stop blocks that
-call until the segmentation path has a spending limit. This test does not
-cover incognito. "Live incognito UX" names the incognito tests.
+In the coverage notes, the zero-model-call test checks two things for a
+client. Trajectory captures and finishes the client's sessions. `trajectory
+serve` makes no model provider call. This test does not cover incognito.
+"Live incognito UX" names the incognito tests. The Segmentation column shows
+how Trajectory treated each client's sessions when it still segmented tasks
+automatically.
 
 | Client | Incognito UX | MCP incognito tool | Segmentation | Coverage note |
 |--------|--------------|--------------------|--------------|---------------|
-| Claude Code | `/trajectory:incognito` command and incognito skill | Yes | Non-headless eligible. Headless skipped. | Live incognito UX. Segmentation hard-stop test with fixtures. |
-| Codex CLI | Incognito skill with a bundled script fallback | Yes | Non-headless eligible. Headless skipped. | Live incognito UX. Segmentation hard-stop test with fixtures. |
-| GitHub Copilot CLI | Incognito skill in the local marketplace plugin | Yes | Non-headless plugin sessions eligible. Headless skipped. | Segmentation hard-stop test with fixtures. No live incognito UX test yet. |
-| Antigravity CLI (`agy`) | `/incognito` command and incognito skill | Yes | Current hooks give no prompt or assistant text to segment | MCP and incognito setup are tested. Segmentation hard-stop and live incognito UX tests need saved history. |
+| Claude Code | `/trajectory:incognito` command and incognito skill | Yes | Non-headless eligible. Headless skipped. | Live incognito UX. Zero-model-call test with fixtures. |
+| Codex CLI | Incognito skill with a bundled script fallback | Yes | Non-headless eligible. Headless skipped. | Live incognito UX. Zero-model-call test with fixtures. |
+| GitHub Copilot CLI | Incognito skill in the local marketplace plugin | Yes | Non-headless plugin sessions eligible. Headless skipped. | Zero-model-call test with fixtures. No live incognito UX test yet. |
+| Antigravity CLI (`agy`) | `/incognito` command and incognito skill | Yes | Hooks give prompts but no assistant text. Segmentation is not tested. | MCP and incognito setup are tested. No zero-model-call or live incognito UX test yet. |
 | Goose | Setup-managed `goose-incognito` command | No | Hooks do not report the run mode, so sessions are conservatively headless/unknown and skipped | Headless-skip fixture test. No interactive-mode or live Goose incognito UX test yet. |
-| Cline CLI | Setup-managed `cline-incognito` command plus MCP request | Yes | Non-headless file-hook sessions eligible. Headless skipped. | Segmentation hard-stop test with fixtures. No live Cline UX test yet. |
-| Aider | Setup-managed `aider-incognito` command | No | Wrapper sessions eligible when non-headless. Passive history sessions are headless/unknown and skipped. | Segmentation hard-stop test through the wrapper. Setup, inventory, and history fixture tests. |
-| Continue CLI | Setup-managed `continue-incognito` command | No | Wrapper sessions eligible when non-headless. Headless skipped. | Segmentation hard-stop test with fixtures. Setup, inventory, and command tests. |
-| Mistral Vibe | Setup-managed `vibe-incognito` and `mistral-vibe-incognito` commands | No | Wrapper and native sessions eligible when non-headless. Headless skipped. | Segmentation hard-stop test with fixtures. Setup, inventory, and command tests. |
+| Cline CLI | Setup-managed `cline-incognito` command plus MCP request | Yes | Non-headless file-hook sessions eligible. Headless skipped. | Zero-model-call test with fixtures. No live Cline UX test yet. |
+| Aider | Setup-managed `aider-incognito` command | No | Wrapper sessions eligible when non-headless. Passive history sessions are headless/unknown and skipped. | Zero-model-call test through the wrapper. Setup, inventory, and history fixture tests. |
+| Continue CLI | Setup-managed `continue-incognito` command | No | Wrapper sessions eligible when non-headless. Headless skipped. | Zero-model-call test with fixtures. Setup, inventory, and command tests. |
+| Mistral Vibe | Setup-managed `vibe-incognito` and `mistral-vibe-incognito` commands | No | Wrapper and native sessions eligible when non-headless. Headless skipped. | Zero-model-call test with fixtures. Setup, inventory, and command tests. |
 | Grok Build | Setup-managed `grok-incognito` command and `trajectory-incognito` skill | No | Source-only sessions stay headless/unknown. Sessions with a known native mode may become eligible. | Fixture and control-plane tests. Signed-in native hooks and incognito UX are not tested yet. |
-| Codebuff | Setup-managed `codebuff-incognito` and `cb-incognito` commands | No | Wrapper and imported sessions eligible when non-headless. Headless skipped. | Segmentation hard-stop test with fixtures. Setup, inventory, and command tests. |
-| Cursor Desktop | Incognito skill, using the Claude skill when available or a native Cursor fallback. Setup also installs `cursor-agent-incognito`. | Yes | Non-headless GUI sessions eligible. Headless skipped. | Segmentation hard-stop test deferred. The GUI and transcript watcher have no stable non-headless hook stream that runs without credentials. |
+| Codebuff | Setup-managed `codebuff-incognito` and `cb-incognito` commands | No | Wrapper and imported sessions eligible when non-headless. Headless skipped. | Zero-model-call test with fixtures. Setup, inventory, and command tests. |
+| Cursor Desktop | Incognito skill, using the Claude skill when available or a native Cursor fallback. Setup also installs `cursor-agent-incognito`. | Yes | Non-headless GUI sessions eligible. Headless skipped. | Zero-model-call test deferred. The GUI and transcript watcher have no stable non-headless hook stream that runs without credentials. |
 | cursor-agent CLI | Setup-managed `cursor-agent-incognito` command when the Cursor integration is installed. The watcher has no native slash command. | No | Passive history is local-only and cannot be replayed. Native hook sessions use their known path. | Native and passive identity tested with `cursor-agent --print`. The shared passive store does not record its path. |
-| Factory Droid | Incognito skill in the local marketplace plugin | Yes | Non-headless plugin sessions eligible. Headless skipped. | Segmentation hard-stop test with fixtures. No live Droid incognito UX test yet. |
-| Pi | Native `trajectory_incognito` tool plus MCP | Yes | Non-headless extension sessions eligible. Headless skipped. | Live incognito UX. Segmentation hard-stop test with fixtures. Extension verdict tests. |
-| Oh My Pi (`omp`) | MCP request. No setup-managed slash command yet. | Yes | Non-headless sessions eligible. Headless skipped. | Setup and capture fixtures only. Live incognito UX and segmentation hard-stop tests pending. |
-| Hermes Agent | Incognito skill | Yes | Non-headless observer sessions eligible. Headless skipped. | Segmentation hard-stop test with fixtures. Live capture tested. No live incognito UX test yet. |
-| Amp Code | Setup-managed `amp-incognito` command plus MCP request | Yes | Non-headless Amp plugin sessions eligible. Headless skipped. | Capture and the segmentation hard stop tested with fixtures. Final task end is unavailable until Amp sends a session-end signal. |
-| Qwen Code | `/incognito` command and incognito skill | Yes | Non-headless Qwen hook sessions eligible. Headless skipped. | Segmentation hard-stop test with fixtures. Setup and live capture tested. No live incognito UX test yet. |
+| Factory Droid | Incognito skill in the local marketplace plugin | Yes | Non-headless plugin sessions eligible. Headless skipped. | Zero-model-call test with fixtures. No live Droid incognito UX test yet. |
+| Pi | Native `trajectory_incognito` tool plus MCP | Yes | Non-headless extension sessions eligible. Headless skipped. | Live incognito UX. Zero-model-call test with fixtures. Extension verdict tests. |
+| Oh My Pi (`omp`) | MCP request. No setup-managed slash command yet. | Yes | Non-headless sessions eligible. Headless skipped. | Setup and capture fixtures only. Live incognito UX and zero-model-call tests pending. |
+| Hermes Agent | Incognito skill | Yes | Non-headless observer sessions eligible. Headless skipped. | Zero-model-call test with fixtures. Live capture tested. No live incognito UX test yet. |
+| Amp Code | Setup-managed `amp-incognito` command plus MCP request | Yes | Non-headless Amp plugin sessions eligible. Headless skipped. | Capture and zero model calls tested with fixtures. Final task end is unavailable until Amp sends a session-end signal. |
+| Qwen Code | `/incognito` command and incognito skill | Yes | Non-headless Qwen hook sessions eligible. Headless skipped. | Zero-model-call test with fixtures. Setup and live capture tested. No live incognito UX test yet. |
 | OpenHands | Setup-managed `openhands-incognito` command plus MCP request | Yes | Hook payloads have no run-mode field, so hook and history-only sessions are conservatively headless/unknown and skipped | Headless-skip and set-mode fixture tests. Live hooks and saved history in the local UI tested. |
-| OpenCode | Incognito skill | Yes | Non-headless plugin SDK sessions eligible. Headless skipped. | Live incognito UX. Segmentation hard-stop test with fixtures. |
-| Kilo Code | Incognito skill | Yes | Non-headless plugin SDK sessions eligible. Headless skipped. | Segmentation hard-stop test with fixtures. Setup and live capture tests. |
+| OpenCode | Incognito skill | Yes | Non-headless plugin SDK sessions eligible. Headless skipped. | Live incognito UX. Zero-model-call test with fixtures. |
+| Kilo Code | Incognito skill | Yes | Non-headless plugin SDK sessions eligible. Headless skipped. | Zero-model-call test with fixtures. Setup and live capture tests. |
 | ZCode | User incognito skill through `trajectory_incognito` | Yes | Provider-only sessions are conservatively headless/unknown and skipped | Setup, MCP ownership, source sync, and local-UI fixtures. Signed-in incognito UX is not tested yet. |
-| Kiro CLI | Setup-managed `kiro-incognito` command plus MCP request | Yes | Deferred: current documented command hooks lack a terminal `SessionEnd` signal | Fixture-only capture plus command tests. No segmentation hard-stop test yet. |
+| Kiro CLI | Setup-managed `kiro-incognito` command plus MCP request | Yes | Deferred: V3 sends `SessionEnd` except from a headless run with text output, and V2 sends none | Capture tested with recorded V2 and V3 hooks, plus command tests. No zero-model-call test yet. |
 | CommandCode | Owned `/incognito` command and skill. Needs the session ID. Turn it off by hand, because SessionEnd is unavailable. | Yes | Sessions stay conservatively headless/unknown until a reliable mode signal exists | Fixture and Lapdog tests. Live signed-in hook and incognito UX tests are a follow-up. |
-| gptme | Native `/incognito` command | Yes | Non-interactive and unknown modes are skipped | Real gptme 0.32.0 mock headless lifecycle test. Non-headless fixture tests capture and the segmentation hard stop. |
+| gptme | Native `/incognito` command | Yes | Non-interactive and unknown modes are skipped | Real gptme 0.32.0 mock headless lifecycle test. Non-headless fixture tests capture and zero model calls. |
 | ForgeCode | Owned `/incognito` command and `trajectory-incognito` skill. Needs the session ID. | Yes | Unknown passive mode is conservatively marked headless and skipped | Fixture and Lapdog tests only. Live model-driven incognito and interaction-mode tests are follow-ups. |
 | OpenClaw | Control plane only. Released builds have no live OpenClaw capture to control. | No | Saved-history sessions are treated as headless and skipped. | Deferred: setup, MCP, and incognito are not available. |
 

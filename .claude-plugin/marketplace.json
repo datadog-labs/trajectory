@@ -16,6 +16,11 @@
       "name": "trajectory-security",
       "source": "./plugin/trajectory-security",
       "category": "Security"
+    },
+    {
+      "name": "trajectory-mdm",
+      "source": "./plugin/trajectory-mdm",
+      "category": "Developer Tools"
     }
   ]
 }

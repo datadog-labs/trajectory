@@ -1,29 +1,72 @@
 ---
 name: incognito
-description: Toggle Trajectory incognito mode for the current Kilo Code session. Use when the user says "/incognito", "go incognito", "pause capture", "stop recording", "private mode", or asks to temporarily suppress Datadog publish for sensitive work.
+description: Toggle Trajectory incognito mode for the current Kilo Code session. Use when the user says "/incognito", "go incognito", "pause capture", "stop recording", "private mode", or asks to temporarily stop publishing content during sensitive work while metrics continue without model and repository names.
 ---
 
 # Incognito Mode
 
-Toggle incognito mode for the current Kilo Code session. When enabled:
-- Local JSONL capture continues
-- Trace and log outputs to non-exempt Datadog destinations are suppressed
-- Aggregate metrics continue and cannot be disabled by incognito
-- Mode resets automatically when the session ends
+Incognito stops Trajectory from publishing the current Kilo Code session's
+content to ordinary Datadog destinations. While it is on:
 
-Org-managed security destinations configured with `incognito_exempt: true` may still receive events. Do not describe incognito as a security or compliance bypass.
+- Trajectory still records events locally to JSONL.
+- Trace and log content is not sent to Datadog destinations, except exempt ones.
+- Accounting and activity metrics are still sent. By default they leave out
+  model and repository names.
+- Session incognito turns off automatically when the session ends.
+
+Organization-managed security destinations configured with
+`incognito_exempt: true` can still receive events. Do not describe incognito as
+a way to bypass security or compliance monitoring.
+
+## Set Incognito for Future Sessions
+
+For a lasting opt-out or opt-in request:
+
+- Call `trajectory_incognito` with `persistent: true` and `enable: true`.
+- The tool cannot turn the lasting setting off. When the user asks to resume
+  publishing for future sessions, run
+  `curl -fsS -X POST --get --data-urlencode "scope=user" --data-urlencode "enable=false" --data-urlencode "source=slash_command" "http://localhost:${TRAJECTORY_PORT:-19222}/session/incognito"`.
+  Trajectory serve owns this setting, so the call uses its home. If serve is
+  not running, run `trajectory config publish opt-in` instead.
+- Do not pass `session_id`. The setting applies to all current and future
+  sessions for the user.
+
+Metrics follow the same rule as session incognito: `redacted` by default, or
+`standard` when configured explicitly.
 
 ## Toggle
 
-For a durable user opt-out or opt-in, call `trajectory_incognito` with `persistent: true` and the requested `enable` value. Do not pass `session_id`.
-
-1. Decide the requested state.
-   - For `/incognito`, "go incognito", "pause capture", "stop recording", or "private mode", enable incognito.
-   - For "turn off incognito", "resume capture", or "resume publish", disable incognito.
-   - If the user explicitly asks to toggle, call the `trajectory_incognito` MCP tool with `enable: true` unless you have already confirmed the active session is incognito, then call it with `enable: false`.
-2. If the `trajectory_incognito` MCP tool is available, call it with `enable`, `client: kilo`, and `project_dir` set to the current workspace; omit `session_id` so the tool resolves the active session from Trajectory's active-session registry.
-3. If the tool reports multiple matching active sessions, call `list_active_sessions`, choose the active Kilo Code session matching the current workspace, and retry with that `session_id`.
-4. Worst-case fast lookup: check `TRAJECTORY_SESSION_ID`, `CODEX_SESSION_ID`, `GEMINI_SESSION_ID`, `CLAUDE_SESSION_ID`, `KILO_SESSION_ID`, `KILOCODE_SESSION_ID`, `PI_SESSION_ID`, `DROID_SESSION_ID`, or `COPILOT_SESSION_ID`; otherwise call `list_active_sessions` or run `trajectory mcp sessions --active --json` from the workspace, select the row matching the current client/workspace with the newest `last_event`, and retry with `session_id`.
-5. If MCP is not available, resolve the current session ID with `TRAJECTORY_SESSION_ID` or `trajectory mcp sessions --active --json`, then call the HTTP endpoint directly:
-   `curl -fsS -X POST "http://localhost:19222/session/incognito?session_id=${session_id}&enable=${enable}"`
-6. Tell the user whether incognito is now enabled or disabled.
+1. Choose the requested state:
+   - `/incognito`, "go incognito", "pause capture", "stop recording", or
+     "private mode": enable incognito (`enable: true`).
+   - "turn off incognito", "resume capture", or "resume publish": only the
+     user can turn incognito off, and the tool refuses it. Use step 5 with
+     `enable=false`.
+   - An explicit request to toggle: if you have already confirmed that the
+     active session is incognito, use step 5 with
+     `enable=false`. Otherwise call the `trajectory_incognito` MCP tool with
+     `enable: true`.
+2. If the `trajectory_incognito` MCP tool is available, call it with `enable: true`,
+   `client: kilo`, and `project_dir` set to the current workspace. On this
+   first call, omit `session_id`. The tool finds the active session in
+   Trajectory's active-session registry.
+3. If the tool cannot resolve the session for any reason, call
+   `trajectory_status` and read its `active_sessions.sessions` list. If `truncated` is true, run `trajectory mcp sessions --active --json` to list every row. Use each row's `coding_agent`, `client`,
+   `project_dir`, and `last_event` to find the current Kilo Code session. Retry
+   with a row's `session_id` only when a single row clearly matches. If no row,
+   or more than one row, could match,
+   show the complete active-session list to the user and ask them to choose. Do
+   not guess.
+4. For a quick lookup of the session ID, check `TRAJECTORY_SESSION_ID`,
+   `CODEX_SESSION_ID`, `GEMINI_SESSION_ID`, `CLAUDE_SESSION_ID`,
+   `KILO_SESSION_ID`, `KILOCODE_SESSION_ID`, `PI_SESSION_ID`, `DROID_SESSION_ID`, or
+   `COPILOT_SESSION_ID`. If none is set, call `trajectory_status` (its `active_sessions.sessions` list) or run
+   `trajectory mcp sessions --active --json` from the workspace. Pick the row
+   that matches the current client and workspace and has the newest
+   `last_event`, then retry with its `session_id`.
+5. To turn incognito off, or if MCP is not available, call the HTTP endpoint. Add
+   `--data-urlencode "session_id=<session_id>"` when you selected a session
+   in step 3 or 4. Otherwise the
+   capture server finds the active Kilo Code session:
+   `curl -fsS -X POST --get --data-urlencode "client=kilo" --data-urlencode "project_dir=${PWD}" --data-urlencode "enable=${enable}" --data-urlencode "source=slash_command" "http://localhost:${TRAJECTORY_PORT:-19222}/session/incognito"`
+6. Tell the user whether incognito is now on or off.

@@ -108,6 +108,10 @@ A `priced` status alone is not enough. Usage with `parent_included` or an
 unknown inclusion never adds a second charge. Provider captures that lack this
 information count as a gap in cost coverage.
 
+A Codex auto-review session's usage is its own, so its cost is independent. Under
+`gen_ai.request.model:codex-auto-review` the cost is an estimate. See
+[Codex auto-review](../COST-ATTRIBUTION.md#codex-auto-review).
+
 The local `oversight_operations` records hold the same measurements, source
 identity, and origin. A measurement that is not known is empty.
 
@@ -149,6 +153,8 @@ cannot correct these records:
 
 - older records that it has already pruned
 - duplicate copies without an operation identity that Trajectory can rebuild
+- operations that finished more than an hour ago, because Datadog's live intake
+  no longer takes a change at that time
 
 Trajectory cannot rebuild duration percentiles for past periods.
 

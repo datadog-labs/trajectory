@@ -32,18 +32,52 @@ example, an empty or oversized body gets HTTP 400. A request over the
 admission limit gets HTTP 503 with `Retry-After`.
 
 Trajectory keeps the native metric values. It does not correct or drop native
-data points. It does not decide from an OTLP batch whether usage is complete.
+data points on the way to your collector. It does not decide from an OTLP batch whether usage is complete.
 It does not turn missing or unknown model data into session proxy counters.
 Session capture, ingest, and cost attribution own the accuracy of usage and
 model data. The diagnostic metrics below report problems in those paths.
 
+### Auxiliary usage
+
+Claude Code's background requests never reach its session files. A session can
+count from those files. For such a session, `trajectory serve` reads the
+`query_source:auxiliary` points of each export and stores them on the session's
+own file. The next settled close publishes what has arrived, as
+[its own series](per-turn-metrics.md#claude-codes-background-requests).
+
+These rules keep the numbers usable:
+
+- Serve joins a point to a session by its `session.id` attribute. A point with no
+  session ID is left out. Setting `OTEL_METRICS_INCLUDE_SESSION_ID` to false
+  leaves the session marked as a lower bound.
+- A point with no `query_source` says nothing about background requests. An older
+  Claude Code that sends none leaves the session marked as a lower bound.
+- A retried export counts once, including one that crosses a restart of
+  `trajectory serve`. Each stored export holds the time of its latest point, and
+  reading the session's file skips a repeat among the session's latest eight exports.
+- Serve reads delta points only. A running total can't be attached to one close
+  without more stored state. Setting
+  `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE` to `cumulative` leaves the
+  session marked as a lower bound and raises
+  `trajectory.instrumentation.derivation.fallback{reason:native_usage_cumulative}`.
+- An export that reaches a session after its end is not counted, and raises
+  `trajectory.instrumentation.derivation.fallback{reason:native_usage_after_session_end}`.
+  Claude Code sends one last export as it exits, which can hold up to its last
+  minute of background requests.
+
+Each export writes one short line when it holds token points, and nothing otherwise,
+apart from one line the first time a session's metrics arrive. Under
+`claude_native_subagent_output` the line also holds main-thread and sub-agent counts,
+used only to test the session's files. With that flag off, an export with no auxiliary
+usage writes nothing.
+
 ### Check the metrics in Datadog
 
-To check the metrics that Trajectory publishes itself, run
-`trajectory publish metrics audit --readback` or `--readback-all`.
+To check that the metrics Trajectory publishes itself reach Datadog, run
+`trajectory doctor metrics canary --publish --readback`.
 
-The local metric outbox does not hold forwarded native metrics, so the audit
-does not check them. To check them in Datadog, filter or group on
+The local metric outbox does not hold forwarded native metrics, so
+`trajectory publish queue --kind metrics` does not list them. To check them in Datadog, filter or group on
 `trajectory.cost_role:client_telemetry`,
 `trajectory.cost_source:claude_native_otlp`, and
 `trajectory.cost_dedupe_group`.
@@ -72,8 +106,9 @@ Trajectory reports these cases for Claude Code and other clients:
   Trajectory then sends the same metric with `reason:usage_unregistered`. This
   shows that provider usage existed but Trajectory did not record it. The
   value counts gaps. It is not a token or cost value.
-- Eligible Cursor generations without final token usage add to
-  `trajectory.cursor.token_capture.turns_total{status:missing}`.
+- A Cursor turn that recorded missing token usage, and an eligible Cursor
+  generation that never got a terminal hook, also send
+  `trajectory.instrumentation.capture.gap{client_source:cursor,reason:usage_missing}`.
 
 Gaps between Codex source records and the tool events that Trajectory records
 use four `reason` values on the same capture-gap metric. They do not report

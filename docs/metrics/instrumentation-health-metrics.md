@@ -29,7 +29,7 @@ The tags carry no prompts, paths, session IDs, or other content.
 |---|---|---|---|
 | `trajectory.instrumentation.publish.attempt` | count | `component`, `signal`, `destination_type`, `site`, `outcome`, `error_class`, `reason` | Publish attempts for spans, metrics, event logs, and module outputs, including skipped and failed attempts |
 | `trajectory.instrumentation.publish.latency_ms` | distribution | `component`, `signal`, `destination_type`, `site`, `outcome`, `reason` | Publish latency by signal and destination type |
-| `trajectory.instrumentation.capture.hook_event` | count | `component`, `client_source`, `signal`, `outcome`, `error_class`, `reason` | Hook deliveries with a receipt, and duplicate retries |
+| `trajectory.instrumentation.capture.hook_event` | count | `component`, `client_source`, `signal`, `outcome`, `error_class`, `reason`, `hook_name` | Hook deliveries with a receipt, and duplicate retries |
 | `trajectory.instrumentation.capture.hook_latency_ms` | distribution | `component`, `client_source`, `signal`, `outcome`, `error_class`, `reason` | Total time of a capture request on the server |
 | `trajectory.instrumentation.capture.gap` | count | `component`, `client_source`, `signal`, `reason` | Missing or inconsistent capture evidence |
 | `trajectory.instrumentation.capture.write_latency_ms` | distribution | `component`, `client_source`, `signal`, `outcome`, `reason` | Time from hook to JSONL file, and from JSONL file to the local index |
@@ -37,7 +37,7 @@ The tags carry no prompts, paths, session IDs, or other content.
 | `trajectory.instrumentation.derivation.correction` | count | `component`, `client_source`, `signal`, `source_pair`, `reason` | Transcript reconciliation, backfill corrections, and repairs found by an audit |
 | `trajectory.instrumentation.marker.evaluation` | count | `component`, `signal`, `outcome`, `error_class`, `reason` | Local marker evaluations at session end, including skipped and failed ones |
 | `trajectory.instrumentation.marker.evaluation_latency_ms` | distribution | `component`, `signal`, `outcome`, `reason` | How long local marker evaluation took at session end |
-| `trajectory.instrumentation.watchdog.gap_detected` | count | `component`, `client_source`, `signal`, `reason` | Missing captures, stalled queues, and delayed publish claims that the watchdog found |
+| `trajectory.instrumentation.watchdog.gap_detected` | count | `component`, `client_source`, `signal`, `reason`, optional `stage` | Missing captures, stalled queues, and delayed publish claims that the watchdog found |
 | `trajectory.instrumentation.health.emit_dropped` | count | `component`, `signal`, `error_class`, `reason` | Health records that Trajectory could not keep |
 | `trajectory.instrumentation.runtime_reconcile.attempt` | count | `component`, `signal`, `trigger`, `outcome`, `result_status`, `process_status`, `handoff_mode`, `reason` | Automatic runtime repair attempts and their results |
 | `trajectory.instrumentation.runtime_reconcile.duration_ms` | distribution | Same as `runtime_reconcile.attempt` | How long each automatic runtime repair took |
@@ -45,9 +45,16 @@ The tags carry no prompts, paths, session IDs, or other content.
 | `trajectory.instrumentation.backfill.files` | gauge | `component`, `signal`, `stage`, `outcome`, `reason` | Files handled by the local index pass and by Claude transcript import, by stage and outcome |
 | `trajectory.instrumentation.backfill.sessions` | count | `component`, `client_source`, `signal`, `stage`, `outcome`, `reason` | Claude transcript import results for each stage |
 | `trajectory.instrumentation.backfill.duration_ms` | distribution | `component`, `signal`, `stage`, `outcome`, `reason` | How long the local index pass and Claude transcript import took |
+| `trajectory.instrumentation.corpus.split_sessions` | gauge | `component`, `signal` | Sessions whose files are in more than one date folder |
 
 The publisher also adds `trajectory.version`, host, and operating-system tags
 when it sends a record.
+
+The six health metrics in the
+[OOTB dashboard contract](integration-tile-metrics.md#ootb-dashboard-tag-contract)
+also carry `trajectory.user` for dashboard filtering. Local records omit user
+identity. Incognito health stays local, including for destinations otherwise
+exempt from incognito.
 
 ### Capture
 
@@ -56,14 +63,23 @@ when it sends a record.
 `trajectory.instrumentation.capture.hook_event` counts hook deliveries that
 have a receipt. A successful request counts only when the client supplied an
 authenticated Trajectory home and a valid delivery ID. A success without a
-receipt does not count.
+receipt does not count. A retry that arrives while the server is still
+handling an earlier attempt of the same delivery counts as `outcome:skipped`
+with `lock_contention/lock_contended`. The earlier attempt's own result is
+what shows whether the event was recorded.
 
 `trajectory.instrumentation.capture.hook_latency_ms` measures the whole capture
 request on the server. This includes admission, delivery coordination,
 processing, and building the response.
 
 Group both metrics by `client_source`, `outcome`, `error_class`, and `reason`.
-Neither metric carries event, session, delivery, path, or payload identity.
+Neither metric carries session, delivery, path, or payload identity.
+
+`hook_event` also carries `hook_name` on Cursor deliveries. It is the Cursor
+hook in lower case, such as `stop` or `afteragentresponse`, from a fixed list of
+18, or `other`.
+A Cursor turn closes on those two hooks, so this tag shows whether they still
+arrive when turns stop. Other clients leave it out.
 
 #### Capture gaps
 
@@ -147,6 +163,59 @@ It does not show lost usage or a completed delivery. Sessions that are already
 complete, and sessions without a prompt, do not send it. A repeated SessionEnd
 delivery does not count it again.
 
+Claude Code turn validation reports `source_pair:transcript_to_jsonl` with
+these fallback reasons when it keeps provisional usage:
+
+- `settle_unaligned`
+- `settle_cumulative`
+- `settle_transcript_too_large`
+- `settle_unavailable`
+- `settle_timeout`
+- `settle_session_closed`
+
+GitHub Copilot CLI reports its Stop-time read of its session log
+(`events.jsonl`) under the same tags, with `client_source:copilot`. Each Stop
+whose payload names the log counts once. A Stop whose turn took its model,
+tokens, and reply from the log counts on
+`trajectory.instrumentation.derivation.correction` with
+`reason:events_log_matched`. Every other such Stop counts on the fallback
+metric with one of these reasons:
+
+- `settle_unaligned`: the log has no entry for the Stop, or a log already
+  read to the end has no hook entries at all.
+- `settle_unavailable`: the log is missing or unreadable, the read failed,
+  or the turn has no main-agent usage records, as before Copilot 1.0.94.
+- `settle_timeout`: the Stop's entry did not reach the log within 500 ms.
+  The first Stop of a log with no hook entries also ends here.
+- `settle_transcript_too_large`: the unread part of the log is too large.
+- `settle_session_closed`: the session ended before the turn could be
+  written.
+
+The match rate is the correction count divided by the sum of both counts. A
+Stop that names its log does not also report `transcript_path_missing`. A
+Stop that names no log still does. With the `copilot_cli_stop_read` kill
+switch off, no read runs and Copilot Stops that name their log report
+neither. A subagent's own Stop is not counted.
+
+A subagent turn that publishes on its own trace instead of under its parent
+reports `source_pair:jsonl_to_spans` with one of these reasons. Each serve
+process sends it once per child session and destination. The turn is not
+retried, because no later attempt could find the parent link:
+
+- `subagent_parent_ended`: the parent session ended without recording the
+  child's launch. A user fork of an ended session looks the same.
+- `subagent_parent_read_budget`: Trajectory may not read the parent's session
+  file again, so it can never find the launch.
+- `subagent_parent_reviewer`: the child is an automated reviewer, such as a
+  Codex auto-review, that its client starts without a launch in the parent.
+- `cache_missing_tool_calls`: at session end, after evaluation, the session's file holds tool calls the local cache lacks. The value is how many.
+- `publish_catch_up_window`: a session whose publish cursor was bound or lost left out turns older than seven days. The value is how many.
+
+Session-end reconciliation reports `reconciliation_unaligned` when it cannot
+align a captured turn with the transcript. A turn validation correction reports
+`settle_token_mismatch` on `trajectory.instrumentation.derivation.correction`.
+These reasons retain their names after health-record sanitization.
+
 ### Publish attempts
 
 `trajectory.instrumentation.publish.attempt` counts workflow attempts. It does
@@ -154,10 +223,17 @@ not count unique records, lost data, or intake requests. Report pending work
 separately from successful and failed attempts. The latency samples carry the
 same `outcome` and `reason` as the attempts.
 
+Metrics that go through the metric outbox are counted twice, once per step. A
+publish that queued rows records the handoff as `pending`. Each pass of
+serve's drain owner then records one attempt for each destination whose rows
+it claimed or left waiting. The attempt is `success` or one of the failures
+below. A pass that found nothing to send records nothing.
+
 | Case | `outcome` | Other tags |
 |---|---|---|
-| Metric rows are queued or claimed in the outbox, with no delivery error yet | `pending` | `error_class:none`, `reason:metric_delivery_pending` |
-| Failed rows, or a recorded credential, HTTP, timeout, or uncertain-delivery error | `failure` | Applies even when newer queued rows have no error |
+| A publish queued metric rows in the outbox | `pending` | `error_class:none`, `reason:metric_delivery_pending` |
+| A drain pass sent a destination's claimed rows | `success` | `reason:none` |
+| A drain pass left failed rows, or the transport's last request hit a credential, HTTP, timeout, or uncertain-delivery error | `failure` | The transport's last error picks `error_class` and `reason` |
 | A canceled context, a serialization failure, or an internal publish error (since version 0.5.31) | `failure` | `reason:context_canceled`, `serialization_failed`, or `publish_internal_error` |
 | The API key could not be read, including from the OS keychain | `failure` | `error_class:auth`, `reason:credentials_unavailable` |
 | Metric rows wait for a later pass: the pass reached its request limit, an older row for the same value is still sending, a process stopped before sending, or a PR point is older than Datadog accepts | `failure` | `error_class:unavailable`, `reason:metric_delivery_deferred` |
@@ -169,9 +245,10 @@ same `outcome` and `reason` as the attempts.
 | Datadog accepted the metric rows, but Trajectory could not save that result locally | `failure` | `error_class:internal`, `reason:storage_io` |
 | Marker metrics sent to a `datadog_agent` destination | `skipped` | `reason:unsupported_metric_transport` |
 
-A `pending` attempt is neither complete nor failed. A publish pass can leave
-work for a later pass or another publisher. The publish operation still
-reports incomplete delivery, so retries and duplicate protection still work.
+A `pending` attempt is the handoff: the rows are stored, and the outbox owns
+their delivery and retries. The publish operation succeeds, so a delivery
+failure never runs a session end or turn end again. The drain's attempt for
+the destination reports the delivery.
 
 Rows that report `reason:metric_delivery_deferred` or `reason:policy_disabled`
 were not rejected. They stay in the outbox and send on a later pass, or once
@@ -258,6 +335,22 @@ queue cannot delay native intake. Dropped records add to
 `health.emit_dropped{component:hook,reason:queue_full}`. That count does not
 say which producer lost the samples.
 
+### Capture stalls
+
+`trajectory.instrumentation.watchdog.gap_detected` reports a newly observed
+Codex stage older than ten minutes with `component:watchdog`,
+`client_source:codex`, `signal:watchdog`, and `reason:capture_stage_stuck`.
+The observer runs once a minute. Each stage reports once until a later
+observation finds no request older than the threshold in that stage. A process
+restart clears this local suppression state. Idle and healthy observations
+send nothing. The event window records new stalls. Inspect the local
+`codex_capture_progress` health snapshot to check whether a stage remains stuck.
+
+The bounded `stage` values are `accepted`, `read_body`, `prepare_body`,
+`delivery_coordination`, `worker_wait`, `session_wait`, `terminal_admission`,
+`terminal_quiescence`, `context_resolution`, `rollout_lock`, `rollout_reconcile`,
+`canonical_capture`, `delivery_receipt`, and `capture_response`.
+
 ### Held publish claims
 
 `trajectory.instrumentation.watchdog.gap_detected` with
@@ -306,14 +399,33 @@ finds no sessions.
 
 Conversion can be skipped while submission retries. A failure carries one of
 these reasons: `transcript_read_failed`, `transcript_parse_failed`,
-`conversion_failed`, `canonical_write_failed`, `canonical_materialize_failed`,
-`ingest_failed`, `evaluation_failed`, `projection_check_failed`, or
-`token_repair_failed`.
+`conversion_failed`, `canonical_write_failed`, `ingest_failed`,
+`evaluation_failed`, `projection_check_failed`, or `token_repair_failed`.
+Earlier releases also reported `canonical_materialize_failed` when they could
+not write a session's JSON under `materialized/`. Import no longer writes that
+JSON, so the reason no longer appears.
 
 Session identity, paths, error details, and parser lines appear only in local
 CLI output. If Trajectory cannot write or send these metrics, the import
 result does not change. Trajectory sends the summary metrics together, at most
 64 records for each session and privacy group.
+
+### Split sessions
+
+`trajectory.instrumentation.corpus.split_sessions` reports how many local
+sessions have files in more than one date folder under `sessions/`. Each
+session should have one file. The point carries `component:serve` and
+`signal:jsonl`, and no session IDs or paths.
+
+- The count is exact, not a sample. `trajectory serve` counts every session
+  file during its daily cleanup of old session lock files, which already lists
+  the whole folder. It adds no other read of your session files.
+- `trajectory serve` sends the point only when local retention is on, meaning
+  `capture.retention_days` or `capture.max_disk_bytes` is above 0.
+- If a date folder or a session file could not be read, the count could be
+  too low, so Trajectory sends no point. A missing point means unknown, not 0.
+- To see which sessions are split, run `trajectory doctor` or
+  `trajectory session audit data --all` on that computer.
 
 ### Backfill fidelity
 
@@ -335,6 +447,11 @@ import has not necessarily failed.
 These gauges leave out the current binary version. A new value must replace
 the old one in the same series across upgrades.
 
+A reconciliation pass that runs again the same day sends the gauges again
+only when one of them reports something new. Time passing does not count, and
+neither does the outbox growing from the last snapshot's own rows. The outbox
+gauges then keep their earlier point until the next day's pass.
+
 | Metric | Type | What it reports |
 |---|---|---|
 | `trajectory.instrumentation.fidelity.backfill.sessions` | gauge | Sessions for each client and UTC day at `stage:local`, `eligible`, `materialized`, and `delivered`. `delivered` comes from saved outbox receipts. `source_capability` shows whether Trajectory rebuilt the data from provider and local records or from local records only. |
@@ -343,19 +460,21 @@ the old one in the same series across upgrades.
 | `trajectory.instrumentation.fidelity.backfill.last_success_age_seconds` | gauge | The age of a fully delivered UTC-day snapshot. It is zero for partial or unobservable days. Use it with `last_success_valid`. |
 | `trajectory.instrumentation.fidelity.backfill.last_success_valid` | gauge | `1` when the matching age is valid for a fully delivered day, `0` otherwise |
 | `trajectory.instrumentation.fidelity.backfill.unpriced_turns` | gauge | Turns without a price, by client and reason, after a complete scan |
-| `trajectory.instrumentation.fidelity.backfill.failures` | gauge | Source-import and local-scan failures by client and `reason:deleted`, `malformed`, `incomplete`, `oversized_fragment`, `oversized_session`, `discovery_limit`, or `scan_error`. Trajectory writes zero after recovery to clear the same historical point. Any value above zero keeps the day unproven. |
+| `trajectory.instrumentation.fidelity.backfill.failures` | gauge | Source-import, local-scan, and session-publish failures by client and `reason:deleted`, `malformed`, `incomplete`, `oversized_fragment`, `oversized_session`, `discovery_limit`, `scan_error`, or `publish_failed`. `publish_failed` counts sessions whose publish to a destination failed; the next pass tries them again. Trajectory writes zero after recovery to clear the same historical point. Any value above zero keeps the day unproven. |
 | `trajectory.instrumentation.fidelity.outbox.allocated_bytes` | gauge | The SQLite space used by the metric outbox after a rolling sweep |
 | `trajectory.instrumentation.fidelity.outbox.oldest_pending_age_seconds` | gauge | The age of the oldest pending row, or zero after a complete scan finds none |
 | `trajectory.instrumentation.fidelity.outbox.effective_horizon_days` | gauge | The age of the oldest kept record, by `evidence_state:sent`, `dropped`, or `pending`. It measures the data on disk, not the retention setting. |
-| `trajectory.instrumentation.fidelity.outbox.dropped` | gauge | Saved drop receipts by reason. `reason:max_size` shows data lost because the outbox was full. |
+| `trajectory.instrumentation.fidelity.outbox.dropped` | gauge | Saved drop receipts by reason. `reason:max_size` shows data lost because the outbox was full. `reason:key_collision` counts points dropped because their one-time key was already held with another value. `reason:changed_after_send` counts points for which a later session end or backfill derived another value. [The first value stands](per-turn-metrics.md#a-point-keeps-its-first-value). The `late_turn_correction_*` and `correction_*` reasons (`outside_live_window`, `hmi_unconfirmed`, `cell_unverified`) count old corrections that were never delivered, as [corrections outside the live window](per-turn-metrics.md#corrections-outside-the-live-window) explains. |
 
 ### Dropped health records
 
 `trajectory.instrumentation.health.emit_dropped` counts health records that
-Trajectory could not keep. This happens when a record cannot be cleaned of
-private data, or when the write to the local buffer fails. Trajectory sends
-this count only to remote destinations. It carries `component`, `signal`,
-`error_class`, and `reason` tags.
+Trajectory could not keep. A record is dropped when it cannot be cleaned of
+private data or when the write to the local buffer fails. Saved lines that
+Trajectory cannot read are counted too. Trajectory sends this count only to
+remote destinations. The count of removed saved lines is also kept in the
+local buffer. It carries `component`, `signal`, `error_class`, and `reason`
+tags.
 
 | Cause | `error_class/reason` |
 |---|---|
@@ -364,14 +483,43 @@ this count only to remote destinations. It carries `component`, `signal`,
 | Permission error | `permission/storage_io` |
 | Missing path | `not_found/storage_io` |
 | Other file system error | `internal/storage_io` |
-| Malformed saved JSON | `parse/schema_mismatch` |
-| Invalid saved record | `validation/schema_mismatch` |
+| Malformed saved JSON (older releases) | `parse/schema_mismatch` |
+| Invalid saved record (older releases) | `validation/schema_mismatch` |
+| Unreadable saved lines removed | `signal:record` with `validation/schema_mismatch` |
 | Unknown cause | `internal/unknown` |
 | Hook queue full | `component:hook` with `reason:queue_full` |
 
-The capture server writes health records from a background queue. If another
-writer holds the local buffer, the server waits up to 5 seconds before it drops
+The capture server writes health records from a background queue. It holds
+the records a successful hook emits and writes them together. These are
+`capture.hook_latency_ms`, `capture.write_latency_ms`, and a
+`capture.hook_event` whose `outcome` is `success`. It writes them when 64 are
+held, 15 seconds after the first one, when any other record arrives, or at
+shutdown. Every other record, such as a failed delivery, is written at once.
+
+Each held record keeps the time it arrived, in the local buffer and in
+Datadog. `trajectory doctor` can count a successful hook up to 15 seconds
+late. A crash loses the held records, at most 64. A server that yielded to a
+development server writes them when it resumes.
+
+If another writer holds the local buffer, the server waits up to 5 seconds before it drops
 the records and counts them here.
+
+Older releases failed every later write to the local buffer while one saved
+line could not be read. Trajectory now skips such a line, and a later write
+removes it. These lines are unreadable: malformed JSON before the last line,
+a line longer than 64 KiB, and a record that fails validation. An example of
+the last is a record with a tag key this version does not know. The value of the `signal:record`
+count is the number of lines removed. Records from a newer release stay as
+they are: those are records with a metric or tag value this version does not
+know. An incomplete last line from an interrupted write is still cut off
+without a count.
+
+When a write to the local buffer fails, Trajectory also notes the failure,
+its `error_class/reason`, and when it started in
+`instrumentation-health.jsonl.append-failure.json`, next to the buffer. A busy
+buffer or a cancelled request is not noted. `trajectory doctor` reports
+"Local health records" from that note and from the buffer, including
+unreadable lines and lines removed in the last 24 hours.
 
 These counts show that Trajectory could not keep local diagnostic records.
 They do not show lost captured data or a failed remote delivery. After a local
@@ -396,7 +544,10 @@ use this path.
   are still waiting.
 - Trajectory checks session and global incognito again before it sends.
 
-The local buffer still gets each record right away. Waiting remote work stays
+The local buffer gets each record before the remote send. The capture server
+first holds the records of a successful hook for up to 15 seconds, as
+[Dropped health records](#dropped-health-records)
+describes. Waiting remote work stays
 in memory only. It is limited across all publish engines in the process to
 2,048 records and 4 MiB. When that limit is reached, Trajectory drops remote
 work but keeps the local record.
@@ -433,10 +584,18 @@ The tags are `trigger`, `result_status`, `process_status`, `handoff_mode`,
 `outcome`, and `reason`, plus fixed `component` and `signal` values. They hold
 no path, PID, session identity, plugin output, or error text.
 
-`handoff_mode` is one of `fenced_independent`, `seamless_reexec`,
-`deferred_natural_exit`, `pending_agent_adoption`,
-`automatic_orphan_adoption`, `nuclear_reconcile_contended`, `adopter_lost`,
-`none`, or `unknown`.
+`handoff_mode` is the handoff mode the update reconcile reported:
+`background_runtime_asset_worker`, `pending_agent_adoption`, `adopter_lost`,
+`deferred_natural_exit`, `forced_restart`, `seamless_reexec`,
+`nuclear_process_replacement`, `nuclear_reconcile_contended`,
+`automatic_orphan_adoption`, `no_client_adoption`,
+`successor_deferred_natural_exit`, `fenced_independent`, or
+`fenced_independent_resumed`. It is `none` when the
+reconcile reported no mode. Only a mode that is missing from this list reports
+as `unknown`. Earlier releases reported `background_runtime_asset_worker`,
+`forced_restart`, `nuclear_process_replacement`,
+`successor_deferred_natural_exit`, and `fenced_independent_resumed` as
+`unknown`.
 
 | Situation | Tags |
 |---|---|
@@ -458,13 +617,16 @@ to request a redacted flare.
 
 ### Fleet update heartbeat
 
-The elected serve owner sends these gauges at most once an hour. They go
-through the normal Datadog destinations that have metrics turned on.
+The elected serve owner sends these gauges at most once an hour. They go to
+every Datadog destination that takes metrics, whatever its marker settings.
+[Emission gates](emission-gates.md#serve-operational-counters) gives the rule.
+If no destination can take them, serve tries again 10 minutes later and logs
+`deployment heartbeat: not sent` at most once an hour.
 
 | Metric | Value | Tags |
 |---|---|---|
-| `trajectory.ops.binary.heartbeat` | The number of fresh running processes, or `1` for the installed or desired state | `role`, `owner`, `managed`, `cohort`, `binary_state`, `version` |
-| `trajectory.ops.convergence.heartbeat` | `1` for the current convergence state of the host | `role`, `owner`, `managed`, `cohort`, `convergence_status`, `manifest_status`, `running_version`, `installed_version`, `desired_version`, `deployment_generation`, `deployment_action` |
+| `trajectory.ops.binary.heartbeat` | The number of fresh running processes, or `1` for the installed or desired state | `role`, `owner`, `managed`, `cohort`, `binary_state`, `version`; the `binary_state:running` point also has `egress_route` (`proxy`, `direct` or `direct_fallback`, for that destination's intake) and `proxy_source` (`none` or `environment`) |
+| `trajectory.ops.convergence.heartbeat` | `1` for the current convergence state of the host | `role`, `owner`, `managed`, `cohort`, `convergence_status`, `manifest_status`, `running_version`, `installed_version`, `desired_version`, `deployment_generation`, `deployment_action`, `configuration_profiles` (`none`, `one`, `several` or `unknown`: how many Trajectory configuration profiles MDM installed on the computer; `several` means the computer is in more than one deployment's scope) |
 
 `managed` is `true` when the install owner is a device-management owner:
 `jamf`, `mdm`, `managed`, or `datadog-managed`. On macOS, a Mac with the
@@ -485,8 +647,10 @@ Every gauge with the fleet tags uses this value.
 separates a missing managed policy from a present or invalid one. A bad
 org-config deployment therefore cannot look like an unmanaged host.
 
-Version values are cleaned and come from fixed formats. The metrics hold no
-PID, session, path, user, or rollout identity. Query them as gauges with an
+Version values are cleaned and come from fixed formats. The fleet tags hold no
+PID, session, path, user, or rollout identity. Like every serve metric, the
+gauges also carry the standard identity tags, such as the user. They also
+carry the `tags` from your configuration, managed settings, and destination. Query them as gauges with an
 hourly `max` rollup over at least four hours. Do not use `.as_count()`. It
 turns repeated gauge samples into false growth.
 
@@ -494,8 +658,11 @@ turns repeated gauge samples into false growth.
 
 Serve adds update policy tags to the convergence heartbeat. It also reports one
 wait-age gauge. No feature flag controls them. They go to the same
-destinations as the heartbeat: Datadog destinations with metric markers and
-credentials, unless the user opted out of publishing.
+destinations as the heartbeat. Those are the Datadog destinations that take
+metrics and have credentials, whatever their marker settings, unless the user
+opted out of publishing. The wait-age gauge carries the destination's `tags`
+but not the configured tags. So its final `0` ends the right series even when a
+configured tag changes during the wait.
 
 Serve adds these five tags to `trajectory.ops.convergence.heartbeat`. The
 existing tags keep their values. `desired_version` still comes only from
@@ -567,7 +734,7 @@ results stay on the device. Trajectory sends no check-age metric.
 - A gap of more than 30 minutes between reports restarts the observed window.
   Sleep or a stopped service can cause this, because the updater may not have
   run. Reports run every 10 minutes.
-- Trajectory saves the last check time in `state/update/observation.json`.
+- Trajectory saves the last check time in the home's state database.
   Freshness therefore survives restarts.
 
 ##### Wait age
@@ -648,8 +815,8 @@ When a wait ends:
 
 State and versions:
 
-- Trajectory saves the start time and the last reported series in
-  `state/update/observation.json`. The age and the final `0` survive
+- Trajectory saves the start time and the last reported series in the home's
+  state database. The age and the final `0` survive
   restarts.
 - After the first report from a version with this gauge, or after state loss,
   the age is a lower bound. A series reported before state loss gets no final
@@ -690,3 +857,40 @@ use `trajectory.ops.org_sync.success_age_seconds` and
 [query guidance](query-guidance.md).
 
 Return to the [Metrics Reference index](../METRICS-REFERENCE.md).
+
+## Serve cost intervals
+
+`trajectory.instrumentation.serve.cpu_seconds_per_hour`, `rss_bytes`,
+`read_bytes_per_hour`, `write_bytes_per_hour`, `store_bytes` and `wal_bytes`
+are distributions sampled every five minutes.
+`trajectory.instrumentation.serve.budget_exceeded` counts intervals that end
+with serve over a resource budget. Healthy intervals produce no budget event.
+The `activity` tag says which kind of interval was counted:
+
+- An idle interval counts when it is over 36 CPU seconds/hour, 50 MiB/hour
+  read or 20 MiB/hour written.
+- An active interval counts when the median of the retained active intervals
+  is over 180 CPU seconds/hour, 2 GiB/hour read or 500 MiB/hour written. The
+  median needs three active intervals, so one busy interval is not counted.
+- An idle or active interval counts when serve holds more than 1 GiB of
+  resident memory.
+
+The read and write limits apply to each `accounting` kind separately. The
+metric has no tag for which budget was exceeded. Compare it with `rss_bytes`
+and the rate metrics for the same `activity`. `trajectory doctor` names the
+figure on the affected machine. Serve only reports a budget. It never slows or
+stops work because of one. The active and memory limits are provisional.
+
+These metrics have a closed set of dimensions: `trajectory.version`, `os`,
+`activity`, `history_bucket`, `cache_bucket`, and `client_mix`. Byte rates also
+carry `accounting`, and database/WAL levels carry `store`. Unknown enum values
+become `unknown`. Unknown stores become `other`. Release versions and `dev`
+are accepted. Other version strings become `unknown`.
+
+No host, user, session, path, caller or fingerprint is a metric dimension.
+Publishing follows the same privacy and destination settings as other health
+metrics. Disconnected installations retain six local intervals, visible in
+`trajectory doctor` and serve's `/health`. The local SQLite summary includes
+code caller names and statement fingerprints, without SQL text or content.
+Statement attribution covers writable SQLite pools. Read-only pools keep
+native engine query limits and contribute file sizes without statement pages.

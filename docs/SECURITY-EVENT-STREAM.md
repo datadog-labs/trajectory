@@ -266,8 +266,7 @@ To fix a held claim, do these steps:
 
 ## Other outputs
 
-Turning on `event_stream` does not turn on marker logs, metrics, segmentation
-logs, or traces. Each of those outputs has its own setting. A destination with
+Turning on `event_stream` does not turn on marker logs, metrics, or traces. Each of those outputs has its own setting. A destination with
 `incognito_exempt: true` never receives metrics.
 
 The security event stream does not enable or depend on the optional

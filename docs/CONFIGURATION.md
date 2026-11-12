@@ -43,7 +43,7 @@ trajectory config path
 It prints the path of your `config.yaml`.
 
 To change common settings in a menu, run `trajectory config` with no
-arguments. The editor covers 14 keys, such as `capture.retention_days`,
+arguments. The editor covers 10 keys, such as `capture.retention_days`,
 `export.traces`, and `server.port`. Use `trajectory config set` for the other
 keys. The editor shows these items:
 
@@ -127,6 +127,9 @@ For these keys, a managed value wins over your `config.yaml`:
 - `deployment.ring`, when managed config sets it, and `stable` on a Mac whose
   MDM profile selects organization files and whose managed config sets no
   ring.
+- `deployment.minimum_version`, when managed config or the assigned cohort
+  sets it. On a Mac whose MDM profile selects organization files, your own
+  floor has no effect, and the managed floor or none applies.
 - `auto_update`, when managed config sets `false`. A managed `true` also
   wins on a Mac where MDM lets Trajectory update itself.
 - `local_ui.auto_start`, when managed config sets `false`.
@@ -139,6 +142,13 @@ For these keys, a managed value wins over your `config.yaml`:
 - `tags` keys that both files set.
 - Feature flags that managed config turns off.
 - `required_destinations`, which user config cannot remove.
+- `capture.retention_limit_days` and `capture.aggregate_retention_limit_days`,
+  which only managed config sets. Each is a limit on `capture.retention_days`
+  and `capture.aggregate_retention_days`. Trajectory uses the shorter of the
+  limit and your value, where `0` means keep forever. A longer value in your
+  `config.yaml` has no effect, and `trajectory doctor` says so. A managed
+  `capture.retention_days` itself is an ordinary default that your value
+  replaces.
 
 > **Note:** If an environment variable or a listed managed value sets a key,
 > editing `config.yaml` has no effect on it.
@@ -213,6 +223,9 @@ organization, do these steps:
    from them.
 
 These commands do not change managed `required_destinations`.
+
+To send to an OpenTelemetry collector instead of or alongside Datadog, see
+`trajectory user-guide otlp`.
 
 To configure without a prompt, pass the key on standard input. Do not put the
 key in a command argument, because other processes can read arguments.
@@ -290,6 +303,117 @@ that are not `incognito_exempt`, run `trajectory config publish opt-out`.
 Exempt destinations can still receive approved events. To stop all capture,
 run `trajectory config capture disable`.
 
+## Local disk use
+Trajectory limits its local data in three ways. All three are on by default:
+
+| Setting | Default | What it limits |
+|---|---|---|
+| `capture.retention_days` | `60` | How long Trajectory keeps a session's full data: its events, prompts, responses, tool calls and traces. |
+| `capture.aggregate_retention_days` | `365` | How long the local cache keeps a session's totals after its full data ages out. |
+| `capture.max_disk_bytes` | 10 GiB | The size of all of Trajectory's data on disk. |
+
+`0` turns each limit off. Managed config can set a shorter limit for both
+retention keys. See [How Trajectory chooses a value](#how-trajectory-chooses-a-value).
+
+### What ages when
+A session's data ages in two steps:
+
+1. **Full data.** Trajectory deletes a session's JSONL once all of its events
+   are older than `capture.retention_days`. Usually within a day, the local
+   cache then removes the session's turns, tool calls, traces and search
+   entries. Its PR evidence, module records and publish state go too.
+2. **Totals.** Before the cache removes a session, it keeps a record of the
+   session's totals. The record holds its cost, tokens, turn and tool-call
+   counts, models, tools, markers, tags and PR links, and its client, project
+   and times. It holds no prompt, response, tool text or title. The record
+   goes once both the session's last event and the last update to its
+   totals are older than `capture.aggregate_retention_days`. A late token
+   correction or a reindex updates the totals.
+
+With the defaults, a session that ended on 1 March keeps its full data until
+about 30 April. If nothing updated its totals after 1 March, they stay until
+about 1 March of the next year. The
+totals never go before the full data would. If
+`capture.aggregate_retention_days` is shorter than `capture.retention_days`,
+Trajectory uses `capture.retention_days` for both.
+
+With `capture.retention_days: 0`, Trajectory keeps full data and never ages a
+session by time. Only the disk limit removes session files. It removes only
+files of sessions that the local cache no longer holds.
+
+Data that you already published stays in Datadog under Datadog's retention.
+Trajectory does not send an aged session's data again.
+
+### What reports show for an aged session
+A session whose full data aged out is marked "summary only". Reports that need
+only totals still count it:
+
+- `trajectory cost`, `trajectory cost top` and `trajectory summary` include
+  it. The session counts as a whole in the window that holds its end. A
+  window that holds the whole session shows the same totals as before it
+  aged. If the session started before the window, aging can change the
+  window's totals, because its turns can no longer be split at the window's
+  start. It keeps the cost
+  stored when it aged, so a later price change does not change it. It has no
+  sub-agent invocation count.
+- `trajectory cost inspect --session <session-id>` prints the session's
+  totals with this note, and no turns:
+  `Summary only: turn detail aged out; totals as of <date>.`
+- `trajectory view` lists the session with a **summary only** label. Its
+  title is the client, project and day. Its page shows its models, tools and
+  PRs. The usage and metrics pages include its totals.
+- `trajectory patterns outcomes` counts the session. PRs that only aged
+  sessions touched are counted without cost, on their own line. The JSON
+  field is `summary_only_prs`.
+
+Views of turns, tool calls and traces show only sessions with full data. These
+include Lapdog, search, `trajectory cost hotspots`, `trajectory cost
+observations` and `trajectory cost validate`.
+
+If you resume a session after it aged out, its new events start new turns.
+Trajectory does not read the events from before it aged again.
+`trajectory cost` adds the new turns to the totals that the cache kept.
+`trajectory view` lists the session with its new turns.
+
+### Disk limit
+`capture.max_disk_bytes` limits all of Trajectory's data on disk, under
+`~/.trajectory` and the corpus root. The default is 10 GiB. `0` turns the limit
+off. `trajectory doctor` shows how much Trajectory uses against the limit.
+
+When the data is over the limit, the background service removes a small batch
+of the oldest data every minute. It removes data in this order:
+
+| Order | Files | What it removes |
+|---|---|---|
+| 1 | `trajectories/sessions/` | The oldest session JSONL of sessions the local cache no longer holds, with the state kept for those sessions. |
+| 2 | `state/metric-publish-outbox.sqlite` | Old records of metrics that Datadog already received. |
+
+This release does not shrink the local cache, `trajectories/cache/trajectory.db`,
+to save space. It also keeps the session files the cache is built from. If the
+cache keeps Trajectory over the limit, `trajectory doctor` says so.
+
+Trajectory never removes data from the last 30 days to save space, because it
+may need that data to republish metrics. It also keeps metrics that are still
+waiting to be sent, and the sessions of running agents. If what is left is all
+recent, `trajectory doctor` warns that Trajectory is over the limit. To allow
+more space, run `trajectory config set capture.max_disk_bytes <bytes>`.
+
+### Limits for each kind of file
+Each kind of file also has a limit of its own. `capture.retention_days`
+removes old data by age, whatever its size:
+
+| Files | What they hold | Limit |
+|---|---|---|
+| `trajectories/sessions/` | Session JSONL, the captured events | A file goes once all of its events are older than `capture.retention_days`. |
+| `trajectories/cache/trajectory.db` | The local cache that search, queries, reports and the local UI read | A session's full data goes once its session files are gone. Its totals stay for `capture.aggregate_retention_days`. See [What ages when](#what-ages-when). |
+| `trajectories/evidence/pr-work.sqlite` | Pull request and commit evidence that links sessions to PRs | A session's evidence goes once its session files are gone and its newest record is a day old. |
+| `state/metric-publish-outbox.sqlite` | Metrics waiting for Datadog, and a record of the metrics Datadog already received | Metrics waiting to be sent stay until Datadog accepts them. They have a soft budget of 20 GiB. Unsent metrics from the last 30 days are never dropped, so the file can grow past it. Past the budget, older unsent metrics can be dropped. The record of sent metrics lasts `capture.retention_days` plus 7 days, at least 14 and at most 60. It lasts 60 days when `capture.retention_days` is `0`. While your organization turns on rolling reconciliation, it lasts at least 32 days. |
+| `state/delivery-outbox.sqlite` | Traces, logs and the record of sessions already published | Sent traces and logs go after 1 to 14 days. A session's publish record goes once its session files are gone and `capture.retention_days` plus 7 days, at least 14, have passed. The record also stops at 250,000 rows or 128 MiB. |
+| `modules/` | Module decision and span records, such as Agent Security's | A session's records go after session retention removes the session and every destination received them. A session keeps at most 20,480 span records or 256 MiB, the most publish sends; Trajectory drops and counts later ones. The shared decision log keeps two generations of 16 MiB. |
+| `state/otlp-proxy/`, `state/aider/sessions/` | Trace requests the local OTLP proxy captured, and the history files of wrapped Aider runs | `capture.retention_days` deletes them once they are older than the window, and at least 7 days old, and session retention removed their session. |
+| `state/incognito-*`, `state/ended-incognito-*`, `state/mistral-vibe/bindings/`, `trajectories/.state/open-subagents/`, `trajectories/canonical-source-layout-quarantine/` | What a session leaves when Trajectory does not see it end: its incognito switch, its Mistral Vibe session link and its Claude Code subagent list, and copies a stopped rewrite left | `capture.retention_days` deletes them once they are older than the window, and at least 7 days old, and session retention removed their session. A Devin session's incognito record stays. |
+| `logs/`, `state/claude-desktop-gateway/keeper.log` | Diagnostic logs of hooks, the tool server, updates and the Claude Desktop keeper, and startup traces | Each log rotates or trims at 1 to 25 MiB and keeps at most three older copies. A new startup trace keeps the newest 10. For the hook start, detached hook, tool server, import worker, update reconcile, Agent Security activation and Claude Desktop keeper logs, and startup traces, `capture.retention_days` also deletes an older copy or trace once nothing wrote to it for that many days, and at least 7, and empties such a log. |
+
 ## Stop capture
 ### Disable capture for this user
 To stop all new capture for your user, run this command:
@@ -309,6 +433,23 @@ stays until you run `capture enable`. While it exists, Trajectory discards new
 hook, watcher, and OTLP events and writes no JSONL. Running servers check the
 file for each event, so you do not need to restart anything. Both commands
 accept `--json`.
+
+What a coding agent did while capture was off stays out after you turn capture
+back on. `capture enable` saves the period in
+`~/.trajectory/state/capture-off-windows.json` before it removes
+`capture.disabled`. Trajectory later reads the agent's own files to fill in
+usage and to import history. It skips every record the agent wrote in a saved
+period:
+
+- A session that you used before and after the period keeps the turns, tokens,
+  cost, and text from outside the period only.
+- A session that ran only inside the period is never imported.
+  `trajectory session import` reports how many sessions it skipped for this
+  reason.
+- `trajectory doctor` does not report such a session as missing.
+
+Use `capture enable` to turn capture back on. If you delete `capture.disabled`
+by hand, Trajectory has no record of the period and can import it later.
 
 The `trajectory_disable_command` feature controls `capture disable` and is on
 by default. The command fails and creates no file in two cases:
@@ -338,9 +479,35 @@ and restart the process. A server that starts with this variable still opens
 its health endpoint. But it discards capture data and writes no JSONL. The
 variable does not change the installed Claude Code hooks.
 
+The variable is in the environment of the coding agent and of the hooks it
+starts. The capture server does not run with it. So the first hook that runs
+with the variable marks its session under
+`~/.trajectory/state/capture-disabled-sessions/`. The server then leaves that
+session out: hook events that the agent posts itself, the agent's own session
+files, and later runs of `trajectory session import`. `trajectory doctor` does
+not report the session as missing.
+
+A marked session stays out, also when you resume it later without the
+variable. The resumed conversation holds what was said before. Start a new
+session to record again. Trajectory removes a marker after 400 days.
+
+The variable holds for a client only when the client starts a hook process:
+
+| Client | Does the variable hold? |
+|---|---|
+| Claude Code | Yes. Its `SessionStart` hook marks the session. |
+| Codex | Yes. Its `SessionStart` hook marks the session. A Codex version without a `SessionStart` hook is not covered. |
+| Cursor, Copilot CLI, Pi, Antigravity, Droid | The hooks mark the session, and the server drops the session's hook events. Sessions that Trajectory reads from these clients' own history are not checked yet. |
+| OpenCode, Kilo, OpenClaw | No. The plugin sends events from inside the client and does not read the variable. |
+| Qwen | No. Qwen posts its hooks itself and starts no hook process. |
+| Clients with no hooks, such as Amp, Goose, and Hermes | No. Trajectory reads their files, and no process sees the variable. |
+
+Where the variable does not hold, run `trajectory config capture disable`
+before the session and `trajectory config capture enable` after it.
+
 ### Keep capture but stop sending content
 For privacy during one agent session, use `/incognito`. Incognito keeps local
-JSONL capture, segmentation, semantic analysis, and accounting metrics. It
+JSONL capture, semantic analysis, and accounting metrics. It
 stops sending trace and log content to Datadog destinations that are not
 exempt. By default, its metrics leave out model and repository names.
 
@@ -367,7 +534,7 @@ tags:
 
 Trajectory adds these tags when it publishes. They go on Datadog LLM
 Observability spans and on Trajectory metric series. This includes base,
-marker, heartbeat, and task metrics.
+marker, and heartbeat metrics.
 
 Trajectory does not add these tags to these places:
 
@@ -676,43 +843,17 @@ For team repos that use `api_key_command` and more than one destination, run
 
 ## Control Trajectory-owned LLM calls
 Most Trajectory work does not call an LLM. This includes capture, metrics,
-marker evaluation, and Datadog publish. These features can call an LLM:
+marker evaluation, and Datadog publish. Only a `trajectory patterns analyze`
+run that you confirm calls an LLM. It splits sessions into tasks and adds
+Work Insights labels.
 
-- Task segmentation.
-- A confirmed `trajectory patterns analyze` run.
+Trajectory no longer segments sessions automatically. The
+`automatic_task_segmentation` feature flag and the `segmentation.*` settings
+were removed. A configuration file that still names them loads, and
+Trajectory ignores those entries. `trajectory config set segmentation.interval`
+and the other `segmentation.*` keys now fail as unknown keys.
 
-More detail on segmentation:
-
-- Task segmentation splits a session into tasks and makes one provider call
-  per pass. Automatic segmentation is off by default. It runs only when the
-  `automatic_task_segmentation` feature flag is on, and then
-  `segmentation.enabled` and the other `segmentation.*` settings apply. Even
-  with the flag on, automated calls stay held until a headless CLI has a
-  provider hard stop, so new sessions are not segmented. Tasks that are already
-  stored can still publish task metrics when `segmentation.publish_metrics` is
-  on. See `trajectory user-guide llm-capacity`.
-- Work Insights labels come only from a `trajectory patterns analyze` run that
-  you confirm.
-
-To turn automatic task segmentation on, run this command:
-
-```bash
-trajectory config features enable automatic_task_segmentation
-```
-
-While the flag is on, `trajectory config set segmentation.enabled false` turns
-it off again.
-
-Each automated feature has a monthly spending limit in US dollars. Trajectory
-counts each UTC calendar month separately. Set the limit to `0` to block
-automated calls. A `patterns analyze` run that you confirm still runs.
-
-Each segmentation call to a provider has its own four-minute limit. The
-13-minute `segmentation.final_pass_timeout` and
-`segmentation.recovery_timeout` limits cover the whole sequence. So one slow
-segmentation call cannot use up all the time.
-
-For how often each call runs and what it costs, run this command:
+For what each call costs, run this command:
 
 ```bash
 trajectory user-guide llm-capacity
@@ -744,13 +885,13 @@ To use two workers for background indexing, run this command:
 trajectory config set backfill.local.background_threads 2
 ```
 
-To publish only the last 14 days by default, run this command:
+To republish only the last 14 days by default, run this command:
 
 ```bash
-trajectory config set backfill.publish.days 14
+trajectory config set republish.days 14
 ```
 
-All `backfill.*` settings follow the normal config order. Changes apply on
+All `backfill.*` and `republish.*` settings follow the normal config order. Changes apply on
 the next command or the next background run. `trajectory backfill status`
 shows both windows.
 
@@ -760,7 +901,8 @@ ends on that date and uses its configured length.
 
 `backfill.local.days` sets the default window for local `trajectory backfill`.
 A full `trajectory session reindex` and its background worker still check
-every session that Trajectory keeps. These settings do not delete local
+every session that Trajectory keeps. They index the ones that the cache is
+missing or is behind on. These settings do not delete local
 history. They do not change which clients Trajectory imports from.
 `capture.retention_days` is a separate setting that deletes old files.
 
@@ -788,25 +930,65 @@ To let background indexing run on battery, run this command:
 trajectory config set backfill.local.pause_on_battery false
 ```
 
-`backfill.publish.days` sets the default window for these commands:
+Backfill commands that change data run at background CPU and disk priority
+by default. Your editor, browser, and coding agents get the CPU and disk
+first. The backfill can take longer on a busy machine. This applies to
+`trajectory backfill start`, `trajectory backfill local --apply`,
+`trajectory backfill --apply`, `trajectory session import`,
+`trajectory session reindex`, `trajectory session refresh-local`, and
+`trajectory session repair tokens`. On macOS, Trajectory sets nice 10 and
+throttles disk I/O. On Linux, it sets nice 10 and the lowest best-effort disk
+priority. On Windows, it uses the below-normal CPU priority class.
+
+To run one command at normal priority, add `--full-priority`. To run every
+backfill command at normal priority, for example in CI, run this command:
+
+```bash
+trajectory config set backfill.background_priority false
+```
+
+Background indexing that `trajectory serve` starts always runs at the lowest
+priority. This setting does not change it.
+
+### Backfill and republish
+
+Backfill imports the history that coding agents keep on disk into
+Trajectory's own storage. `backfill.local.*` tunes it, and it never sends
+data. Republish sends history that Trajectory already holds to your
+destinations. `republish.days` sets its default window.
+
+Republish covers at most the last 30 days. `trajectory config set` rejects a
+`republish.days` value above 30. A command window that is longer than 30 days,
+or that reaches further back, is an error. The error names the earliest start
+date that the command accepts. Your organization's settings can still
+ask for a longer window. Trajectory then uses 30 days, and `trajectory
+doctor` shows a warning.
+
+`republish.days` sets the default window for these commands:
 
 - `trajectory cost publish`
 - `trajectory session publish`
-- `trajectory patterns publish`
 - `trajectory publish history`
-- The publish step of `trajectory backfill --apply --publish`
+- The republish step of `trajectory backfill --apply --republish`
 
-Publishing never goes back further than `capture.retention_days`. By default,
+Republish never goes back further than `capture.retention_days`. By default,
 each destination starts at its oldest delivery record in the metric outbox.
 An explicit `--since` can go further back, with a warning.
 
-Managed backfill reconciliation uses `backfill.publish.days` when
+Releases before 0.6.2 named this setting `backfill.publish.days`. The first
+time Trajectory loads your `config.yaml`, it moves that value to
+`republish.days`, lowered to 30 if it was higher, and removes the old key.
+`trajectory config set backfill.publish.days` now fails and names the new
+key. Managed defaults and cohort files keep using `backfill.publish.days`.
+Trajectory reads that key from them and never changes those files.
+
+Managed backfill reconciliation uses `republish.days` when
 `backfill_reconciliation.window_days` is missing or zero. The older name
 `historical_replay.rolling.window_days` works the same way. A positive managed
-value sets its own window, from 1 to 3650 days. Reconciliation still skips the
-most recent complete UTC day. Local config cannot turn on managed replay or
-change its sources or destinations. It also cannot override a positive
-managed window.
+value sets its own window. Trajectory uses at most 30 days of it.
+Reconciliation still skips the most recent complete UTC day. Local config
+cannot turn on managed replay or change its sources or destinations. It also
+cannot override a positive managed window.
 
 For workflows and publish rules, run `trajectory user-guide backfill`.
 
@@ -860,7 +1042,7 @@ change to a running `trajectory serve` process.
 
 ### Agent Security client gates
 Agent Security has a separate managed gate for each client: Claude Code,
-Codex, GitHub Copilot CLI, and Cursor. Each gate is on by default when the Agent Security module
+Codex, GitHub Copilot CLI, Cursor, Kiro CLI, and Antigravity CLI. Each gate is on by default when the Agent Security module
 is on. To turn off one client, an administrator adds it to
 `config.defaults.yaml`:
 
@@ -870,14 +1052,29 @@ features:
     - agent_security_codex
 ```
 
-The other gates are `agent_security_claude_code`, `agent_security_copilot`,
-and `agent_security_cursor`.
+The other gates are `agent_security_agy`, `agent_security_claude_code`,
+`agent_security_copilot`, `agent_security_cursor`, and `agent_security_kiro`.
 Only managed config can set them. Environment variables cannot change them.
 
 Security hooks read the managed config each time they run. So an org config
 sync changes a client gate without a hook reinstall or an agent restart. To
 turn off Agent Security for all clients, use `modules.agent-security.enabled`.
 Normal Trajectory capture does not read these gates.
+
+AI-EDR reads the files that GitHub Copilot CLI changes with `apply_patch`, as
+it reads Claude Code's `Write` and `Edit`. It reads at most 3,000 files of one
+patch and marks a larger patch's evaluation as degraded. When AI-EDR enforces,
+it blocks that larger patch. If that flags or blocks edits you
+need, an administrator can turn it off without turning off Agent Security for
+Copilot:
+
+```yaml
+features:
+  disabled:
+    - agent_security_copilot_apply_patch
+```
+
+Like the client gates, only managed config can set this flag.
 
 ## Configure Cursor native pricing
 Trajectory always publishes Cursor input, output, cache-read, and cache-write
@@ -930,6 +1127,11 @@ A full org config sync also copies two more files:
 - `~/.trajectory/org/model-equivalence.yaml` maps model names as clients
   report them to provider models. It keeps thinking, speed, billing, and
   context modes separate.
+
+`~/.trajectory/org/custom-pricing.yaml` is your organization's custom rate
+card: prices for your organization that apply on top of the default rate card.
+A full org config sync does not copy it. Trajectory downloads it only when your
+managed profile names it, and checks the whole file before it installs it.
 
 Trajectory shows guessed model matches only in diagnostics. It never prices
 usage from a guess.
@@ -1037,7 +1239,7 @@ Before you use it, do these steps:
 adapter sends the token to the upstream as `Authorization: Bearer <token>`.
 Pup picks the credential from its environment and saved session. Trajectory
 does not pick a site, audience, or scope. This auth type accepts only `type`
-and `cache_ttl`. It does not turn on Frontier routing or run `pup auth login`.
+and `cache_ttl`. It does not turn on AI Gateway routing or run `pup auth login`.
 
 ### Tokens, retries, and limits
 The `pup_bearer` auth type keeps a working token in memory for four minutes
@@ -1119,15 +1321,19 @@ authenticates at the collector, not with a Datadog API key.
 ### Bearer tokens
 A destination that sends to a custom intake or forwarder can use
 `bearer_token_ref` in place of `api_key_ref`. First turn on the
-`bearer_destination_auth` feature, which is off by default. Trajectory sends
-the named secret as `Authorization: Bearer`. These rules apply:
+`bearer_destination_auth` feature, which is off by default. A collector in the
+`destinations:` list of your own `config.yaml` does not need this step, unless
+the feature is explicitly disabled. Trajectory sends the named secret as
+`Authorization: Bearer`. These rules apply:
 
 - A destination cannot set both `bearer_token_ref` and `api_key_ref`.
 - A bearer token never falls back to the Datadog API key variables.
 - Bearer endpoints must use HTTPS. Loopback HTTP endpoints for development are
   the only exception.
 - Trajectory does not follow redirects on authenticated requests.
-- Managed bearer OTLP destinations are rejected. A publish config file that
+- Managed bearer OTLP destinations are rejected. The `destinations:` list in
+  your own `config.yaml` accepts `bearer_token_ref`. See
+  `trajectory user-guide otlp`. A publish config file that
   sets `bearer_token_ref` must use `version: 2`. A repository's
   `publish.trajectory.yaml` cannot add a bearer destination, because project
   destinations are metrics-only.
@@ -1263,10 +1469,12 @@ Users cannot turn automatic start back on in their own `config.yaml`. The
 
 ## Refresh organization configuration
 Trajectory refreshes organization files automatically, every
-`org.sync_interval` seconds. When `org.config_source` or `org.files` changes,
-it refreshes right away. That happens when `trajectory serve` starts or
-reloads its config. Trajectory retries a failed refresh after 1 minute. The
-wait doubles after each failure, up to `org.sync_interval`.
+`org.sync_interval` seconds. It keeps that interval between 60 and 14400
+seconds: a value outside the range uses the nearest limit, and
+`trajectory doctor` warns about it. When `org.config_source` or `org.files`
+changes, it refreshes right away. That happens when `trajectory serve` starts
+or reloads its config. Trajectory retries a failed refresh after 1 minute. The
+wait doubles after each failure, up to the interval.
 
 To fetch the files now, run this command:
 
@@ -1284,11 +1492,69 @@ shows. A missing optional catalog or `deployment.json` gives a warning, and
 the refresh still succeeds. A missing or invalid `config.defaults.yaml` makes
 the command fail.
 
-`config sync` does not signal running processes. It always refreshes now.
+Some settings, such as `modules`, take effect only when the background service
+starts. When the automatic sync installs a `config.defaults.yaml` that changes
+one of them, it keeps the new file. The running service keeps its current
+settings, and the `CONFIG` column of `trajectory ps` shows `restart_required`
+with the settings that wait, for example `restart_required:modules`. The
+service reads the new file when it next starts, for example after
+`trajectory serve restart`. On a Mac whose configuration profile lists
+`config.defaults.yaml` in `org.files`, the sync refuses such a change instead,
+and the current file stays.
+
+A file from the source can't run a command, send data or a key outside Datadog,
+or choose where updates come from. A downloaded `config.defaults.yaml` or cohort
+can't set these settings:
+
+- `identity.*_command`, `auth.key_command` and `publish_tags[].command`
+- `export.local_forward_url` and `deployment.update_url`
+- `server.otlp_proxy`, `server.reader_v2_remote` and `ai_gateway`
+- a destination URL, such as `required_destinations[].endpoint`
+- a site outside Datadog
+
+If a file sets one of them, sync removes that setting and installs the rest of
+the file. The value doesn't reach this machine's disk. Everything else in the file
+still applies, with its exact text. `trajectory doctor` names what sync removed
+until the hosted file stops setting it. If a copy already on this machine sets one,
+Trajectory ignores that setting and applies the rest. To use one of these settings
+on one machine, set it in `config.yaml`. A configuration profile's own settings are
+not affected. Neither is a `config.defaults.yaml` placed on a machine with no org
+source.
+
+On a Mac whose configuration profile lists `config.defaults.yaml` in
+`org.files`, the hosted file sets `org.files`, `org.markers_path` and
+`org.sync_interval` once the Mac accepts it. The profile's values apply until
+then. The profile keeps `org.config_source` and `auth`. When the hosted file
+sets either one, Trajectory uses the profile's value, applies the rest of the
+file, and `trajectory doctor` names the setting.
+
+When `org.files` lists `config.defaults.yaml`, the background service applies
+that file. Every running Trajectory process must load a new copy at the same
+time, and the service does that. `config sync` asks the running service to
+sync every selected file now. It waits up to one minute for the result. If no
+service runs, the command checks only the other files and reports
+`config.defaults.yaml` as `not_checked`. It then shows the command that starts
+a service:
+
+```bash
+trajectory serve ensure --client cli
+```
+
+After the service starts, run `trajectory config sync` again.
+
+With `org.files`, the output has one `file=` line for each selected file. The
+`--json` output has the same results in `files`. A result is `updated`,
+`unchanged`, `not_checked`, or a failure such as `fetch_failed` or
+`validation_failed`. A file that a check rejects leaves the current settings
+active. A failed or unchecked optional file gives a warning, and the command
+still succeeds. A required file that does not refresh makes the command fail.
+
+Apart from that request to the background service, `config sync` does not
+signal running processes. It always refreshes now.
 `trajectory config sync --force` does the same. The flag states the intent
-and changes nothing else. If
-`config.defaults.yaml` or the assigned cohort changes, the output shows the
-reload command to run next. That is `--yes` after a normal sync and `--force`
+and changes nothing else. If the command itself changes
+`config.defaults.yaml` or the assigned cohort, the output shows the reload
+command to run next. That is `--yes` after a normal sync and `--force`
 after a forced sync.
 
 Managed config can replace a user guide topic with an internal version. If
@@ -1359,11 +1625,13 @@ backfill:
     background_threads: 1
   publish:
     days: 30
+  background_priority: true
 
 capture:
   redact_pii: true
   retention_days: 60
-  max_disk_bytes: 0
+  aggregate_retention_days: 365
+  max_disk_bytes: 10737418240   # 10 GiB for all Trajectory data
   include_headless_agents: true
 
 export:
@@ -1393,15 +1661,6 @@ publish_trust:
 classifier:
   standard_fallbacks: [claude, codex, opencode, cursor]
 
-segmentation:
-  enabled: true
-  interval: 10
-  model: ""
-  monthly_budget_usd: 10
-  publish_metrics: false
-  final_pass_timeout: 13m
-  recovery_timeout: 13m
-
 cross_client_resume:
   enabled: false
   targets: []
@@ -1426,9 +1685,10 @@ except the `modules`, `ai_gateway`, `publish_tags`, `org.files`, and
 |---|---|---|---|
 | `auto_update` | bool | `true` | Automatic background update checks. A managed `false` wins. A managed `true` wins where MDM lets Trajectory update itself. |
 | `deployment.ring` | string | `stable` | Update ring: `stable` or `beta`. A managed or cohort ring wins. |
-| `deployment.update_url` | string | `""` | Custom `RELEASES.json` URL for tests or company rollouts. |
+| `deployment.update_url` | string | `""` | Custom `RELEASES.json` URL for tests or company rollouts. Set it in `config.yaml`; a file from the org source can't set it. |
+| `deployment.minimum_version` | string | `""` | Version floor: the lowest release this computer may run, such as `0.6.3` or `0.6.3-beta.5`. Empty sets no floor. A managed value wins. A value that is not a release version sets no floor, and `trajectory doctor` warns about it. Updates do not use the floor yet. |
 | `local_ui.auto_start` | bool | `true` | Lets Trajectory start the local UI automatically. A managed `false` wins. |
-| `server.port` | int | `19222` | Port of the local capture server. |
+| `server.port` | int | `19222` | Port of the local capture server. Hooks, setup, launchers and the MCP server use it too, unless `TRAJECTORY_PORT` is set. After you change it, run `trajectory update refresh-clients`, then `trajectory serve restart`. |
 
 ### Credentials and identity
 | Key | Type | Default | What it controls |
@@ -1448,16 +1708,18 @@ except the `modules`, `ai_gateway`, `publish_tags`, `org.files`, and
 | Key | Type | Default | What it controls |
 |---|---|---|---|
 | `capture.redact_pii` | bool | `true` | Removes personal data patterns from captured content. |
-| `capture.retention_days` | int | `60` | Deletes local JSONL older than this many days. `0` keeps files forever. |
-| `capture.max_disk_bytes` | int | `0` | Total size limit for all local session JSONL. Trajectory deletes the oldest inactive sessions first. `0` turns the limit off. `trajectory doctor` shows use against the limit. |
-| `capture.include_headless_agents` | bool | `true` | Captures and publishes headless agent sessions that Trajectory did not start. Segmentation still skips them. |
+| `capture.retention_days` | int | `60` | Keeps a session's full data this many days after its last event: its JSONL, and its turns, tool calls and traces in the local cache. `0` keeps full data forever. Below 30, `trajectory config set` warns, because PR attribution reads 30 days of other sessions. A managed `capture.retention_limit_days` caps it. See [Local disk use](#local-disk-use). |
+| `capture.aggregate_retention_days` | int | `365` | Keeps a session's totals in the local cache this many days after its last event or the last update to its totals, after its full data ages out. `trajectory cost`, `trajectory view` and `trajectory patterns outcomes` read them. `0` keeps them forever. `trajectory config set` rejects a value below a positive `capture.retention_days`. A managed `capture.aggregate_retention_limit_days` caps it. |
+| `capture.max_disk_bytes` | int | `10737418240` (10 GiB) | Size limit on all of Trajectory's data on disk. Past it, Trajectory removes old session JSONL the local cache no longer holds, then old delivered metric records, and never data from the last 30 days. It does not shrink the local cache. `0` turns the limit off. `trajectory doctor` shows use against the limit; see [Local disk use](#local-disk-use). |
+| `capture.include_headless_agents` | bool | `true` | Captures and publishes headless agent sessions that Trajectory did not start. |
 | `cross_client_resume.enabled` | bool | `false` | Rebuilds transcript files for other clients. |
 | `cross_client_resume.targets` | list | `[]` | Limits rebuilt transcripts to these clients. |
 | `backfill.local.days` | int | `30` | Default local backfill window in complete UTC days (1-3650). |
 | `backfill.local.threads` | int | `8` | Workers for `session reindex` and the reindex step of `backfill local` (1-64). `--threads` overrides it for one run. |
 | `backfill.local.background_threads` | int | `1` | Workers for background local cache indexing (1-64). |
 | `backfill.local.pause_on_battery` | bool | `true` | Holds background local cache indexing while a Mac runs on battery, and resumes it on external power. Commands that you run are not paused. |
-| `backfill.publish.days` | int | `30` | Default publish backfill window in complete UTC days (1-3650). |
+| `backfill.background_priority` | bool | `true` | Runs backfill commands that change data at background CPU and disk priority. `--full-priority` turns it off for one run. Background indexing always runs at the lowest priority. |
+| `republish.days` | int | `30` | Default republish window in complete UTC days (1-30). Republish sends history Trajectory already holds to your destinations. |
 
 ### Export to Datadog
 | Key | Type | Default | What it controls |
@@ -1466,8 +1728,9 @@ except the `modules`, `ai_gateway`, `publish_tags`, `org.files`, and
 | `export.ml_app` | string | `""` | LLM Observability ML app name. Destinations that Trajectory builds use `coding-agents` when it is empty. |
 | `export.traces` | string | `off` | Trace content sent to LLM Observability: `off`, `minimal`, `standard`, or `full`. |
 | `export.turn_traces` | bool | `true` | Sends the trace and the later evaluation for each turn. |
-| `export.metrics` | bool | `true` | Sends cost, token, marker, and operations metrics when a destination exists. |
+| `export.metrics` | bool | `true` | Sends cost, token, marker, and operations metrics when a destination exists. Your `false` stops cost, token, turn and session metrics for your own destinations unless managed configuration sets `export.metrics: true`. Destinations that managed configuration requires follow managed configuration. |
 | `export.incognito_metrics` | string | `redacted` | Metrics for incognito sessions. `redacted` removes model and repo names. `standard` keeps them. Cost and token metrics always publish. |
+| `export.redacted_model_suffixes` | list | `[]` | Model ID suffixes whose metrics and AI Usage events are always model-redacted, even in `standard` mode. With no list, no model is redacted this way. Organization configuration usually supplies the list. A list you set adds to it and never removes from it. |
 | `export.placeholder_llm_span` | bool | `true` | Adds a placeholder LLM child span that carries turn cost. |
 | `export.index_traces.session` | bool | `false` | Adds a separate session index span, with links only, at session end. |
 | `export.subagent_span_mode` | string | `semantic` | How the parent shows subagents: `semantic` or `links_only`. |
@@ -1476,7 +1739,7 @@ except the `modules`, `ai_gateway`, `publish_tags`, `org.files`, and
 | `export.local_forward_url` | string | `""` | Local HTTP endpoint that receives the JSONL of each finished session. |
 | `tags` | map | `{}` | Tags added to published Datadog spans and Trajectory metrics. Managed values win on shared keys. |
 | `publish_trust.allowed_origins` | list | `[]` | Git origins whose repo `publish.trajectory.yaml` files Trajectory loads. |
-| `publish_trust.require_committed` | bool | `false` | Requires repo publish files to be tracked by Git. |
+| `publish_trust.require_committed` | bool | `false` | Loads a repo publish file only when the last commit holds it with the content of the working copy. |
 | `publish_trust.allowed_sites` | list | `[]` | Sites allowed for repo metrics-only destinations. Empty allows only the known public Datadog sites. |
 
 For `export.late_turn_correction_delivery`, `historical` sends the corrected
@@ -1485,18 +1748,9 @@ out of backfill, Trajectory counts the correction as a gap. `gap` never sends
 the correction and counts it as dropped. Trajectory never sends a signed
 correction outside the window.
 
-### Segmentation and LLM calls
+### Classifier
 | Key | Type | Default | What it controls |
 |---|---|---|---|
-| `segmentation.enabled` | bool | `true` | Turns task segmentation on or off while the `automatic_task_segmentation` flag is on. The flag is off by default, so segmentation does not run unless you turn it on. |
-| `segmentation.interval` | int | `10` | Turns between segmentation passes. |
-| `segmentation.model` | string | `""` | Model override. Empty uses the default model for each client. See `trajectory user-guide llm-capacity`. |
-| `segmentation.monthly_budget_usd` | float | `10` | Monthly limit on automated segmentation spend. `0` blocks automated calls but not a confirmed `patterns analyze` run. |
-| `segmentation.publish_metrics` | bool | `false` | Publishes metrics from segmented tasks. |
-| `segmentation.publish_traces` | bool | `false` | Old key. Trajectory accepts it and ignores it. |
-| `segmentation.final_pass_timeout` | duration | `13m` | Time limit for the whole final segmentation run after a session ends. |
-| `segmentation.recovery_timeout` | duration | `13m` | Time limit for each recovery run of segmentation after a session ends. |
-| `segmentation.task_insights.publish` | bool | `false` | Old key. Trajectory accepts it and ignores it. |
 | `classifier.standard_fallbacks` | list | `[claude, codex, opencode, cursor]` | Headless CLIs to try, in order, after the client's own provider. Managed config can reorder or shorten the list, add `agy`, or set `[]`. Direct API fallback is separate. |
 
 ### Pricing
@@ -1525,15 +1779,16 @@ correction outside the window.
 | `server.otlp_proxy.endpoint` | string | `""` | Upstream OTLP HTTP base URL. Signal paths come from the base or a `/v1/...` URL. Setting it turns on the proxy unless `enabled` is `false`. |
 | `server.otlp_proxy.api_key_ref` | string | `""` | Credential name that Trajectory resolves and sends as `dd-api-key` to Datadog OTLP intake. |
 | `server.otlp_proxy.native_ml_app` | string | `<export.ml_app>-claude-native` | ML app for forwarded Claude Code native traces. A value equal to Trajectory's ML app gets the `-claude-native` suffix. |
-| `server.reader_v2_remote.enabled` | bool | `false` | Opens one outgoing reader-v2 connection from the capture server. Needs `endpoint` and `credential_ref`. |
+| `server.reader_v2_remote.enabled` | bool | `false` | Opens one outgoing reader-v2 connection from the capture server. Needs `endpoint`, `credential_ref` and the endpoint in `allowed_endpoints`. |
 | `server.reader_v2_remote.endpoint` | string | `""` | `wss` URL with no credentials, query, or fragment. |
 | `server.reader_v2_remote.credential_ref` | string | `""` | `env:<name>` or `keychain:<name>`. Trajectory never stores the value in config. |
 | `server.reader_v2_remote.disclosure_scope` | string | `metadata` | Data that the connection can read: `metadata` or `content`. |
+| `server.reader_v2_remote.allowed_endpoints` | list | `[]` | Comma-separated endpoints this machine may connect to. Trajectory doesn't connect to anything else. A list in `config.defaults.yaml` placed on the machine wins over one in `config.yaml`. |
 
 ### Organization config
 | Key | Type | Default | What it controls |
 |---|---|---|---|
-| `org.config_source` | string | `""` | Main source for remote organization config. A managed value wins. |
+| `org.config_source` | string | `""` | Main source for remote organization config. Must use `https://`; `http://` works only on this machine. A managed value wins. |
 | `org.markers_repo` | string | `""` | Older HTTP(S) source for org config or markers. Other URL types are rejected. |
 | `org.markers_path` | string | `""` | Path inside the org config source. |
 | `org.sync_interval` | int | `3600` | Seconds between org config syncs. |
@@ -1556,7 +1811,7 @@ Manage module settings with `trajectory plugins modules`. See
 | `modules.<id>.evaluators.<engine>.timeout_ms` | int | `0` | Evaluator timeout in milliseconds. |
 | `modules.<id>.evaluators.<engine>.window_turns` | int | `0` | Number of turns of context for the evaluator. |
 | `modules.<id>.evaluators.<engine>.config` | map | `{}` | Settings for one evaluator, such as endpoint names, variable names, or policy limits. |
-| `modules.<id>.launch` | map | unset | Product opt-in for a module, separate from `enabled`, such as Frontier AI Gateway routing. Setup writes its `receipt`. |
+| `modules.<id>.launch` | map | unset | Product opt-in for a module, separate from `enabled`, such as AI Gateway routing. Setup writes its `receipt`. |
 
 ### Managed and structured keys
 `trajectory config set` does not accept these keys. Set them in YAML.
@@ -1635,20 +1890,19 @@ needs a new process. It does not move a running watcher.
 | `TRAJECTORY_OTLP_PROXY_API_KEY_REF` | `server.otlp_proxy.api_key_ref` | Adds a Datadog API key without the raw key in config. |
 | `TRAJECTORY_OTLP_PROXY_HEADERS` | none | Comma-separated, URL-escaped `key=value` headers for other collectors. For Datadog, use `api_key_ref`. |
 | `DD_SITE` | `export.site` | Changes the Datadog site. |
-| `TRAJECTORY_SEGMENTATION_DISABLED=1` | `segmentation.enabled=false` | Turns off segmentation. |
 | `TRAJECTORY_DEBUG=1` | none | Prints detailed logs. |
 | `TRAJECTORY_AUTO_UPDATE=0` | `auto_update: false` | Turns off background update checks for the process, including when a managed `auto_update: true` applies. |
 | `TRAJECTORY_UPDATE_REPO` / `TRAJECTORY_SELF_UPDATE_REPO` | selfupdate.conf | GitHub release repo for `trajectory update`, such as `datadog-labs/trajectory`. |
 | `TRAJECTORY_UPDATE_URL` / `TRAJECTORY_SELF_UPDATE_URL` | selfupdate.conf | `RELEASES.json` URL for `trajectory update`. |
 | `TRAJECTORY_UPDATE_BASE_URL` / `TRAJECTORY_SELF_UPDATE_BINARY_URL` | selfupdate.conf | Base URL of release files for `trajectory update`. |
 | `TRAJECTORY_UPDATE_RECONCILE_PROCESSES=false` | none | Turns off the handoff to the new version after an update. Other values that are not empty fail. |
-| `TRAJECTORY_DISABLED=1` | `trajectory config capture disable` | Turns off capture for the process. It wins over user settings. |
+| `TRAJECTORY_DISABLED=1` | `trajectory config capture disable` | Turns off capture for the process and for the session it runs. It wins over user settings. See "Disable capture for one launched command" for the clients it holds for. |
 | `TRAJECTORY_DISABLE_KEYCHAIN=1` | none | Skips keychain lookups in background processes. |
 | `TRAJECTORY_ENABLE_FEATURES` / `TRAJECTORY_DISABLE_FEATURES` | `features.enabled` / `features.disabled` | Turns feature flags on or off. |
 | `DD_API_KEY` | secret | Datadog API key. |
-| `ANTHROPIC_API_KEY` | secret | Anthropic key for Trajectory classifier calls and `trajectory cost budget`. |
-| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | secret | Google key for Trajectory classifier calls and `trajectory cost budget`. |
-| `OPENAI_API_KEY` | secret | OpenAI key for Trajectory classifier calls and `trajectory cost budget`. |
+| `ANTHROPIC_API_KEY` | secret | Anthropic key for Trajectory classifier calls. |
+| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | secret | Google key for Trajectory classifier calls. |
+| `OPENAI_API_KEY` | secret | OpenAI key for Trajectory classifier calls. |
 | `GITHUB_TOKEN` | secret | Self-update and private repo access. |
 | `TRAJECTORY_USER_EMAIL` | `identity.user_email` | Sets `trajectory.user_email`. |
 | `TRAJECTORY_GITHUB_EMAIL` | `identity.github_email` | Sets `git.email`. |
@@ -1792,6 +2046,11 @@ stops the old server. A healthy Codex relay also starts this switch when an
 update is waiting. Trajectory then continues from the client history, the
 local JSONL, and the publish outboxes.
 
+When no agent session has used the old server in the last few minutes, no
+hook may come. Trajectory then waits 90 seconds and makes the same switch
+itself. `trajectory update` prints `updated to` only when no old server still
+runs. Until then it reports the version as installed.
+
 The `automatic_nuclear_update_replacement` feature is on by default. It
 controls this automatic switch. To use the older handoff, turn the feature off
 in user or managed config. You can also set
@@ -1816,13 +2075,18 @@ To activate the installed or managed version, use `update converge`.
 `trajectory update converge --dry-run` previews the change, and
 `trajectory update converge --yes` applies it.
 
+Run `update converge` from the installed binary, `$TRAJECTORY_HOME/bin/trajectory`,
+which is `~/.trajectory/bin/trajectory` by default. Run from another copy,
+such as a downloaded binary, it changes nothing and prints the command to run
+from the installed binary.
+
 These `update repair --apply --yes` options change what the repair does:
 
 - `--force` replaces every Trajectory process of your user, as
   `update --force` does.
-- `--continue-handoff --binary /path/to/trajectory` is for the public Go SDK. It hands work to a binary that
-  the SDK owns. Older servers give up their listener for a short time. A server
-  that cannot replace itself in place pauses, and the SDK binary runs in the
+- `--continue-handoff --binary /path/to/trajectory` hands work to the binary at
+  that path. Older servers give up their listener for a short time. A server
+  that cannot replace itself in place pauses, and the named binary runs in the
   same home and port. If that binary exits, the old server resumes. Neither
   path kills an unknown process or starts a second capture home.
 - `--reload-config` does a full recovery after a managed installer changes the
@@ -1831,10 +2095,6 @@ These `update repair --apply --yes` options change what the repair does:
   credential is missing, the command fails and says how to fix it. Without
   this option, `update repair --apply --yes` only hands off the binary.
   Automatic updates never use this option.
-
-The public Go SDK runs the same forced update as
-`Client.ForceUpdateReconcile(ctx, ForceUpdateReconcileOptions{...})`. Its
-normal `EnsureServe` call does not stop processes.
 
 ### Managed installs
 A managed installer confirms the binary that it installed with this command:

@@ -1,6 +1,6 @@
 {
   "name": "trajectory",
-  "version": "1.2.10",
+  "version": "1.2.12",
   "description": "Agent observability for AI coding assistants - captures sessions and exports to Datadog LLM Observability.",
   "author": {
     "name": "Datadog",

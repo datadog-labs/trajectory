@@ -28,18 +28,18 @@ trajectory user-guide clients
 | VS Code Copilot Chat | Turn on `vscode_copilot_instrumentation`, then `trajectory setup --clients vscode-copilot` | Chat history files, first-party native OTel, MCP, and an incognito prompt | Tested with fixtures. Not yet tested in the real app or with incognito. |
 | Cursor Desktop | `trajectory setup --clients cursor` | 18 Agent command hooks and MCP. Tab and workspace hooks are left out on purpose. | Cursor chat backfill |
 | cursor-agent CLI | Turn on `cursor_agent_durable_history`. Command hooks use the Cursor setup. | Off by default. A watcher reads current and legacy JSONL transcripts. | The same transcript files plus Cursor chat stores |
-| Antigravity CLI (`agy`) | `trajectory setup --clients agy` | Antigravity plugin command hooks and MCP | Off by default. Prompt history and generation usage through `antigravity_durable_history`. |
+| Antigravity CLI (`agy`) | `trajectory setup --clients agy` (macOS and Linux) | Antigravity plugin command hooks and MCP | Off by default. Generation usage, and the prompts the hooks did not record, through `antigravity_durable_history`. |
 | Goose | `trajectory setup --clients goose` | Open Plugins command hooks | On by default. SQLite history and usage through `goose_durable_history`. |
 | Cline CLI | `trajectory setup --clients cline` | File hooks and MCP | None |
 | Factory Droid | `trajectory setup --clients droid` | Beta Factory command hooks and MCP | None |
-| Hermes Agent | `trajectory setup --clients hermes` | Observer Python plugin and MCP | Off by default. Read-only `state.db` import through `hermes_durable_history`. |
-| Amp Code | `trajectory setup --clients amp` | System TypeScript plugin and MCP | Off by default. Thread files through `amp_durable_history`. |
-| Qwen Code | `trajectory setup --clients qwen` | Native HTTP hooks and MCP | Off by default. Chat JSONL watcher and import, including archives, through `qwen_durable_history`. |
-| Kiro CLI | `trajectory setup --clients kiro` | Agent command hooks and MCP | Off by default. JSONL and SQLite history through `kiro_durable_history`. |
-| Pi | `trajectory setup --clients pi` | TypeScript extension and MCP | `.pi/agent/sessions` backfill |
+| Hermes Agent | `trajectory setup --clients hermes` | Observer Python plugin and MCP | Read-only `state.db` watcher and import. |
+| Amp Code | `trajectory setup --clients amp` | System TypeScript plugin and MCP | Thread file watcher. |
+| Qwen Code | `trajectory setup --clients qwen` | Native HTTP hooks and MCP | Chat JSONL watcher and import, including archives. |
+| Kiro CLI | `trajectory setup --clients kiro` | Agent command hooks (V2), global command hooks (V3) and MCP | On V3, `Stop` reads the reply and, once the hook returns, the credits from Kiro's session store, always on. Off by default: JSONL and SQLite history through `kiro_durable_history`. |
+| Pi | `trajectory setup --clients pi` | TypeScript extension with Trajectory tools | `.pi/agent/sessions` backfill |
 | Oh My Pi (`omp`) | Turn on `omp_instrumentation`, then `trajectory setup --clients omp` | Native `omp.extensions` capture, MCP, and an automatic v3 history watcher | `trajectory session import omp` |
-| OpenCode | `trajectory setup --clients opencode` | OpenCode plugin SDK events and MCP | JSON and SQLite history import. Optional watcher. |
-| Kilo Code | `trajectory setup --clients kilo` | OpenCode-compatible plugin SDK events and MCP. Optional history watcher. | `trajectory session import kilo`, behind `kilo_durable_history` |
+| OpenCode | `trajectory setup --clients opencode` | OpenCode plugin SDK events and MCP. Optional `trajectory opencode` launcher that records each Anthropic, OpenAI, Google and xAI call through a local proxy. | JSON and SQLite history import and watcher. |
+| Kilo Code | `trajectory setup --clients kilo` | OpenCode-compatible plugin SDK events and MCP, plus a history watcher. | `trajectory session import kilo` |
 | OpenHands | `trajectory setup --clients openhands`. Optionally turn on `openhands_durable_history`. | Command hooks and MCP. Off-by-default history watcher. No OTLP relay by default. | `trajectory session import openhands`, behind `openhands_durable_history` |
 | Continue CLI | `trajectory setup --clients continue --install-client-shims` | Opt-in `cn` shim. After each run, Trajectory rebuilds the session and tool state that changed. | Current run only. Follows the CLI's `--resume` and `--fork` choice. No bulk backfill. |
 | Codebuff | `trajectory setup --clients codebuff --install-client-shims` | Opt-in command shims. Chat history import after each run. | Codebuff chat history backfill. No guessed session end. |
@@ -56,10 +56,36 @@ trajectory user-guide clients
 | gptme | Turn on `gptme_instrumentation`, then `trajectory setup --clients gptme` | Metadata-only lifecycle hooks that wake a session file reader. MCP and `/incognito`. | Existing and changed sessions. Tested with a real gptme install without credentials. |
 | CodeWhale | Turn on `codewhale_instrumentation`, then `trajectory setup --clients codewhale` | Saved-session and runtime-thread reader, wake-only hooks, MCP, and incognito skill | Plain `exec` runs are not captured unless stream JSON or resume saves them |
 | ForgeCode | Turn on `forgecode_instrumentation`, then `trajectory setup --clients forgecode` | Read-only `.forge.db` reader, MCP, and incognito skill and command. No hooks or wrapper. | Existing and changed conversations. Tested with fixtures. |
-| Warp/Oz CLI | Turn on `warp_oz_instrumentation`, then `trajectory setup --clients warp` | Read-only local Warp/Oz SQLite reader, MCP, and incognito skill | Active and changed local stores only. Cloud runs are not captured. |
 | Zed | Turn on `zed_passive_history`, then `trajectory setup --clients zed` | Read-only thread database reader, MCP, and incognito skill. No hooks, wrapper, or OTel. | Tested with fixtures. Not yet tested in the Zed app or with incognito. |
 | OpenClaw | Turn on `openclaw_durable_history` | Off-by-default saved-history watcher. Released builds do not capture OpenClaw live. | `trajectory session import openclaw`, behind `openclaw_durable_history` |
 | Gemini CLI (retired) | None | None | Earlier sessions stay readable |
+
+### Service tier and cache-write lifetime
+
+A provider can charge a call by the service tier that served it, and charge
+cache writes by how long they live. Trajectory prices a call at the tier and
+lifetimes its usage states. A call that states neither is priced at the
+standard tier and the shortest lifetime, the least it can have cost
+([Lower bounds](COST-ATTRIBUTION.md#lower-bounds)). The provider's response
+states both. These clients cannot pass them on, so their costs are floors:
+
+- **GitHub Copilot and Cursor** send their calls through their own backends,
+  and the provider's response never reaches the client. Trajectory prices
+  their calls at the standard tier and the shortest lifetime. Their users pay
+  their plan's prices, not the provider's tier rates.
+- **Grok Build** keeps only two session-wide counters in its history: the
+  context tokens used and the output tokens. Trajectory records no cost for it.
+- **OpenCode** records the tier only for OpenAI and xAI calls on the
+  Responses route, and only in releases that write `native.serviceTier`. It
+  records no cache-write lifetime.
+  [`trajectory opencode`](#opencode-launcher) captures both.
+  Trajectory keeps the cost OpenCode reports, which OpenCode works out at the
+  standard tier with every write at the 5-minute rate. That cost is not tagged
+  as a lower bound. A call OpenCode reports no cost for is priced as one.
+- **Codex** rollouts record the tier Codex asked for, but no cache-write
+  lifetime. Codex never asks for a lifetime, so its writes get OpenAI's
+  30-minute default, and the turn's cost is a lower bound. A launch with
+  [`trajectory codex`](#codex-cli) records the lifetimes.
 
 ## Hook ownership
 
@@ -168,7 +194,9 @@ at the prompt.
 
 Claude and Codex do not need a shim. Their native integrations work without
 one. The same flag optionally installs same-name launchers for the built-in
-`trajectory claude` and `trajectory codex` wrappers.
+`trajectory claude` and `trajectory codex` wrappers. Setup installs no
+launcher for [`trajectory opencode`](#opencode-launcher). Run
+it in place of `opencode`.
 
 Setup handles shims and launchers as follows:
 
@@ -248,6 +276,19 @@ Setup uses the least invasive way to register with each client:
   precedence as launch validation. Activation also names its deciding source,
   user settings or managed policy, so doctor can tell a user-level fix from
   one only an administrator can make.
+- `trajectory doctor`, `trajectory onboard`, and the auto-instrument plan read
+  activation the same way. For `not_installed`, the plan repairs the client
+  with `trajectory setup --clients <client> --non-interactive`, the command
+  doctor suggests. The repair needs the client's own CLI. If it fails, the
+  plan tries again at its next interval. For `disabled`, the plan leaves the
+  client alone. Doctor names the client's own command to turn the plugin back
+  on.
+- A Claude Code managed policy that turns the plugin off or blocks every
+  plugin marketplace makes it `disabled`, even before an install. The plan
+  also leaves Claude Code alone when other managed marketplace restrictions
+  may refuse the install. It does the same when `CLAUDE_CONFIG_DIR` moves
+  Claude Code's plugin records out of `~/.claude`, because setup installs the
+  plugin only there.
 
 Trajectory modules extend this setup path. They do not use separate installers
 or copied client hook logic.
@@ -311,7 +352,13 @@ Trajectory uses these times to sort:
 - OpenCode uses the provider's session update time.
 
 Equal times sort by path or session ID. The order does not change which source
-wins. Cursor's source order, Codex's preference for the active copy, and
+wins.
+
+This order is the order of conversion. A first `trajectory backfill local
+--apply` into a cache with fewer than 500 sessions indexes only up to 100
+sessions of the last day as it converts them. Its index step adds the rest in
+session ID order, which writes less to the cache's session-keyed tables.
+`trajectory user-guide backfill` describes it. Cursor's source order, Codex's preference for the active copy, and
 OpenCode's preference for SQLite stay the same.
 
 Codex merges active and archived rollouts before it picks each page. This
@@ -451,10 +498,82 @@ not reliable there. Background processes on that path open no console window.
 Setup accepts an HTTP hook only for known events, paths, plugin versions,
 timeouts, and headers.
 
-The other lifecycle hooks run the `capture-with-serve.sh` helper, then
+Serve accepts a Claude Code hook body of up to 2 MiB. Claude Code's `Edit` hook
+body includes the whole original file, so editing a file of about that size
+goes over the limit.
+
+For `PostToolUse` and `PostToolUseFailure`, serve reads a body of up to 64 MiB.
+It keeps a copy of about 340 KiB at most, with the small fields and the start of
+each long string. `tool_input` stays whole or is left out. The event is marked
+`_truncated`, and `_original_length` holds the body's size.
+
+Serve refuses a larger body with HTTP 400. It also refuses any `PreToolUse` body
+over the limit. Claude Code treats that as a non-blocking error, and the tool
+call goes on.
+
+The other lifecycle hooks are command hooks that run
 `trajectory capture-hook`. `PermissionRequest` also uses this path. It marks
 the start of the wait for the user, so Trajectory must record it before the
 outcome arrives.
+
+On macOS and Linux, Claude Code starts the Trajectory binary itself for each
+command hook. The hook's `command` is the binary, and its `args` are the
+`capture-hook` command line, so a hook starts one process and no shell. Claude
+Code 2.1.139 and later starts hooks this way. An earlier Claude Code does not
+know `args`, and runs the command alone through `/bin/sh`. The binary then
+reads the arguments from the `hooks.json` of the plugin the session loaded.
+Either way the binary writes nothing to Claude Code and exits 0. No version
+reaches that second path today: Claude Code before 2.1.152 rejects the plugin's
+hooks file, because it registers `MessageDisplay`.
+
+The `args` begin with a command line that every release since 0.6.1 can run,
+followed by `--direct-start`, `--home`, `--port`, and `--binary`.
+`capture-hook` stops reading flags at the event name, so an earlier release
+ignores the flags after it.
+A session that loaded these hooks therefore keeps capturing after a rollback.
+The earlier release cannot read the home and port from those flags. Until
+such a session restarts, its command hooks use the default home and the
+configured port. A session with its own `TRAJECTORY_HOME` or `TRAJECTORY_PORT`
+uses those instead.
+
+`--binary` is the installed path the hook's command names. The hook sets
+`TRAJECTORY_BINARY` to it, as the earlier hook did. Where that path is a
+wrapper script that runs the binary from another file, later starts from that
+variable still go through the wrapper.
+
+The binary reads the `claude_direct_hook_start` feature flag each time Claude
+Code starts it for a hook. With the flag off, it runs the plugin's
+`capture-with-serve.sh` in its own place, with the home, binary, and port the
+earlier hook set. Turning the flag off therefore takes effect on the next hook
+of every session. The hook then writes a `result=handed_to_script` line to
+`capture-hook-start.log` before the script writes its own line.
+
+Setup writes the earlier hooks instead in three cases:
+
+- on Windows
+- when the binary's path holds a space or another character the shell reads
+- when the `claude_direct_hook_start` feature flag is off
+
+Those hooks run the `capture-with-serve.sh` helper through a shell, then
+`trajectory capture-hook`.
+A session that started before an update keeps the hooks it loaded, so the
+helper stays in every plugin folder.
+
+Both kinds of hook name the same capture port. Setup writes the port into the
+HTTP hook URLs and pins it in each command hook. A
+session started with its own `TRAJECTORY_PORT` therefore cannot send its
+prompts to one capture server and its tool calls to another. Setup and
+`trajectory update refresh-clients` pick the port by the shared rule:
+`TRAJECTORY_PORT`, then `server.port`, then 19222. The refresh that runs when
+the capture server or MCP server starts follows a `server.port` change. It
+ignores `TRAJECTORY_PORT`, which comes from whichever session started it.
+
+Each command hook writes one line to `logs/capture-hook-start.log` when it
+starts, with the event, the plugin folder name, and the port. The plugin
+folder Claude loaded can lose the helper, or the Trajectory binary can be
+missing. The hook then still exits 0 but writes `result=missing_script` or
+`result=missing_binary`. `trajectory doctor` counts those lines from the last
+24 hours. The lines hold no session or prompt content.
 
 Every command hook passes `--background-after-read`. Delivery works as
 follows:
@@ -557,12 +676,25 @@ OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://localhost:<port>/v1/metrics
 OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://localhost:<port>/v1/traces
 ```
 
-For that process, the wrapper also turns on these Claude telemetry options:
+For that process, the wrapper also turns on the enhanced telemetry beta. When
+telemetry goes only to local `trajectory serve`, it also turns on these options
+unless your settings or environment turn them off:
 
-- the enhanced telemetry beta
 - user and assistant content
 - tool details and content
 - raw API-body events
+
+When a collector receives the telemetry, through your user settings or your
+organization's managed settings, the wrapper leaves these options as your
+settings have them. To send content to your collector, set
+`OTEL_LOG_USER_PROMPTS`, `OTEL_LOG_ASSISTANT_RESPONSES`,
+`OTEL_LOG_TOOL_DETAILS`, `OTEL_LOG_TOOL_CONTENT` or `OTEL_LOG_RAW_API_BODIES`
+in those settings. Native skill names on `claude_code.tool` spans and in
+skill logs need `OTEL_LOG_TOOL_DETAILS=1`.
+
+If you set `server.otlp_proxy.endpoint`, `trajectory serve` forwards the
+telemetry it receives, including this content, to that endpoint. Turn the
+options off in your settings to keep content from it.
 
 The wrapper also records the complete Anthropic request and response bodies
 on each `llm_call`. Before Trajectory stores them, the capture redaction
@@ -579,7 +711,16 @@ the wrapper is the opt-in. No second content setting exists.
 
 The wrapper works as follows:
 
-- It reads your effective Claude settings.
+- It reads your effective Claude settings, except for telemetry settings in a
+  project's `.claude/settings.json` and `.claude/settings.local.json`. This
+  includes a local file at the Git root when you start from a subdirectory or
+  linked worktree. These settings are OTLP endpoints,
+  protocols, headers and certificates, exporters, content options and the
+  telemetry on/off switches. A repository you clone must not choose where your
+  telemetry goes, what it holds or whether it runs. The wrapper names the
+  ignored keys in a notice, and `trajectory doctor` warns about them. Set them
+  in user or managed settings instead. An AI Gateway launch leaves these keys
+  and `otelHeadersHelper` out of the settings it passes to Claude.
 - It points the Claude process at local `/v1/logs`, `/v1/metrics`, and
   `/v1/traces`.
 - When it starts a new shared `trajectory serve`, it passes the original
@@ -745,7 +886,7 @@ in a different place, and Trajectory treats each one differently:
 
 | Tab | Data on disk | Captured as |
 | --- | --- | --- |
-| **Cowork** (local agent mode) | `~/Library/Application Support/Claude/local-agent-mode-sessions/**/audit.jsonl` | `client_source=claude-desktop` (this integration) |
+| **Cowork** (local agent mode) | `~/Library/Application Support/{Claude,Claude-3p}/local-agent-mode-sessions/**/audit.jsonl` | `client_source=claude-desktop` (this integration) |
 | **Claude Code** (Code tab) | `~/.claude/projects/*.jsonl` (the same store as the CLI) | `client_source=claude-code` (the Claude Code integration), with an `entrypoint` value |
 | **Chat** | Electron LevelDB | Not captured. General chat is out of scope. |
 
@@ -794,23 +935,29 @@ paths:
 - `~/Applications/Claude.app`
 - `~/Library/Application Support/Claude`
 
-Transcripts are stored here:
+Transcripts live under `~/Library/Application Support/Claude` for the standard
+app and under `Claude-3p` for a third-party inference profile, such as the one
+`trajectory claude-desktop` writes. Both folders use the same layout, which
+depends on the app version:
 
 ```
-~/Library/Application Support/Claude/local-agent-mode-sessions/<projectId>/<accountId>/local_<sessionId>/audit.jsonl
+1.x: .../local-agent-mode-sessions/<projectId>/<accountId>/local_<sessionId>/audit.jsonl
+2.x: .../local-agent-mode-sessions/<projectId>/<accountId>/<shortId>/audit.jsonl
+     .../local-agent-mode-sessions/<projectId>/<accountId>/local_<sessionId>.json
 ```
 
 Trajectory does not rely on the `<projectId>/<accountId>` folders for
 identity. Live capture and backfill accept added, removed, or reordered
 folders at that level. Both require `audit.jsonl` to sit directly in a valid
-`local_<sessionId>` folder. They skip worktree and cache content below it.
+session directory. They skip worktree and cache content below it.
 
 Each line looks like a Claude Code transcript record. Its `type` is `user`,
 `assistant`, or `system`. Cowork also writes `tool_use_summary`,
 `rate_limit_event`, and `result` records. Trajectory ignores these when it
 does not understand them. The session ID comes from the `local_<sessionId>`
-folder name. Trajectory checks that the ID is safe to use as a path and skips
-invalid or unreadable entries.
+directory name in 1.x or the `local_<sessionId>.json` file beside the session
+directory in 2.x. Trajectory checks that the ID is safe to use as a path and
+skips invalid or unreadable entries.
 
 Cowork transcripts differ from Claude Code transcripts in two ways:
 
@@ -833,7 +980,7 @@ to `session_start` for Cowork sessions. It reads them from the `cwd` and
 metadata file:
 
 ```
-~/Library/Application Support/Claude/claude-code-sessions/<projectId>/<accountId>/local_<sessionId>.json
+~/Library/Application Support/{Claude,Claude-3p}/claude-code-sessions/<projectId>/<accountId>/local_<sessionId>.json
 ```
 
 Every field in that file is optional. `git_branch` is published as the
@@ -962,6 +1109,15 @@ stops changing. New hook or watcher activity restarts that wait. If activity
 never stops, Trajectory writes no end event, and the watcher can still end the
 session later.
 
+Codex runs no `Stop` hook for a turn that ends on a provider error. The
+rollout records that turn as `task_complete` with an `error` object.
+Trajectory writes its `turn_end` with `turn_outcome: "error"`, and live session
+state reports the turn as `StopFailure`, not as a finished turn. Codex does not
+save its `error` or `stream_error` messages in the rollout. A stream error that
+Codex retries and recovers from therefore leaves no record. A turn that you
+interrupt is a `turn_aborted` record. It gets `turn_outcome: "aborted"` and is
+not an error.
+
 New CLI and Desktop sessions both use `client_source="codex"`. Trajectory
 reads `session_meta.originator` and `session_meta.source` to find the launch
 type. It records `entrypoint` on spans and `client_surface` on metrics. The
@@ -976,6 +1132,19 @@ or `CODEX_SESSIONS_DIR` rollout folder for every project. CLI and Desktop
 sessions can share one rollout folder while they use different working
 directories. `TRAJECTORY_PROJECT_ROOT` can still describe the current run for
 hook context and privacy tools. It does not limit the watcher.
+
+The watcher also follows each `CODEX_HOME` in setup's install record
+(`client_environments`), one watcher for each home with its own cursor and leader
+lock. A home that sets `features.hooks = false` is captured this way, as a program
+that runs Codex under private homes does. A home setup never ran under has no
+record, so Trajectory can't see it. Backfill reads only the active home. So a
+recorded home's watcher sends nothing written before it began to follow the
+home, and everything written after. For a rollout it has not read, it skips
+the records Codex stamped before the follow and reads the rest as live. It
+never replays them as history, because no backfill would send their usage. The
+watcher rebuilds the mapper from the skipped records without sending them, so a
+later turn keeps its exact usage. After a serve restart, the watcher goes on
+from its cursor.
 
 Manual repair and optional startup repair also find flat rollout JSONL in
 `$CODEX_HOME/archived_sessions/`. Startup repair handles one page at a time
@@ -1012,6 +1181,42 @@ Setup-written hook commands pass the current capture mode to the server, so a
 feature change does not use a stale server config. A long-running server still
 needs `trajectory config reload --yes` to pick up feature and performance
 settings.
+
+### Model attribution
+
+Concrete `turn_context.model` values are the per-turn model authority. At session
+start, an explicit string `session_meta.model` takes precedence over the legacy
+concrete `model_provider` fallback. Bare provider names are not model evidence.
+
+`thread_settings_applied.thread_settings.model` can fill an empty model, but
+cannot replace an existing model or use copied parent settings for a forked
+child. A child-owned turn context can establish settings ownership before
+`task_started`. Completion, abort, and shutdown envelopes retire that ownership
+even when their payloads cannot be decoded. Copied or unreadable metadata and
+ambiguous turn boundaries also retire it. A new owned task or context can
+establish ownership again. Later concrete turn contexts replace the model
+fallbacks.
+
+Capture and reconciliation share the interpretation of native fork lineage,
+including nested thread spawns and legacy parent fields. Guardian parent links
+identify the reviewed session. Copied history requires separate fork fields.
+Legacy children can use nonempty opaque turn IDs only while no copied or
+unreadable parent metadata has appeared.
+
+The full rollout reader and cost-only replay preserve the same model evidence.
+Cost-only replay retains terminal envelopes and skipped record timestamps for
+fork ownership without decoding their transcript payloads. Structured
+`approval_policy` values do not discard an otherwise valid turn context. Their
+permission mode remains unknown unless a supported string label is present.
+
+Session-start snapshots prefer the first concrete, session-owned turn context
+within their bounded prefix before using a fallback. Raw cost reconciliation
+reads the explicit model fallbacks and rejects copied parent turn models while
+independently checking native usage.
+
+The mapper also carries `session_meta.cli_version` into recorded session-start
+events, including through the watcher capture bridge, so downstream metrics
+retain the native client version.
 
 ### Token counts
 
@@ -1360,7 +1565,7 @@ Desktop 3.11.25 fixture. A live test in the 3.11 app is still to do.
 
 On macOS, some source watchers poll and do not use file system
 notifications. Folder notifications on macOS can hold one file handle for each
-file. These watchers poll on macOS: Cursor Agent, Warp, Antigravity, gptme,
+file. These watchers poll on macOS: Cursor Agent, Antigravity, gptme,
 CodeWhale, Kimi, Copilot, Devin, ForgeCode, Hermes, OMP, OpenCode, Qoder, Qwen,
 and Zed. Other
 platforms keep optional notifications alongside polling.
@@ -1411,24 +1616,39 @@ Antigravity's `PreToolUse`, `PostToolUse`, `PreInvocation`, `PostInvocation`,
 and `Stop` events. Each hook runs
 `trajectory capture-hook --client agy --ensure-serve`.
 
+Agent Security installs a separate plugin, `trajectory-security`, beside this
+one. See
+[Agent Security on Antigravity CLI](SUPPORTED-CLIENTS.md#agent-security-on-antigravity-cli).
+
 Each command prints its answer first: `{"decision":"allow"}` for
 `PreToolUse`, and `{}` for the others. If Antigravity stops a slow capture at
 its timeout, it already has the answer.
+
+Each command ends in `|| true`, so Antigravity shows nothing when
+`capture-hook` exits with an error. The hook still writes its outcome line to
+`logs/capture-hook.log`, unless another hook is writing to that log at the
+same moment. When the newest Antigravity line there says
+`delivery_result=hook_failed`, `trajectory doctor` warns, however old the line
+is. A newer Antigravity line without that result clears the warning. The lines
+hold no session or prompt content.
 
 Trajectory reads Antigravity's camelCase identity and workspace fields and
 records `client_source=agy`. `stepIdx` pairs each tool's start and end. Hooks
 provide the following data:
 
+- Every payload carries the turn's prompt as `lastUserInput`. Trajectory
+  records it once per turn, from the `PreInvocation` whose `invocationNum` is
+  0. A subagent's prompt is empty, so Trajectory records none for it.
 - `PostToolUse` reports completion or error status, but not tool output.
-- Hooks carry no prompt, assistant text, provider model, tokens, cost, or
-  session end. Trajectory does not invent them.
+- Hooks carry no assistant text, provider model, tokens, cost, or session
+  end. Trajectory does not invent them.
 - `modelName` can be a selector such as `auto` or a model-like name.
   Trajectory keeps it as `model_label`. It does not treat it as the provider
   model or use it for cost.
 
 ### Prompt history and usage
 
-To add prompt history, run:
+To add generation usage, and the prompts the hooks did not record, run:
 
 ```bash
 trajectory config features enable antigravity_durable_history
@@ -1448,8 +1668,11 @@ The watcher works as follows:
 - On first use it records a baseline of existing rows. It then picks up new
   rows and sessions, including changes made while `trajectory serve` was
   stopped.
-- It uses the same conversation ID as the hooks and removes duplicates. Prompt
-  rows add to hook traces and do not replace them.
+- It uses the same conversation ID as the hooks. The hooks own every prompt
+  typed at or after the first prompt they recorded, so the watcher skips
+  those rows. Earlier prompts still import. Prompt rows never replace hook
+  events.
+- `trajectory session import antigravity --force` follows the same rule.
 - Deleted or rewritten history never removes local history or invents a
   session end.
 - Slash-command rows and unknown typed rows are not treated as model prompts.
@@ -1510,6 +1733,15 @@ Trajectory does not change those published values. A different value for a
 point already sent conflicts with the stored row, so backfill skips it.
 Subtract cache reads when you compare Gemini CLI input tokens with other
 clients.
+
+Gemini CLI history that Trajectory imports for the first time records
+`promptTokenCount` less `cachedContentTokenCount` as input. Its input then
+excludes cache reads, as other clients' input does, so cost counts the cache
+reads once. The legacy Antigravity hooks that still accept Gemini-shaped
+`AfterModel` payloads record input the same way. These records state
+`token_usage_provenance: gemini_prompt_less_cached_content`. The local UI
+adds cache reads to the input of a record that states it. It shows an older
+record's input as it was stored, which already counts them.
 
 Use `trajectory setup --clients agy` for Antigravity. The history-import SDK
 keeps its Gemini history converter for other programs that use it. Gemini
@@ -1688,10 +1920,10 @@ fields when they are present.
 
 ### Session history
 
-Session history is a separate, read-only feature that is off by default:
+When Hermes is installed, Trajectory reads its session history. No feature
+flag is needed. To import or repair history by hand, run:
 
 ```bash
-trajectory config features enable hermes_durable_history
 trajectory session import hermes
 trajectory session import hermes --session <provider-session-id>
 trajectory session import hermes --force
@@ -1704,7 +1936,7 @@ breakdown as provider diagnostics. Session token counts and cost stay at
 session level. The importer does not assign them to turns or create past
 model calls.
 
-While `trajectory serve` runs, the feature also reads `state.db` and its WAL
+While `trajectory serve` runs, its watcher also reads `state.db` and its WAL
 and shared-memory files from time to time. Hook events win. History adds to or
 replaces only facts that came from history earlier. The `SessionStart`,
 `AgentMessage`, `Stop`, and `SessionEnd` hook events ask for a read of that
@@ -1716,7 +1948,6 @@ history and repair.
 
 ```bash
 trajectory setup --clients hermes
-trajectory config features enable hermes_durable_history
 trajectory session import hermes
 trajectory doctor
 ```
@@ -1743,9 +1974,9 @@ against a live Amp account.
 
 ### Thread history
 
-The `amp_durable_history` feature is off by default. It reads top-level
-`T-*.json` files in `~/.local/share/amp/threads` or
-`$XDG_DATA_HOME/amp/threads`. It reads them without changing them.
+When Amp is installed, the history watcher reads top-level `T-*.json` files
+in `~/.local/share/amp/threads` or `$XDG_DATA_HOME/amp/threads`. It reads them
+without changing them.
 
 - The Amp thread ID is also the live plugin session ID. A session with any
   plugin event keeps its full trace. Trajectory can rebuild a history-only
@@ -1760,8 +1991,6 @@ The `amp_durable_history` feature is off by default. It reads top-level
 
 ```bash
 trajectory setup --clients amp
-trajectory config features enable amp_durable_history
-trajectory config reload --yes
 trajectory doctor
 ```
 
@@ -1810,10 +2039,10 @@ reader never returns older usage when the newest assistant record has none.
 
 ### Qwen chat history
 
-To turn on the history watcher and manual repair, run:
+When Qwen Code is installed, the history watcher runs on its own. For manual
+repair, run:
 
 ```bash
-trajectory config features enable qwen_durable_history
 trajectory session import qwen [--session ID] [--force]
 ```
 
@@ -1871,24 +2100,142 @@ trajectory doctor
 
 ## Kiro CLI
 
-Setup writes a Trajectory Kiro agent to `~/.kiro/agents/trajectory.json` or
-`$KIRO_HOME/agents/trajectory.json`. It merges `mcpServers.trajectory` into
-`~/.kiro/settings/mcp.json`. Kiro 2.x loads the agent's hooks when you select
-it with `--agent trajectory`. Setup does not replace your default agent.
+Kiro CLI has two engines, and one install runs either (`--v2`, `--v3`). Setup
+captures both, with one file for each:
 
-Kiro runs command hooks from the agent config. Trajectory registers hooks for
-`agentSpawn`, `userPromptSubmit`, `preToolUse`, `postToolUse`, and `stop`.
-They never block Kiro. Kiro passes each payload as JSON on stdin, and the hook
-runs:
+- **V2:** a Trajectory agent at `~/.kiro/agents/trajectory.json`, or
+  `$KIRO_HOME/agents/trajectory.json`. V2 loads the agent's hooks when you
+  select it with `--agent trajectory`. Setup does not replace your default
+  agent.
+- **V3:** the global hook file `~/.kiro/hooks/trajectory.json`. V3 runs every
+  file in `~/.kiro/hooks` in every session and every workspace, so you don't
+  select an agent. Kiro CLI 2.31 and later read `$KIRO_HOME/hooks` instead
+  when `KIRO_HOME` is an absolute path other than the home folder or one of
+  its parents. Setup then writes the same file there too, so Kiro 2.29 and
+  2.30 still load the one in `~/.kiro`. Setup reads `KIRO_HOME` as set: Kiro
+  ignores a relative value or a leading `~`.
+
+Setup merges `mcpServers.trajectory` into `settings/mcp.json` in each of those
+homes. When `KIRO_HOME` is unset they are the same file.
+
+The agent has hooks for `agentSpawn`, `userPromptSubmit`, `preToolUse`,
+`postToolUse`, and `stop`. V2 has no session-end hook. The global file has one
+hook per V3 trigger: `SessionStart`, `UserPromptSubmit`, `PreToolUse`,
+`PostToolUse`, `Stop` and `SessionEnd`. The tool triggers use matcher `*`, and
+`timeout` is in seconds. Every hook passes Trajectory's own event name, because
+capture and the capture server route on that argument and reject Kiro's
+trigger names. The hooks never block Kiro. Kiro passes each payload as JSON on
+stdin, and the hook runs:
 
 ```bash
-trajectory capture-hook --client kiro --ensure-serve --ensure-serve-wait 2s <event>
+trajectory capture-hook --client kiro --ensure-serve --ensure-serve-wait 2s --wait-notify 2s <event>
+trajectory capture-hook --client kiro --kiro-engine v3 --ensure-serve --ensure-serve-wait 2s --wait-notify 2s <event>
 ```
 
-Records use `client_source=kiro` and `source_dialect=kiro.cli.hooks.v1`. `stop`
-payloads include `assistant_response`, so Trajectory writes an `agent_message`
-and then a `turn_end`. Kiro hooks have no stable token or cost fields, so turn
-records use `tokens_status=unavailable`.
+The second form, in the global file, carries `--kiro-engine v3`. The agent file
+has no marker. V3 also runs the agent's hooks under `--agent trajectory`, so
+one V3 event can reach capture from both files. `capture-hook` tells the
+engine from the payload (`hook_event_name` and `session_id`) and never from the
+Kiro version or the environment. A marked command always records its event. An
+unmarked command records a V2 payload, and one whose engine it cannot tell. It
+drops a V3 payload while a marked capture hook in Trajectory's global file
+covers that event. Hooks you add to the file do not change that. A disabled
+hook, a matcher narrower than every tool, or a missing marker covers nothing.
+Without a covering hook, a V3 session started with `--agent trajectory` is
+still recorded.
+
+Setup refuses to replace a global hook file it did not write in either
+folder. Removal leaves every other file in both hooks folders alone. When you add hooks to the
+global file, removal takes out only Trajectory's.
+
+Records use `client_source=kiro` and `source_dialect=kiro.cli.hooks.v1`. A V2
+`stop` payload includes `assistant_response`, so Trajectory writes an
+`agent_message` and then a `turn_end`. A V3 `Stop` payload carries no assistant
+text, so the `Stop` handler reads it from Kiro's own session store (see
+"Kiro's Stop session-store read"). Kiro hooks have no stable token or cost
+fields, so turn records use `tokens_status=unavailable`.
+
+Kiro hook payloads carry no tool call ID. A tool hook sends only `session_id`,
+`cwd`, `hook_event_name`, `tool_name`, `tool_input` and, after the call,
+`tool_response`. Claude Code and Cursor send the client's own ID, and capture
+and Agent Security both use it unchanged. For Kiro, `kiroidentity.ToolUseID`
+derives `kiro-tool-v2-<hash>` from the session ID, tool name and tool input.
+The pre- and post-tool hooks of one call then get the same ID. Identical calls
+in one session get the same hash, so capture records the ID with its turn
+added: `kiro-tool-v2-<hash>-t<turn>`. A hook has no turn, so Agent Security
+derives the ID without it, and `kiroidentity.CaptureTurn` matches it to
+capture's record. AI Guard gets capture's ID for the current call.
+
+### Kiro's Stop session-store read
+
+When a V3 `Stop` payload has no assistant text, the `Stop` handler reads the
+turn's own entry from Kiro's V3 session store,
+`<kiro-home>/sessions/<workspace-hash>/<session-id>/messages.jsonl`. Kiro CLI
+2.31 and later keep this file under a usable `KIRO_HOME`
+(`clienthooks.KiroV3HomeDir`), and Kiro 2.29 and 2.30 under `~/.kiro`.
+`trajectory serve` does not have Kiro's environment, so `capture-hook` adds
+the home that the hook's `KIRO_HOME` selects to a V3 payload as
+`_trajectory_kiro_home`. The handler looks there first, then under `~/.kiro`,
+and removes the field before it writes any record. The credits read uses the
+same store. Claude Code's `Stop` handler reads Claude's own transcript the
+same way. The read is bounded to one
+session and is part of ordinary capture, with no feature flag. It is for V3
+payloads only (`kiroengine.Detect` tells the engine from the payload). A V2
+`stop` keeps its `assistant_response` and never opens the store. If Kiro adds a
+reply to V3's `Stop` payload, the payload wins and the read does not run.
+
+Kiro names each session directory by the session ID, `sess_<uuid>`, which is
+the `session_id` its hooks send. The handler checks the ID with
+`sessionid.Validate` before it names a path. The directory holds two files:
+
+- `session.json` has the title, model, workspace paths and timestamps.
+- `messages.jsonl` has one JSON row per line, each with an `id`, a millisecond
+  `timestamp` and a `payload`. `payload.type` names the row: `user`,
+  `assistant`, `tool_call`, `tool_result`, `turn_start`, `turn_end`,
+  `usage_summary` and others. Rows from one turn share an `executionId`.
+
+Trajectory reads only `messages.jsonl`. It uses `user` rows, including a
+prompt with no text such as an attachment alone, and `assistant` rows that have
+text. It also notes tool and sub-agent rows, to tell whether the turn has
+finished. It reads at most 64 MiB of the file. No row carries an ID
+that the hooks also send, so the read matches rows to Trajectory's turns only
+by time:
+
+- It takes the last `user` row Kiro wrote at or before this `Stop`. A replayed
+  `Stop` keeps the time it first arrived, so a later turn already in the store
+  is left out.
+- That row must come after the previous boundary: the latest `turn_end` or
+  `session_end` in Trajectory's own session file. After a resume, the earlier
+  generation's `session_end` is the boundary. Before the first `turn_end`, the
+  boundary is the capture start less one second, because Kiro writes a prompt
+  just before it runs the `UserPromptSubmit` hook. Turns from before capture
+  started are left out.
+- The text runs to the next `user` row. Narration and the final reply are
+  joined.
+- `Stop` keeps 4096 bytes. When the joined text is longer, the earliest
+  narration is dropped first and the closing reply stays. `_truncated` and
+  `_original_length` report the length the store held.
+- Kiro may not have flushed its store when `Stop` fires. The read retries
+  briefly when a tool call or sub-agent row follows the last reply, and when
+  the store's last row is only partly written. A finished turn is read at
+  once. A turn still unfinished after the retries keeps the replies found.
+  If the read finds nothing, the turn has a `turn_end` and no `agent_message`.
+
+Kiro reports no tokens at all. It writes each turn's credit usage
+(`usage_summary`) to its store only after the `Stop` hook exits, so no read
+inside the hook can see it. For a V3 payload, serve reads it once the hook has
+returned, as Claude Code's deferred `Stop` does, and gives up after one
+second. A V2 `stop` starts no such read. Each execution's last usage row
+counts once. The credits go on a `turn_token_correction` for the turn, in the
+shape Amp's history import uses. It carries `provider_credits` and
+`provider_credits_unit: kiro_credits`. Its cost is unavailable, because
+credits are not USD.
+
+The session's next hook and its `SessionEnd` wait for this read. So the
+credits land before the next turn's records and before `session_end`. The
+correction is never written after a `session_end`, into a resumed
+generation, or twice for one turn. It follows the turn's `turn_end`, so it
+publishes with the next turn or at session end.
 
 ### Kiro session history
 
@@ -1921,7 +2268,7 @@ The history has messages, model IDs, tool IDs and results, working directory,
 and timestamps. It has no token or cost data. Trajectory does not turn
 `response_size` bytes or older usage estimates into tokens. Kiro 3.0 early
 access stores sessions in a different format, and this watcher does not read
-it.
+it. Only the `Stop` read above opens that store, for the turn's reply.
 
 Kiro's docs use `includeMcpJson` in agent config. The older Amazon Q Developer
 CLI used `useLegacyMcpJson`. Trajectory does not write that older key.
@@ -1950,6 +2297,15 @@ single helper stops after 1.5 seconds.
 At shutdown, Pi gives the queue a short time to finish. It then hands the
 remaining events to a background worker and exits. Provider history repair
 stays available.
+
+Trajectory records each Pi prompt up to 8,192 bytes. Pi expands a
+`/skill:name args` command into a `<skill name="..." location="...">` block
+that holds the whole skill file, followed by your arguments. When that prompt
+is longer than the limit, Trajectory replaces the skill text inside the block
+with `[skill body omitted: <bytes> bytes]` first. The opening tag, the
+`References are relative to` line that follows it, the closing tag, and your
+arguments stay in the record. Any other prompt over the limit is
+cut at 8,192 bytes. The same rule applies to live capture and to history import.
 
 ### Pi parent links
 
@@ -1980,29 +2336,45 @@ Pi history starts with a session header. It stores parent links as a
 reference to the parent's session file. `trajectory session import pi` and
 managed history replay read these files.
 
-The `pi_history_backfill` flag is off by default. It makes the capture server
-find session files in `~/.pi/agent/sessions` that Trajectory has not captured.
-It adds them to the local catalog. It keeps provider IDs and parent links.
-It never rewrites a session that Trajectory already has. It never writes
-`session_end`, active state, or a publish job.
+The capture server also finds session files in `~/.pi/agent/sessions` that
+Trajectory has not captured. It adds them to the local catalog. It keeps
+provider IDs and parent links. It never rewrites a session that Trajectory
+already has. For a session from history, it never writes `session_end`, active
+state, or a publish job. This automatic import always runs and needs no feature
+flag. `trajectory uninstrument pi` stops it.
+
+A `pi-subagents` foreground child runs inside its parent's process and loads no
+extensions, so its file is the only record of it. The import checks whether the
+parent was captured live and the child's file changed in the last day. If both
+are true, it writes the child as a finished live session with a `session_end`.
+It then publishes the child like any session that ended. A child of a session
+from history stays history.
 
 Automatic import follows these rules:
 
-- It waits until a file has not changed for two minutes.
+- It waits until a file has not changed for two minutes. A `pi-subagents` child
+  also waits for its parent's file to change after the child's last write. That
+  change shows the child returned. The wait ends after an hour. A child's quiet
+  file may only be a long tool call, and a file is read once.
 - It handles up to 64 files or 64 MiB in each batch. It reads more pages in
   the background, then checks for new files every minute.
-- Each source file can hold up to 8 MiB or 50,000 records.
+- A source file can be any size. It's read one record at a time, so size costs time and not memory. A line over 16 MiB is left out and logged.
 - It reads only project files and the `pi-subagents` nested layout. It skips
   linked children, OMP folders, custom Pi folders, and other nested JSONL.
-- Malformed or incomplete files are retried later.
-- Its saved progress holds only hashed file paths. Damaged progress data
-  stops the import and is reported. It is never reset without notice.
+- A file it cannot import, such as an empty, incomplete, malformed, or
+  oversized file, does not stop the rest of the import. The import logs the
+  problem once and tries that file again at the next check.
+- Its saved progress holds only hashed file paths, one per line, and each page
+  appends to it. Damaged progress costs one more pass and never stops the import,
+  because an existing session file wins.
+- It has no limit on the number of files. A larger folder is walked less often,
+  so a walk takes about 1% of the time.
 
-The flag imports history once and does not watch for changes. Trajectory
-does not import a file again after it changes, is deleted, or ages out. The extension captures
-everything after that. Use `trajectory session import pi` for history outside
-the automatic limits. The flag does not change the import command or managed
-replay.
+The automatic import reads history once and does not watch for changes.
+Trajectory does not import a file again after it changes, is deleted, or ages
+out. The extension captures everything after that. Use
+`trajectory session import pi` for history outside the automatic limits. The
+automatic import does not change the import command or managed replay.
 
 ## Oh My Pi
 
@@ -2077,6 +2449,41 @@ incognito skill to the OpenCode skills folder. OpenCode does not get a
 The plugin SDK events cover chat messages, tool start and end, and lifecycle
 events.
 
+### OpenCode capture server and session close
+
+OpenCode gets its capture server in two ways. Both go through serve
+coordination, so one server runs for each port.
+
+- The `trajectory` MCP entry asks for the server when OpenCode starts.
+- The plugin asks for it when a capture request finds nothing listening. It
+  runs `trajectory serve ensure` with the binary that setup recorded in the
+  plugin folder. Later events wait in order until the server answers. The
+  [plugin README](../plugin/trajectory-opencode/README.md#starting-the-capture-server)
+  gives the limits.
+
+The server outlives OpenCode. When OpenCode exits, it sends SIGTERM to every
+descendant of an MCP server, which it finds by parent PID. A launcher
+therefore starts the server through a short-lived copy of its own binary,
+which exits once the server runs. The server then has no MCP process among
+its ancestors. `opencode run` posts the turn end and
+the session end while it exits, so the server must still run then.
+
+The server stops after 10 minutes without capture events
+(`TRAJECTORY_SERVE_INACTIVITY_TIMEOUT`). It can stop while an OpenCode window
+stays open. The next prompt in that window starts it again through the plugin.
+
+A server that starts in the middle of a prompt can get that prompt twice. The
+plugin sends its held events, and the history watcher reads the same prompt
+from OpenCode's store. For its first 10 seconds, a new watcher therefore
+leaves a session that has no session file to the plugin. After that it
+reconciles the session once, and imports it only if the plugin sent nothing.
+The Kilo watcher does the same.
+
+`opencode run` ends its session when it exits. An interactive window ends its
+session when it closes. A session that sends no end closes after 2 hours
+without activity, the next time a capture server runs. The plugin reports no
+client process, so the 8-hour threshold never applies to OpenCode or Kilo.
+
 ### OpenCode turns
 
 OpenCode keeps one active Trajectory turn for each session during message,
@@ -2084,7 +2491,20 @@ permission, or tool activity:
 
 - An idle notice sends the buffered assistant text and usage, then one `Stop`
   for the active turn. Repeated idle notices do not send another `Stop`.
-- `Stop` closes the turn.
+- The usage carries the service tier when OpenCode records one in the
+  message's `native.serviceTier`. OpenCode records it for OpenAI and xAI calls
+  on the Responses route. OpenCode 1.19 and earlier, and other providers,
+  record none, so those calls are priced as calls that state no tier. The call's
+  `agent_message` and `llm_call` get the tier. The `turn_end` gets it only
+  when every call in the turn reported the same tier.
+- `Stop` closes the turn. An assistant message (`AgentMessage`) does not:
+  live state and coding-agent activity stay working, and a pending permission
+  or question stays pending, until the idle notice.
+- A `session.error` for the open turn puts OpenCode's error name in that
+  turn's `Stop` as `failure_type`. Live state and coding-agent activity then
+  treat the `Stop` as a failed turn (`StopFailure`). A user abort
+  (`MessageAbortedError`) ends the turn normally. The session file's
+  `turn_end` does not record the failure.
 - Trajectory keeps session state until the session ends, is deleted, or the
   plugin shuts down. A resumed turn or a later `session.created` event then
   keeps the same parent links.
@@ -2095,6 +2515,103 @@ use. Each session keeps at most eight queued turns
 with full detail. Beyond that, it keeps up to 128 placeholder `Stop`
 boundaries marked `turn_snapshot_dropped`. Further overflow is merged or
 dropped. Detail is lost only under heavy load.
+
+### OpenCode launcher
+
+`trajectory opencode` starts OpenCode with the calls of its `anthropic`,
+`openai`, `google` and `xai` providers going through a local proxy. The proxy
+sees each response whole, so Trajectory prices the call at the service tier
+and cache-write lifetimes the provider reports. OpenCode keeps neither for
+most calls. The launcher works as follows:
+
+1. It works out the base URL OpenCode would use for each of the four
+   providers. The project is the one the arguments open: the TUI's
+   `[project]` argument, `opencode run --dir`, or the current folder. It
+   reads OpenCode's configuration in OpenCode's order. First come the global
+   `config.json`, `opencode.json` and `opencode.jsonc`, and `OPENCODE_CONFIG`.
+   Then come the project's `opencode.json` and `opencode.jsonc` files from
+   the Git root down, the `.opencode` folders, `OPENCODE_CONFIG_DIR` and
+   `OPENCODE_CONFIG_CONTENT`. It resolves `{env:...}` and `{file:...}`
+   references. A non-empty `options.baseURL` wins, as in OpenCode. Without
+   one, it uses the provider's `api` URL, then `ANTHROPIC_BASE_URL` or
+   `OPENAI_BASE_URL`, then the provider's default. An empty `baseURL` clears
+   an earlier one.
+2. It starts a proxy on a free `127.0.0.1` port, with one route for each
+   provider. The proxy forwards each request unchanged, with your credentials,
+   to that base URL.
+3. It points the providers at the proxy through `OPENCODE_CONFIG_CONTENT`,
+   for this launch only. It keeps your own `OPENCODE_CONFIG_CONTENT` and
+   changes no file. OpenCode offers every provider its configuration names.
+   So the launcher routes only providers OpenCode already offers: ones your
+   configuration names, or that have a login or an API key. OpenCode also
+   picks its default model from the configured providers. So unless a model
+   is chosen (`model` in the configuration, a model OpenCode used before, or
+   `--model`), it routes only the providers your configuration names.
+4. OpenCode sends its session ID with every call in the
+   `x-opencode-session-id` header. The proxy records each Anthropic Messages,
+   OpenAI and xAI Responses, and Gemini `generateContent` and
+   `streamGenerateContent` call as an `llm_call` of that session. The call
+   keeps its request and response bodies, its tier and its cache-write split.
+   A Gemini call also keeps its cached tokens, its thoughts and its grounded
+   searches.
+5. The proxy stops when OpenCode exits.
+
+The captured calls join the session the OpenCode plugin records, so set up
+the plugin first with `trajectory setup --clients opencode`. The command warns
+when it cannot find the plugin. The plugin still records the session, so each
+call has two records:
+the plugin's and the proxy's. Trajectory pairs them by their token counts and
+model, and counts the call once. The turn keeps OpenCode's token counts. Trajectory prices it from the rate card at the
+tier and lifetimes the proxy captured. OpenCode's own cost assumes the
+standard tier and 5-minute writes, so Trajectory does not use it. The call is one LLM span, the
+proxy's. A turn the proxy did not see whole keeps OpenCode's cost.
+
+OpenCode's title request is not in OpenCode's history. The proxy records it as
+a span of its own, and the turn's cost leaves it out, as it did before.
+
+OpenCode keeps working when part of this fails:
+
+- If Trajectory cannot read a configuration file, or an OpenCode login loads a
+  remote configuration from `.well-known/opencode`, no provider goes through
+  the proxy. The command says why.
+- These providers call their provider directly:
+  - one whose configuration names another SDK package (`npm`), or whose
+    base URL is not an HTTP URL or has a `${...}` placeholder
+  - one with a model that sets its own SDK package or API URL
+    (`models.<model>.provider`) while the provider sets no `baseURL`
+  - one with a model the configuration names by another key than the ID
+    OpenCode sends (`models.<key>.id`). OpenCode records such a call under
+    the key and the proxy under the ID, so the two records cannot be paired
+  - `openai` with a ChatGPT plan login, whose calls OpenCode sends to
+    ChatGPT's backend, or with `OPENCODE_EXPERIMENTAL_WEBSOCKETS` on
+- `opencode serve`, `web` and `acp` open sessions in any folder a client
+  names, so they run without the proxy. So do arguments the command cannot
+  read as OpenCode would, such as an unknown option.
+- If the proxy cannot start, OpenCode runs without it.
+- If Trajectory's capture server cannot take a call, the call still reaches
+  the provider. When OpenCode exits, the command reports how many calls it
+  could not record and writes the details to the client wrapper log under
+  `~/.trajectory/logs`. Trajectory prices those calls from OpenCode's own
+  records.
+- OpenCode applies an organization's account configuration and its managed
+  configuration after `OPENCODE_CONFIG_CONTENT`. The managed configuration is
+  the managed folder, such as `/etc/opencode`, and on macOS the managed
+  preferences in the `ai.opencode.managed` domain. A URL they set would win
+  over the route.
+  - When OpenCode is signed in to an organization, no provider goes through
+    the proxy.
+  - A provider that the managed folder or the managed preferences name calls
+    its provider directly. The other providers still go through the proxy.
+  - If Trajectory can't read the managed preferences, no provider goes
+    through the proxy, and the command names the file.
+- A provider that calls its provider directly is still recorded by the
+  OpenCode plugin. Trajectory prices its calls from OpenCode's own records,
+  without the service tier and cache-write lifetimes that the proxy reads.
+
+The proxy keeps at most 1 MiB of each request and response. A longer streamed
+response loses its usage, so its call keeps OpenCode's cost, and the command
+counts it with the calls it could not record. Other providers,
+such as OpenRouter, are not routed.
 
 ### OpenCode history
 
@@ -2110,17 +2627,12 @@ these places:
 
 The import keeps child and archived sessions, parent and provider IDs, tool
 call IDs and status, and reasoning. It sums usage from each step. It records
-whether cost came from OpenCode or from Trajectory.
+whether cost came from OpenCode or from Trajectory. It keeps the service tier
+in a message's `native.serviceTier` as the tier of the message's last step.
 
-To read new and changed sessions automatically, run:
-
-```bash
-trajectory config features enable opencode_durable_history
-```
-
-This watcher is off by default. It reads the current and channel databases,
-their WAL and SHM files, and the retained session, message, and part JSON. It
-works as follows:
+When OpenCode is installed, a watcher reads new and changed sessions on its
+own. It reads the current and channel databases, their WAL and SHM files, and
+the retained session, message, and part JSON. It works as follows:
 
 - It matches sessions by provider session ID across all sources.
 - It waits for a short quiet period after writes. During long write bursts it
@@ -2206,14 +2718,13 @@ usage. `Stop` does not read OpenCode's database instead.
 
 ### Kilo history
 
-History is a separate fallback that is off by default:
+History is a separate fallback. To repair existing history, run:
 
 ```bash
-trajectory config features enable kilo_durable_history
-trajectory session import kilo          # repair existing history
+trajectory session import kilo
 ```
 
-With the feature on, `trajectory serve` watches Kilo's data folder:
+When Kilo is installed, `trajectory serve` watches Kilo's data folder:
 
 - `$XDG_DATA_HOME/kilo` when set
 - `~/Library/Application Support/kilo` on macOS
@@ -2694,39 +3205,6 @@ never guesses a conversation by recency or workspace. Tests use a sanitized
 copy of ForgeCode's schema. Live CLI tests and the incognito command are still
 to do.
 
-## Warp/Oz CLI
-
-Warp/Oz support is off by default and reads only local stores:
-
-```bash
-trajectory config features enable warp_oz_instrumentation
-trajectory setup --clients warp
-```
-
-Setup owns only `mcpServers.trajectory` in `~/.warp/.mcp.json` and the
-`~/.warp/skills/trajectory-incognito/SKILL.md` file. The capture server
-watches the stable, preview, legacy, and TUI folders for changes to
-`warp.sqlite` and its `-wal` and `-shm` files. `WARP_DIR` overrides the
-folder. Each database and conversation pair becomes one session.
-
-Trajectory reads data as follows:
-
-- It prefers `agent_tasks` rows, decoded with public Warp protobuf commit
-  `248f5f62663e`.
-- It keeps task and parent task IDs as subagent links.
-- If no rich messages decode, it falls back to user prompts in `ai_queries`.
-- It never invents assistant text, tool calls, token splits, or cost.
-- When any rich row fails to decode, it emits
-  `warp.source.protobuf_decode_incomplete` with the schema commit.
-
-Conversation token usage covers the whole conversation. Trajectory keeps it as
-source metadata only. It does not publish it as token usage, and it never
-mixes it with per-message usage.
-
-No local field records the launch mode or the session end. Sessions are
-therefore headless or unknown, and Trajectory writes no session end.
-`oz agent run-cloud` is not supported.
-
 ## Zed
 
 Zed support is a preview that reads saved history and is off by default:
@@ -2750,9 +3228,10 @@ Trajectory reads Zed data as follows:
   parent and emits `relationship=subagent`.
 - It recovers prompts, assistant text, thinking, tool calls and results, the
   model, and the first folder path as the working directory.
-- `request_token_usage` covers the whole session. Trajectory stores it only
-  as `provider_session_usage` metadata on `session_start`. It never assigns it
-  to a message or turn.
+- `request_token_usage` lists the session's requests with no turn to attach
+  them to. Trajectory stores each entry as Zed reported it, in the
+  `provider_request_usage` list on `session_start`. It never adds them up or
+  assigns them to a message or turn.
 - Message times come only from database order. They carry
   `provider_timestamp_present=false` and
   `timestamp_provenance=derived_order`. Only row created and updated times

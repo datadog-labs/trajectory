@@ -43,9 +43,12 @@ Trajectory loads marker configs in layers, in this order:
 4. **User markers** from `TRAJECTORY_MARKERS_PATH`, or from
    `~/.trajectory/markers.yaml`.
 5. **Project markers** from `TRAJECTORY_PROJECT_MARKERS_PATH`. Without that
-   variable, Trajectory reads `.trajectory/markers.yaml` in the nearest parent
-   directory that contains `.git/`. If it finds no project root, it skips this
-   layer.
+   variable, a command you run in a repo, such as `trajectory patterns markers`,
+   reads `.trajectory/markers.yaml` in the nearest parent directory that
+   contains `.git/`. If it finds no project root, it skips this layer.
+   `trajectory serve` does not run in any repo, so without the variable it skips
+   this layer too. The file then does not change the markers of captured
+   sessions.
 
 If two layers define a marker with the same name, the later layer wins. The
 exception is an org marker with `enforced: true`. User, add-on, and project
@@ -56,8 +59,9 @@ layers cannot override it.
 does not replace them.
 
 For a repo setup, use two separate files. `.trajectory/markers.yaml` defines
-the marker rules. `publish.trajectory.yaml` selects destinations and turns on
-marker metrics. See [REPO-MARKERS.md](REPO-MARKERS.md).
+the marker rules for commands you run in the repo. `publish.trajectory.yaml`
+selects destinations and turns on marker metrics. See
+[REPO-MARKERS.md](REPO-MARKERS.md).
 
 ## Built-ins, defaults, and the security add-on
 
@@ -70,8 +74,8 @@ of friction:
   `language-activity`, `files-touched`, `markdown-file-written`,
   `test-file-written`, and `compaction`.
 - The `test-fix-cycle` range across several turns.
-- Measures such as `frustration-count`, `commit-count`, `task-count`, and
-  counts of interruptions and permission denials.
+- Measures such as `frustration-count`, `commit-count`, and counts of
+  interruptions and permission denials.
 - The `git-commit` point records the cost and turns since the previous commit.
   It stores them in its `attributed_cost_usd` and `attributed_turns` details.
 
@@ -503,6 +507,12 @@ and a range comes before a one-turn point. `rank` never changes a share. A group
 its points give that turn. A reason that applies twice counts once, at the
 highest weight its classes give it.
 
+A class with `owning: true` gives its group a claim on the turns. A class with
+`needs_owner: true` takes part only when a firing of an owning class, in any
+point of the same allocation, has the same group. Both need `group_by`. The
+built-in `pr-work` allocation uses them so that reading a pull request takes a
+share only when the session also acted on it.
+
 A computed `sum` leaves out a turn that has no value, such as a turn with no
 price. If some turns have no value, the field holds the sum of the others and
 `<field>_partial` is `true`. If no turn has a value, Trajectory writes no
@@ -787,8 +797,16 @@ trajectory.<scope>.<concept>[.<measurement>]
 
 The publisher derives `<scope>` from the `scope:` field of the marker. For v1
 files, it uses the default scope. It derives `<concept>` from the marker name
-and changes hyphens to underscores. To skip this derivation, set `metric:` on
-the marker.
+and changes hyphens, and any other character Datadog does not allow in a
+metric name, to underscores. To skip this derivation, set `metric:` on the
+marker.
+
+A metric name comes only from the name you declare. A `group_by` value
+becomes a tag on the declared metric, never part of its name. Such values
+include a subcommand, a script name, or a skill name taken from a command.
+Sometimes the publisher cannot find the declaration of a grouped measure, for
+example after its marker file was removed. Then it does not publish that
+grouped value.
 
 A metric name should say what the value means. Do not depend on the Datadog
 type to explain the value:
@@ -799,8 +817,8 @@ type to explain the value:
 - Use `.total` for completed samples only when no additive count replaces
   them.
 - Do not copy a built-in distribution name into a new marker definition. The
-  exception is a name that
-  `trajectory publish metrics audit --latest --builtin-details` lists.
+  exception is a name in the `catalog` field of
+  `trajectory publish metrics canary --include-diagnostics --json`.
 - Use `metric_kind: gauge` for current values, ratios, scores, and values that
   are already aggregated.
 - Use `metric_kind: count` only for additive changes that you sum across time
@@ -820,7 +838,6 @@ Examples of the derivation:
 | measure `commits`, scope `session`, count over `git-commit` | `trajectory.session.commits.completed_count` |
 | measure `force-pushes`, scope `session` | `trajectory.session.force_pushes.completed_count` |
 | measure `permissions-denied`, scope `session` | `trajectory.session.permissions_denied.completed_count` |
-| measure `task-outcome-score`, scope `task` | `trajectory.task.outcome_score` |
 | built-in PR-created turn point, one count for each turn that creates a PR or MR | `trajectory.turn.prs` |
 | normalized PR presence, a count that is safe to correct | `trajectory.pr.observations.total` |
 | PR work cost, an additive count that is safe to correct | `trajectory.pr.work.cost.usd.additive` |
@@ -888,9 +905,11 @@ secrets. Before you build dashboards or monitors on a tag, confirm in Metrics
 Explorer that the tag is present.
 
 To publish marker metrics, turn on markers for a Datadog destination in the
-publish config. Then validate the destination. To roll out markers from a repo,
-put the marker definitions in `.trajectory/markers.yaml`. Put the destination
-overlay in `publish.trajectory.yaml`. See [REPO-MARKERS.md](REPO-MARKERS.md).
+publish config. Then validate the destination. To apply markers to captured
+sessions, use org or user markers, because `trajectory serve` reads a repo's
+`.trajectory/markers.yaml` only through `TRAJECTORY_PROJECT_MARKERS_PATH`. Put
+the destination overlay in `publish.trajectory.yaml`. See
+[REPO-MARKERS.md](REPO-MARKERS.md).
 
 ```yaml
 # trajectory-doc-snippet: publish-config
@@ -924,7 +943,7 @@ and scores, use `avg:`.
 | Security events query value | `sum:trajectory.session.security_risky_shell_secret_exfils{env:prod}.rollup(sum, 3600)` | Counts risky shell and secret exfiltration markers per hour. Needs a `security-risky-shell-secret-exfils` session measure that you define with `metric_kind: count`. Custom measures publish under their own name, not as `.completed_count`. |
 | Force pushes by repo toplist | `sum:trajectory.session.force_pushes.completed_count{*} by {repo}.rollup(sum, 86400)` | Needs the repo tag, found by Trajectory or set by you. |
 | Permission denials trend | `sum:trajectory.session.permissions_denied.completed_count{team:agent-platform}.rollup(sum, 3600)` | Useful for safety and friction dashboards. |
-| P95 completed-turn duration | `p95:trajectory.turn.duration_ms.total{repo:trajectory}` | Needs clients that send or derive turn duration. |
+| Slowest completed turns | `max:trajectory.turn.duration_ms{repo:trajectory} by {session_id,trajectory.turn_id}` | Needs clients that send or derive turn duration. |
 | Cost per observed PR | DDSQL ratio of `sum:trajectory.pr.work.cost.usd.additive{source:facts,...}.as_count()` to the distinct `(change_host,owner,repo,change_number)` count from `trajectory.pr.observations.total`, with the same filters and time bounds | The denominator includes every normalized PR. `cost_coverage:allocated` has a priced allocation. `unpriced` has assigned completed work without a price. `no_priced_turn` has no completed assigned turn. |
 | PR-created turn lookup | `sum:trajectory.turn.prs{repo:trajectory,change_number:123} by {session_id,trajectory.turn_id}` | One point for each turn that creates a PR or MR. |
 | Existing-PR work turns | `sum:trajectory.pr.work_turns.additive{repo:trajectory,change_number:123} by {session_id}.as_count()` | Count, safe to correct, of completed turns in a PR or MR context. |

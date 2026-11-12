@@ -45,9 +45,9 @@ gauges also publish a `.completed_count` copy. Examples are
 Datadog gauge rollups can repeat a final value in several dashboard buckets.
 To answer "how many?", sum the `.completed_count` copy. Do not sum the gauge.
 
-Trajectory builds `trajectory.session.tasks.completed_count` and
-`trajectory.session.test_fix_cycles.completed_count` directly from the final
-values saved on the machine. They do not depend on which gauges you select.
+Trajectory builds `trajectory.session.test_fix_cycles.completed_count`
+directly from the final value saved on the machine. It does not depend on
+which gauges you select.
 
 - Each point uses the time the session completed.
 - When a known final total goes down, Trajectory sends a signed correction.
@@ -143,7 +143,7 @@ All skill complexity series carry `skill_name`, `detected_from`,
 
 | Metric | Type | Scope | What it reports |
 |---|---|---|---|
-| `trajectory.turn.skill_tool_uses.additive` | count | turn | Tool uses in the same turn, with the same skill and tool tags, as a total you can sum |
+| `trajectory.turn.skill_tool_uses.additive` | count | turn | Tool uses in the same turn, with the same skill and tool tags, as a total you can sum It counts the main agent's calls, not those of sub-agents. |
 | `trajectory.turn.skill_tool_uses.total` | distribution | turn | Tool calls in the skill-assisted turn. The `metric_samples_skill_tool_uses` control turns these samples on or off. It is on by default. |
 | `trajectory.turn.skill_distinct_tools.total` | distribution | turn | Distinct tool names in the skill-assisted turn, not counting skill tools |
 | `trajectory.turn.skill_duration_ms.total` | distribution | turn | How long the skill-assisted turn took, when turn times are available |
@@ -204,20 +204,17 @@ skips unknown command names. It never sends them as raw tag values.
 
 ### PR attribution metrics
 
-| Metric | Type | Scope | What it reports |
-|---|---|---|---|
-| `trajectory.pr.observations.total` | count | pr | That a normalized PR or MR was seen. One point for each session generation. See below. |
-| `trajectory.pr.interactions.total` | count | pr | One point for each turn that interacted with a PR, after duplicates are removed. Carries `trajectory.turn_id`. |
-| `trajectory.pr.work_turns.additive` | count | pr | Turns assigned to the PR. Use `sum:...as_count()` for dashboards. |
-| `trajectory.pr.work_duration_ms.additive` | count | pr | Duration assigned to the PR. Use `sum:...as_count()`. |
-| `trajectory.pr.work.cost.usd.additive` | count | pr | Spend on work for the PR. Use `sum:...as_count()`. See below. |
-| `trajectory.pr.work.input_tokens.additive` | count | pr | Input tokens assigned to the PR |
-| `trajectory.pr.work.output_tokens.additive` | count | pr | Output tokens assigned to the PR |
-| `trajectory.pr.work.cache_read_tokens.additive` | count | pr | Cache-read tokens assigned to the PR |
-| `trajectory.pr.work.cache_creation_tokens.additive` | count | pr | Cache-creation tokens assigned to the PR |
-| `trajectory.session.pr_attribution.interacted` | gauge | session | Distinct normalized PRs seen in the session, including unpriced and low-confidence ones, from the matching verified snapshot |
-| `trajectory.session.pr_attribution.created` | gauge | session | Distinct PRs that the session created successfully, in the matching verified snapshot |
-| `trajectory.session.pr_attribution.context` | gauge | session | Distinct PRs with a share of a completed turn, whether priced or not |
+| Metric | Type, unit | What it reports | Tags beyond the common set | When Trajectory sends it |
+|---|---|---|---|---|
+| `trajectory.pr.observations.total` | count, PR | That a normalized PR or MR was seen. The session's net value for each PR is 1. See below. | PR identity, `source:facts`, `signal_confidence`, `identity_confidence`, `attribution_reason`, `cost_coverage`, `context_source` | On a turn publish when the PR first appears, and again when its tags or latest evidence time change. A change sends a reversal and a new point. |
+| `trajectory.pr.interactions.total` | count, interaction | One point for each turn that interacted with a PR, after duplicates are removed | PR identity, `trajectory.turn_id` | At session end, for each turn and PR with interaction evidence |
+| `trajectory.pr.work_turns.additive` | count, turn | The share of each completed turn assigned to the PR. Use `sum:...as_count()`. | [PR work tags](#pr-work-tags) | On the turn publish after a completed turn with PR evidence, and as a correction when the split changes |
+| `trajectory.pr.work.cost.usd.additive` | count, USD | Spend on work for the PR. Use `sum:...as_count()`. See below. | [PR work tags](#pr-work-tags), cost-overlap tags | The same as `trajectory.pr.work_turns.additive`, for priced turns with a model and a user |
+| `trajectory.session.pr_attribution.interacted` | gauge, PR | Distinct normalized PRs seen in the session, including unpriced and low-confidence ones, from the matching verified snapshot | `source`, `attribution_source` | At session end |
+| `trajectory.session.pr_attribution.created` | gauge, PR | Distinct PRs that the session created successfully, in the matching verified snapshot | `source`, `attribution_source` | At session end |
+| `trajectory.session.pr_attribution.context` | gauge, PR | Distinct PRs with a share of a completed turn, whether priced or not | `source`, `attribution_source` | At session end |
+
+PR identity means the `change_host`, `owner`, `repo`, and `change_number` tags.
 
 The additive PR metrics support corrections. If Trajectory changes an
 assignment, it sends a correction instead of a second value.
@@ -243,8 +240,9 @@ another workspace is the main one for that PR.
 
 #### PR work spend
 
-Cost, the four token counts, duration, and fractional turns share the same
-split of each completed turn. Each uses the time the source turn completed.
+Cost and fractional turns share the same split of each completed turn. Each
+uses the time the source turn completed. Turn tokens and duration are not split
+across PRs. Read them from the turn metrics.
 
 Trajectory splits each turn across every PR with evidence on that turn, by
 weight:
@@ -318,6 +316,7 @@ add up to the full cost.
 | `allocated` | Priced cost is assigned |
 | `unpriced` | The PR has a share of a completed turn, but none of them has a price |
 | `no_priced_turn` | The PR has no share of a completed turn |
+| `pending` | The PR was first seen while its turn was still running, before that turn had a price. The tag stays after the turn ends. `trajectory.pr.work.cost.usd.additive` holds the PR's cost |
 
 Use the confidence, reason, and coverage tags on the presence metric to explain
 each PR.
@@ -356,8 +355,9 @@ Session and turn IDs are not tags on this metric.
 - The completion time decides the time window, after conversion to UTC. This
   holds even when the turn crosses midnight.
 - If a turn stops qualifying, Trajectory reverses the old observation.
-- If the time or tags change, Trajectory reverses the old point and sends the
-  new one.
+- If the time changes, Trajectory reverses the old point and sends the new one.
+- The observation keeps the tags it was first sent with. Only a later redaction,
+  or a change to its cost coverage, source, or role tags, moves it to new tags.
 - Live publishing and backfill use the same identity.
 - A verified finished generation must fit completely inside the reconciled
   interval. Trajectory does not support generations that cross the interval or
@@ -373,16 +373,18 @@ If you only sum the observations, you count qualifying turns, not distinct
 PRs. Ordinary PR presence in `trajectory.pr.observations.total` is a separate
 set.
 
-### PR correction times
+### When PR points are dated
 
-PR corrections keep their source times. OTLP accepts points up to one hour old
-here. Trajectory holds older points in the local outbox with the reason
-`unsupported_pr_source_history`. It does not send them.
+A PR point goes out once, dated when Trajectory handles it, so Datadog takes it
+without Historical Metrics Ingestion. The total for a PR is exact. A point can
+land on a later day than the work, so read PR totals over a wide time range. This
+applies to turns after a destination first ran a release with this behavior.
+Older turns are not sent again.
 
-Datadog Historical Metrics Ingestion replaces a stored point instead of adding
-to it. Trajectory therefore cannot use it to send signed corrections. A value
-from before an upgrade that has no saved source time is also not supported.
-Annotation changes and retries do not make an old point current.
+Trajectory sends a signed change to a point only within about an hour after
+handling it. After that the turn is settled. A changed share sends nothing, and
+neither does a PR a later release finds on the turn. Each counts as a
+`pr_settled_no_correction` drop. Other OTLP collectors keep the turn's time.
 
 The three session attribution gauges use one verified snapshot and timestamp,
 with `attribution_source:facts_snapshot`. Without that proof, Trajectory does

@@ -29,8 +29,8 @@ and live gauges have different names.
 The `.total` suffix alone does not tell you the type or whether you can add
 the values. Many session-derived `.total` metrics are completed distribution
 samples. Operational metrics also use `.total` for counts, such as
-`trajectory.serve.llm_capacity.calls.total`. Before you sum a metric, read its
-type, its grain, and how it associates with turns, sessions, PRs, or owners.
+`trajectory.ops.resource.disk_read_bytes.total`. Before you sum a metric, read
+its type, its grain, and how it associates with turns, sessions, PRs, or owners.
 Do not build a turn, session, PR, or owner total only because a name ends in
 `.total`.
 

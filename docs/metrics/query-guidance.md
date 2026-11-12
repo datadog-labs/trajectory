@@ -3,7 +3,7 @@
 ### Percentiles
 
 Use `p95:` or `avg:` only on current distribution metrics, such as
-`trajectory.turn.duration_ms.total`. Before you rely on a percentile query,
+`trajectory.turn.cost.usd.total`. Before you rely on a percentile query,
 turn on percentiles for that distribution in Datadog.
 
 ### Cost and usage
@@ -24,12 +24,12 @@ timestamps. Datadog Historical Metrics Ingestion cannot change distribution
 samples. Never add distribution samples into totals. To replay points older
 than one hour, turn on Historical Metrics Ingestion first.
 
-A PR-work correction keeps the ID and timestamp of its turn. For Datadog
-destinations, Trajectory sends a signed correction only within one hour after
-the source turn completes. Older corrections stay queued with the reason
-`unsupported_pr_source_history`, so Datadog keeps the value it already has.
-Historical Metrics Ingestion replaces cells, so it cannot carry these signed
-changes. Other OTLP collectors accept corrections of any age.
+A PR point goes out once, dated when Trajectory handles it. A PR's total is exact,
+but a point can land on a later day than the work. Trajectory sends a signed
+change only within about an hour after handling the point. After that a change
+sends nothing and counts as a `pr_settled_no_correction` drop. Other OTLP
+collectors keep the turn's time. Turns from before a destination first ran a
+release with this behavior are not sent again.
 
 Example: three turns cost `$2`, `$3`, and `$1`.
 
@@ -44,7 +44,7 @@ Example: three turns cost `$2`, `$3`, and `$1`.
 For Claude spend split by agent role, filter on `agent_role`:
 
 - `agent_role:parent` gives spend by the parent agent only.
-- `agent_role:child` gives the total spend of delegated child agents.
+- `agent_role:child` gives the spend of delegated child agents, as each run added it. Before the release that made this so, these points held each stop's running total, and from 0.6.2-beta until then they carried no dollars.
 
 The sum of both roles is the observed agent spend on turns that have complete
 child cost data. If any child cost is missing, Trajectory sends only a parent
@@ -146,10 +146,6 @@ Datadog series. Historical backfill does not recompute repository or owner
 tags, so a corrected tag cannot create duplicate historical series.
 
 ### Destination and health gauges
-
-`trajectory.publish.active_destinations` is a gauge for each session. To ask
-how many destinations were active, use `max`. An average can give a fraction
-of a destination, which has no meaning.
 
 Query `trajectory.ops.required_destination.health` and
 `trajectory.ops.org_sync.success_age_seconds` the same way:

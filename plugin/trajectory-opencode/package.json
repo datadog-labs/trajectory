@@ -1,6 +1,6 @@
 {
   "name": "@datadog/trajectory-opencode",
-  "version": "3.0.0",
+  "version": "3.0.4",
   "description": "Trajectory capture plugin for OpenCode",
   "type": "module",
   "exports": {

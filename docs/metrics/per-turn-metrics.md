@@ -3,6 +3,15 @@
 A turn is one user prompt and the agent's work in reply to it. Trajectory
 sends per-turn metrics when a turn completes.
 
+A long turn doesn't hold its usage until then. While a turn runs, Trajectory
+sends what it has used so far about every 10 minutes, as `gen_ai.usage.*` token
+counts and `trajectory.turn.cost.usd.additive`. Each send has a
+`trajectory.turn_id` of its own, of 1,000,000 or more, and adds to the session's
+totals. No other metric goes out for it, so it doesn't count as a turn. The
+turn's own metrics go out when it completes, and hold only the usage not sent
+yet. Add the points by session or by time. Grouping by `trajectory.turn_id`
+splits a long turn into its sends.
+
 Some providers record a reasoning-effort setting, such as `high`, for a
 request. When the provider record has this label, every metric with
 `trajectory.trace_type:turn` also carries `gen_ai.request.reasoning_effort`.
@@ -11,6 +20,34 @@ characters. Session metrics do not carry this tag. They do not copy the
 setting of the last turn. Trajectory also stores the label in the
 `turns.reasoning_effort` column of the local SQLite database, so you can
 group turns by it locally.
+
+### Turn pricing tags
+
+Turn metrics also carry the two pricing inputs of the turn, so you can split
+turn cost and tokens by them:
+
+- `trajectory.service_tier` is the service tier the turn was priced at, such
+  as `fast`, `priority`, or `standard`. It is the tier of the turn's last
+  request. Claude Code, Claude Desktop, Cursor, and Codex record it.
+- `trajectory.billing_lane` is the billing lane the turn was priced in. Codex
+  sessions record `api` for API-key billing, `chatgpt_credits` for ChatGPT
+  credits, or `unknown` when Trajectory could not read the login. A session
+  that Trajectory launched through its AI gateway or Frontier always uses
+  `api`.
+
+Each tag is left out when the session did not record it. A turn without a
+tier is not reported as `standard`. Sub-agent usage points
+(`agent_role:child`) and captured-call points
+(`trajectory.cost_component:captured_call`) leave out the turn's tier,
+because those requests were priced at their own tier. They keep the billing
+lane. Session metrics and the human-wait metrics, such as
+`trajectory.turn.permission_wait_ms.additive`, carry neither tag. When model
+names are redacted from metrics, the service tier is removed too.
+
+A turn that an earlier release sent without these tags keeps its untagged
+points. A later correction outside the live window replaces those untagged
+points. See
+[Corrections outside the live window](#corrections-outside-the-live-window).
 
 ### Turn IDs
 
@@ -34,30 +71,132 @@ In both cases an ID can be used twice. `trajectory session audit --deep`
 reports these as `duplicate_turn_id`. Trajectory keeps the local data for the
 turn. It does not drop the turn.
 
+#### Activity of a Claude Code turn without its own end
+
+A Claude Code reply can cover prompts that you queued while the agent
+worked. Trajectory gives each queued prompt its own turn ID, but only the last
+of these turns ends. The activity of the earlier turns counts toward the turn
+that ends:
+
+- tool uses, and the counts that come from them
+- permission prompts, decisions and waits
+- questions to you and their waits
+- sub-agent launches
+
+A turn that stopped before Claude Code ended it counts toward the next turn
+that ends, in the same way. Tokens, cost and the turn count do not move.
+
+A turn after the session's last ended turn has no turn to count toward. Its
+activity is sent only when Trajectory recovers the turn on its own.
+
+Older versions sent no activity points for these turns. After you upgrade,
+sums such as `trajectory.turn.tool_uses` and
+`trajectory.turn.permission_prompts.additive` rise for Claude Code. Turns that
+were sent before the upgrade keep the values they had.
+
+#### A point keeps its first value
+
+A session end and a backfill derive each completed turn again. A newer version
+can derive another value for a point that was already sent. Trajectory sends
+nothing more for that point. The first value stays in Datadog.
+
+Trajectory records the difference in the local metric queue as a dropped row
+with the reason `changed_after_send`. The row's value is the new value minus
+the first one. `trajectory.instrumentation.fidelity.outbox.dropped` counts
+these rows under `reason:changed_after_send`.
+
+A turn that a session end has sent is final for its tool counts and its late
+permission results. Suppose a newer version later counts a tool the turn did
+not have, or gives a permission result a point of its own. Trajectory records
+that value the same way. It adds no point at the turn's old time.
+
+Tool uses that a stopped turn gave to the next turn are checked one turn at a
+time. Older versions sent some of these uses at the stopped turn. Trajectory
+sends a use at the ended turn only if no point holds it at the stopped turn.
+It records only the uses that no point holds.
+
+Two counts are the same value only when they are equal. Two other values are
+the same when they differ by at most one billionth of the larger, or one
+billionth when both are below 1. A cost summed in another order differs only
+that much.
+
 ### Turn metrics
 
-| Metric | Type | Unit | Notes |
-|---|---|---|---|
-| `gen_ai.usage.input_tokens` | count | token | Sent when the value is greater than zero. For model and `query_source` tags, see [Grouped per-turn metrics](#grouped-per-turn-metrics). |
-| `gen_ai.usage.output_tokens` | count | token | Sent when the value is greater than zero. For model and `query_source` tags, see [Grouped per-turn metrics](#grouped-per-turn-metrics). |
-| `gen_ai.usage.cache_creation_tokens` | count | token | Cache-write tokens. Sent when the value is greater than zero. For model and `query_source` tags, see [Grouped per-turn metrics](#grouped-per-turn-metrics). |
-| `gen_ai.usage.cache_creation_5m_tokens` | count | token | Cache writes billed at the 5-minute TTL rate. Sent when the value is greater than zero and the client reported the TTL split. |
-| `gen_ai.usage.cache_creation_1h_tokens` | count | token | Cache writes billed at the 1-hour TTL rate. Sent when the value is greater than zero and the client reported the TTL split. |
-| `gen_ai.usage.cache_read_tokens` | count | token | Sent when the value is greater than zero. For model and `query_source` tags, see [Grouped per-turn metrics](#grouped-per-turn-metrics). |
-| `trajectory.turn.completed` | count | turn | One replay-safe point for each completed turn. Use it to count turns. Backfill counts a turn only when its stored `turn_end` event exists. It never infers a completed turn from cost or activity. |
-| `trajectory.turn.number` | gauge | turn | The turn number, when known. Historical replay keeps the recorded number, which can have gaps. Use `trajectory.turn_id` to match a turn to its source. Do not use this gauge to count turns. |
-| `trajectory.turn.cost.usd.additive` | count | USD | Turn cost. For spend totals, use `sum:...as_count()` with the v2 attribution filters. For model, `query_source`, and `agent_role` tags, see [Grouped per-turn metrics](#grouped-per-turn-metrics). |
-| `trajectory.turn.web_search.requests.additive` | count | request | WebSearch requests in the turn |
-| `trajectory.turn.web_search.cost.usd.additive` | count | USD | WebSearch cost in the turn |
-| `trajectory.turn.duration_ms` | gauge | ms | Turn duration at completion, when Trajectory can calculate it |
-| `trajectory.turn.duration_ms.total` | distribution | ms | One duration sample for each completed turn |
-| `trajectory.turn.thinking_tokens` | count | token | Reasoning (thinking) tokens, when the provider reports them |
-| `trajectory.turn.files_modified.additive` | count | file | Edit and write operations. It counts operations, not distinct files. |
-| `trajectory.turn.files_read.additive` | count | file | Read operations. It counts operations, not distinct files. |
-| `trajectory.turn.file_work.weight.additive` | count | byte or operation | File-work evidence, on by default. Tags: `file_path` (relative to the repository), `lens:read` or `lens:intermediate_edit`, `weight_unit`, and `evidence_status`. Each turn sends at most 25 paths. Other paths go into `_other`. See [File-Work Indicators](file-work-indicators.md). |
-| `trajectory.subagent_usage_status` | count | subagent stop | Subagent stop reports, tagged `trajectory.subagent_usage_status` with `complete`, `partial`, or `unavailable`. The value says how complete the child's usage data is. Child usage that arrives later replaces an `unavailable` report once. This metric measures data quality. It is not a cost metric. |
-| `trajectory.turn.compactions.additive` | count | compaction | Context compactions in the turn |
-| `trajectory.turn.lines_of_code.count` | count | line | Lines added and removed in the turn, tagged `type:added` or `type:removed` |
+Every metric below also carries the [common tags](common-tags.md),
+`trajectory.trace_type:turn`, and `trajectory.turn_id`. Trajectory sends them
+on the publish that follows a completed turn. The "Sent when" column names any
+other condition. A value of zero is not sent unless the row says so. Read
+counts with `sum:...as_count()`.
+
+| Metric | Type, unit | Meaning | Other tags | Sent when |
+|---|---|---|---|---|
+| `trajectory.turn.completed` | count, turn | One point for each completed turn. Use it to count turns. Backfill counts a turn only when its stored `turn_end` event exists. | `gen_ai.request.model` | Every completed turn |
+| `trajectory.turn.number` | gauge, turn | The turn's number. Numbers can have gaps. Do not use it to count turns. | None | The turn number is known |
+| `trajectory.turn.duration_ms` | gauge, ms | Wall-clock duration of the turn | None | Trajectory can calculate the duration |
+| `gen_ai.usage.input_tokens` | count, token | Input tokens the turn used | [Grouped dimensions](#grouped-per-turn-metrics) | The value is greater than zero |
+| `gen_ai.usage.output_tokens` | count, token | Output tokens the turn produced | [Grouped dimensions](#grouped-per-turn-metrics) | The value is greater than zero |
+| `gen_ai.usage.cache_read_tokens` | count, token | Tokens read from the prompt cache | [Grouped dimensions](#grouped-per-turn-metrics) | The value is greater than zero |
+| `gen_ai.usage.cache_creation_tokens` | count, token | Tokens written to the prompt cache | [Grouped dimensions](#grouped-per-turn-metrics) | The value is greater than zero |
+| `gen_ai.usage.cache_creation_5m_tokens` | count, token | Cache writes billed at the 5-minute TTL rate | None | The value is greater than zero and the client reported the TTL split. See [Cache-Write TTL Breakdown](#cache-write-ttl-breakdown). |
+| `gen_ai.usage.cache_creation_1h_tokens` | count, token | Cache writes billed at the 1-hour TTL rate | None | The same as the 5-minute row |
+| `trajectory.turn.thinking_tokens` | count, token | Reasoning (thinking) tokens | None | The provider reports them |
+| `trajectory.turn.cost.usd.additive` | count, USD | Turn cost. Use it for spend totals with the v2 attribution filters. | [Grouped dimensions](#grouped-per-turn-metrics), cost tags | The turn is priced. Zero is sent. |
+| `trajectory.turn.cost.usd.total` | distribution, USD | One cost sample for each priced turn, for percentiles. Recorded model calls add their own samples. See [Model calls the transcript does not have](#model-calls-the-transcript-does-not-have). | Cost tags, lower-bound tags | The turn is priced and `metric_samples_turn_cost` is on, which is the default |
+| `trajectory.turn.web_search.requests.additive` | count, request | WebSearch requests | None | The turn made a search |
+| `trajectory.turn.web_search.cost.usd.additive` | count, USD | WebSearch cost. See [WebSearch cost](#websearch-cost). | Cost tags | The turn made a search and every search has a price |
+| `trajectory.turn.tool_uses.additive` | count, call | Tool calls. Use it for tool totals. | [Grouped dimensions](#grouped-per-turn-metrics) | One point for each tool the turn called |
+| `trajectory.turn.tool_uses` | gauge, call | The same value as `trajectory.turn.tool_uses.additive` as a gauge, kept for readers that still query it | [Grouped dimensions](#grouped-per-turn-metrics) | The same as the additive row |
+| `trajectory.turn.errors.additive` | count, error | Tool errors | `category`, `trajectory.error_capture_status` | A category has errors in the turn |
+| `trajectory.turn.subagents` | count, invocation | Confirmed subagent launches. See [Activity and execution contract](#activity-and-execution-contract). | `trajectory.subagent_capture_status` | The turn launched subagents |
+| `trajectory.subagent_usage_status` | count, subagent stop | Subagent stop reports by how complete the child's usage data is. It measures data quality. | `trajectory.subagent_usage_status` | A subagent stopped in the turn |
+| `trajectory.turn.files_modified.additive` | count, file | Successful Edit, Write, MultiEdit, NotebookEdit, and ApplyPatch operations, not distinct files | None | The turn modified files |
+| `trajectory.turn.files_read.additive` | count, file | Read operations, not distinct files | None | The turn read files |
+| `trajectory.turn.file_work.lens_weight.additive` | count, byte or operation | File-work evidence summed over the turn's files. See [File-Work Indicators](file-work-indicators.md). | `lens`, `weight_unit`, `evidence_status` | `file_work_indicators` is on, which is the default |
+| `trajectory.turn.lines_of_code.count` | count, line | Lines added or removed | `type:added` or `type:removed` | The value is greater than zero |
+| `trajectory.turn.compactions.additive` | count, compaction | Context compactions | None | The turn compacted its context |
+| `trajectory.turn.permission_prompts.additive` | count, prompt | Permission prompts shown to the user | `decision`, `permission_mode`, `approval_path` | The turn recorded a `permission_result` that prompted |
+| `trajectory.turn.tool_decision` | count, decision | Recorded permission decisions. Trajectory never infers an approval. | `tool_name`, `decision`, `source`, `permission_mode`, `approval_path` | The turn recorded a `permission_result` |
+| `trajectory.turn.code_edit_tool.decision` | count, decision | Recorded decisions on code-edit tools | The same as `trajectory.turn.tool_decision`, plus `language` | The turn recorded a `permission_result` for an edit tool |
+| `trajectory.turn.elicitations.additive` | count, elicitation | Completed built-in tool calls that asked the user a question | None | The turn asked a question |
+| `trajectory.turn.permission_wait_ms.additive` | count, ms | Time the turn waited for permission approvals. See [Human-wait additive measurements](#human-wait-additive-measurements). | `measurement_coverage`, `timing_provenance`, `duration_basis` | Trajectory measured the turn's waits |
+| `trajectory.turn.elicitation_wait_ms.additive` | count, ms | Time the turn waited for answers to questions and MCP requests | The same as the permission-wait row | Trajectory measured the turn's waits |
+| `trajectory.request.prompt_tokens` | distribution, token | Prompt size of each model request, including cached input. See [Per-request prompt size](#per-request-prompt-size). | `gen_ai.request.model`, `query_source` | One sample for each live request with complete usage |
+
+Cost tags are the v2 cost contract and cost-overlap tags in
+[common tags](common-tags.md). Marker turn counts, such as
+`trajectory.turn.commits` and `trajectory.turn.cli_tool_count`, and skill
+metrics are in [Built-In Marker Metrics](built-in-marker-metrics.md). PR
+metrics, which split a turn across the PRs it worked on, are there too.
+
+Each successful `ApplyPatch` call adds one modified operation, even when it
+changes multiple files or changes a file already modified in the turn.
+Repeated completions with the same turn, agent, and tool-call ID count once.
+Failed, denied, or unfinished patches do not contribute.
+Completed patches without a recorded success outcome are also excluded.
+The metric therefore has incomplete coverage when capture omits outcomes.
+Retained patch text cannot recover whether execution succeeded.
+This count needs no patch paths, so successful calls can count even when retained
+input is truncated.
+Updating Trajectory changes future derivation. It does not correct points
+already accepted by Datadog. Rebuilding the local viewer cannot repair remote metrics.
+
+#### WebSearch cost
+
+Each search costs the rate card's price per search for the model of the call
+that made it, at the time of that call. For example, a Claude search costs
+$0.01 and a Gemini 2.5 search costs $0.035.
+
+Some searches have no price:
+
+- The rate card does not price the call's model.
+- No model can be tied to the search, and the turn used more than one model.
+  A search with no model takes the turn's model when the turn used one model.
+- The turn cannot be priced for a reason that holds for every call in it.
+  Examples are a client whose usage is not priced from token counts, and a
+  Codex auto-review session, whose rate is not verified.
+
+A turn with such a search sends its request count but no WebSearch cost.
+The session's WebSearch cost gauge is then not sent either.
 
 #### Token corrections
 
@@ -108,8 +247,8 @@ These metrics send one data point for each value of their dimensions.
 
 | Metric | Type | Dimensions |
 |---|---|---|
-| `gen_ai.usage.{input_tokens,output_tokens,cache_creation_tokens,cache_read_tokens}` | count | `gen_ai.request.model` and `query_source`, when the turn's per-request usage adds up to the turn total. Claude subagent totals also carry `agent_role:child`, and the parent's points carry `agent_role:parent`. |
-| `trajectory.turn.cost.usd.additive` | count | `gen_ai.request.model` and `query_source`, when every request has a native cost and the costs add up to the turn total. Complete Claude subagent totals also carry `agent_role:child`. If any subagent cost is missing, Trajectory sends only the parent point. |
+| `gen_ai.usage.{input_tokens,output_tokens,cache_creation_tokens,cache_read_tokens}` | count | `gen_ai.request.model` and `query_source`, when the turn's per-request usage adds up to the turn total. Claude subagent usage also carries `agent_role:child`, and the parent's points carry `agent_role:parent`. A child's points are what each run added since the sub-agent's previous stop, from its usage facts. |
+| `trajectory.turn.cost.usd.additive` | count | `gen_ai.request.model` and `query_source`, when every request has a native cost and the costs add up to the turn total. Priced Claude subagent runs also carry `agent_role:child`, at their usage-fact price. If any subagent cost is missing, Trajectory sends only the parent point. A child's points go out once for a turn and are never corrected, so a turn an earlier release sent keeps the child values it was sent with. |
 | `trajectory.turn.tool_uses` | gauge | `tool_name` and `tool_type`. MCP calls also carry `mcp_server`, `mcp_tool`, and `mcp_source_scope` when Trajectory can find them. Newer points also carry `signal_confidence`, `identity_confidence`, `attribution_reason`, `lifecycle_coverage`, and `tool_outcome`. Older history may not have these tags. |
 | `trajectory.turn.tool_uses.additive` | count | The same dimensions as `trajectory.turn.tool_uses`. Use it for tool-use totals over long time ranges. |
 | `trajectory.turn.elicitations.additive` | count | Completed built-in elicitation tool calls, which ask the user a question |
@@ -118,10 +257,40 @@ These metrics send one data point for each value of their dimensions.
 | `trajectory.turn.code_edit_tool.decision` | count | `tool_name`, `decision`, `source`, `permission_mode`, `approval_path`, and `language`. One point for each recorded `permission_result`. Trajectory never infers an approval. |
 | `trajectory.turn.errors.additive` | count | `category`. Use it for error totals over long time ranges. |
 
+#### Claude Code's background requests
+
+Claude Code makes model requests of its own, such as summaries, suggestions,
+session titles and compactions. They never reach its session files. Claude Code's
+native metrics report them as `query_source:auxiliary`.
+
+A session counted from its client files publishes them as their own points:
+
+- `gen_ai.usage.*` and `trajectory.turn.cost.usd.additive` points carry
+  `query_source:auxiliary` and no `agent_role`.
+- Each turn's points hold what arrived since the last settled close. They do not
+  say which turn caused the requests.
+- The dollars are the ones Claude Code reported, because only it knew each
+  request's context size, cache lifetime and speed. A model the rate card prices
+  at nothing stays at nothing. A model with no rate counts tokens and no dollars.
+- Native numbers for main-thread and sub-agent requests never replace the files'.
+  Trajectory uses them to test whether native metrics are complete for the session.
+  When they are, the sub-agent output a file's snapshot left out goes out on its own
+  point, tagged `trajectory.output_source:native`.
+
+To see the file's numbers alone, leave out `query_source:auxiliary`.
+
+Native metrics reach Trajectory through `trajectory claude`, your own Claude
+settings or an administrator's managed settings. Setup does not turn them on. See
+[Supported Clients](../SUPPORTED-CLIENTS.md). Without them, the file's numbers
+go out marked as a lower bound with `trajectory.usage_bound:lower` and
+`trajectory.cost_bound:lower`.
+
 #### Model calls the transcript does not have
 
 Some captured model calls are not in the client transcript's usage, for
-example Claude Code's session title generation. Claude Code capture decides
+example Claude Code's session title generation. A session counted from its client
+files does not publish these points, because the files and native metrics count
+the same requests. Claude Code capture decides
 which captured calls a turn's usage leaves out and records them on the turn's
 `turn_end` and its corrections. A call is left out only when it has a
 provider response ID that neither the turn nor its subagents recorded. No
@@ -263,12 +432,15 @@ counts. These counts do not overlap. The sample leaves out output tokens and
 reasoning-output tokens. It does not add the cache-write TTL split a second
 time.
 
-Stored Gemini CLI sessions record input tokens with cache reads included. For
+Gemini CLI sessions stored before the history converter took cached content
+out of the prompt count record input tokens with cache reads included. For
 those sessions, Trajectory subtracts cache reads before it applies the
 formula. Gemini CLI capture is
 [retired](../SUPPORTED-CLIENTS.md#gemini-cli-retired), so this applies only
-to backfill and replay of those sessions. Their `gen_ai.usage.input_tokens`
-turn metric still includes cache reads, as it did when it was first sent.
+to replay of those sessions. Their `gen_ai.usage.input_tokens` turn metric
+still includes cache reads, as it did when it was first sent. A request
+imported since states `token_usage_provenance: gemini_prompt_less_cached_content`,
+and its input already excludes cache reads.
 Input from other clients, including clients that use Gemini models, already
 excludes cache reads. Trajectory uses it as is.
 
@@ -348,18 +520,18 @@ destination settings apply.
 | --- | --- | --- |
 | `trajectory.turn.permission_wait_ms.additive` | count / ms | Total time covered by observed permission waits, clipped to the completed turn. Overlapping waits count once. |
 | `trajectory.turn.elicitation_wait_ms.additive` | count / ms | Sum of the measured durations of separate question and MCP requests, clipped to the completed turn |
-| `trajectory.turn.duration_ms.excluding_human_wait.additive` | count / ms | Wall-clock turn time minus the time covered by all observed human waits |
 
 Use `.as_count()` for sums. Divide by 1,000 to get seconds.
 
-For example, a 60-second turn has a 20-second wait and a 15-second wait. The
-two waits overlap for 5 seconds, so together they cover 30 seconds. The turn
-adds 30,000 ms to the adjusted duration.
+For example, a 60-second turn has a 20-second permission wait and a
+15-second permission wait. The two waits overlap for 5 seconds, so together
+they cover 30 seconds. The turn adds 30,000 ms to
+`trajectory.turn.permission_wait_ms.additive`.
 
 - Separate questions that run at the same time keep their summed request
   time.
-- Automatic approvals stay in the adjusted duration.
-- Trajectory never uses provider duration fields as the clock for these three
+- Automatic approvals are not human waits.
+- Trajectory never uses provider duration fields as the clock for these
   values.
 
 #### Coverage and timing tags
@@ -371,17 +543,12 @@ same way, from the `turns[].human_wait` data. Two tags describe the data:
 - `timing_provenance` is `measured`, `tool_boundary_proxy`,
   `permission_estimate`, `mixed`, or `missing`.
 
-`duration_basis:wall_clock` names the source clock. A partial adjusted value
-removes only the waits that Trajectory observed. Complete coverage needs a
+`duration_basis:wall_clock` names the source clock. A partial value counts
+only the waits that Trajectory observed. Complete coverage needs a
 `human_wait_capture_complete:true` marker and valid timing for every observed
 request. Current client integrations do not claim complete coverage. A missing
 measurement is null in local data and is left out of exported metrics. A
 valid zero is kept.
-
-`trajectory publish metrics audit` rebuilds these values from the stored
-session events. It keeps the same difference between missing and zero. The
-audit compares signed additive rows as counts. It still checks their values,
-tags, producer source, and delivery status.
 
 #### How each client is measured
 
@@ -417,8 +584,8 @@ Late native events correct the turn through the `human_wait_v1` correction
 record. This includes events marked `after_turn_publish:true`. Repeats share a
 `source_event_id`, and the last complete event wins. A late repeat never
 replaces evidence written before the turn was published. If you turn off
-`claude_native_trace_enrichment`, publication, the metrics audit, backfill
-replay, and local session JSON all ignore native timing.
+`claude_native_trace_enrichment`, publication, backfill, and local session
+JSON all ignore native timing.
 
 #### Corrections and history
 
@@ -453,8 +620,7 @@ patterns. Trajectory leaves out zero values for these totals.
 These rules are on by default. No feature flag controls them.
 
 `trajectory.turn.subagents` counts confirmed subagent launches. Each point
-has the time its turn ended, the same time as the turn's
-`trajectory.source_completed_unix` tag. A change to a count older than an
+has the time its turn ended. A change to a count older than an
 hour follows
 [Corrections outside the live window](#corrections-outside-the-live-window).
 An example is a turn sent again with a new version tag. A count an earlier
@@ -519,7 +685,7 @@ The `source` tag uses Claude Code's native `tool_decision` source values. It
 adds one value that Claude Code does not have: `user_session`.
 
 When a `permission_result` has a `decision_source` field, Trajectory uses one
-mapping for every client. Live publication and the metrics audit share it.
+mapping for every client. Live publication and backfill share it.
 The mapping uses who decided and, for a person's approval, the scope in
 `decision_scope`:
 
@@ -608,6 +774,12 @@ Historical replay sends the same points as the live publish:
 
 So replaying a session that this release published live adds no rows.
 
+Oversight reviewer sessions, including Codex Guardian, may emit oversight
+metrics without turn metrics. Session-end reconciliation accepts their completed
+turns without requiring turn metric receipts. Their final projection preserves
+reviewer classification and excludes ordinary session cost totals. Ordinary
+sessions still require turn records for each completed turn.
+
 Rolling reconciliation picks up a turn when it is one to two days old, even
 if its session has not ended. The live publish sends late permission points
 only at session end. It does not check for rows that a replay added. So while
@@ -671,19 +843,6 @@ For such a turn, replay does one or both of these:
 A session that this release published, with turns that each complete once,
 counts once. This is true however often it is replayed, and whichever publish
 runs first.
-
-#### Audit
-
-`trajectory publish metrics audit` applies the same rules to the session
-JSONL. So the permission points it expects match the published rows.
-
-Without the JSONL, the audit uses the local SQLite data. There, a tool call
-counts the decision and prompt of its earliest `permission_result` marker.
-Every tag comes from the same function that live publication uses. A later
-marker for the same call is a repeat. A call without a marker counts no
-decision. A marker holds only what its `permission_result` recorded. So the
-audit cannot see a permission mode or approval path that only the earlier
-`permission` request event stated.
 
 ### Turn/session aggregation contract
 
@@ -878,6 +1037,51 @@ latest correction.
 Matching by position across a queued prompt gives one reply's usage to
 another turn and loses the queued reply.
 
+#### A correction known before the first send
+
+A turn's tokens and cost can be corrected before Trajectory has sent them.
+This happens when a backfill publishes a retained session. The backfill
+sends the turn as one point with the corrected value. It sends no signed rows
+for that turn. A correction that arrives after the turn was sent follows the
+rules below.
+
+A live session keeps the turn's first value and the signed rows, even when
+session end finds that nothing was sent for the turn. A turn publish that
+failed can still run later, and it sends the values from the turn's end. One
+case differs from earlier releases. A correction that repeats the values from
+the turn's end changes nothing, so no signed rows are sent for it.
+
+Three cases make a backfill send the first value too:
+
+- **A live session end has claimed the session.** It sends the first value
+  and the signed rows, so the backfill sends the same rows and the two add up
+  once. A live session end that finds a backfill publishing the session waits
+  for it and tries again.
+
+- **The turn's live publish is waiting to be retried.** The retry sends the
+  values from the turn's end. The backfill sends the first value and the
+  signed rows, so the retry adds nothing.
+- **The session's first end does not publish.** A backfill leaves a corrected
+  turn's tokens and cost to the session's first end. If that session end
+  fails, or a destination filter stops it, the turn's first value goes out
+  instead.
+
+A point sent with a corrected value can stop matching what Trajectory derives
+later. This happens when the model's price changes, or when a tag is added to
+the destination. Trajectory then sends nothing more for that point. The value
+it sent stays. When the value itself changed, the point gets one
+`changed_after_send` record, as [a point keeps its first
+value](#a-point-keeps-its-first-value) describes. A later change updates that
+record, and a value back at the one sent removes it. A correction that arrives
+after the point was sent is still applied to the value that was sent.
+
+A correction can set all of a turn's usage to zero. A backfill then sends no
+tokens or cost for the turn. A later session end of the same session sends
+none either, because the backfill has recorded the session as published. The
+backfill also records that it sent the turn without the values from the
+turn's end. The turn's own publish can still run after the backfill, from a
+retry or a catch-up of the session file. It then sends nothing for the turn.
+
 #### Corrections outside the live window
 
 Late corrections to turn tokens and cost keep the turn completion time.
@@ -924,9 +1128,8 @@ publishing and backfill:
   `trajectory.turn.subagents`, `trajectory.session.subagents.completed_count`
   and `trajectory.session.skill_invocations.completed_count`.
 - The native human waits: `trajectory.turn.permission_wait_ms.additive`,
-  `trajectory.turn.elicitation_wait_ms.additive`,
-  `trajectory.turn.elicitations.additive` and
-  `trajectory.turn.duration_ms.excluding_human_wait.additive`.
+  `trajectory.turn.elicitation_wait_ms.additive` and
+  `trajectory.turn.elicitations.additive`.
 
 An old
 correction to one of them is sent as the cell's corrected total. That total is

@@ -29,7 +29,6 @@ Related guides:
 | Show the cost of each turn in a session | `trajectory cost inspect --session <session-id>` |
 | List facts about a session's cost | `trajectory cost observations --session <session-id>` |
 | Check cost data for each agent | `trajectory cost validate --since 7d` |
-| Compare published cost with local data | `trajectory cost audit --latest` |
 
 The summary, `top`, `hotspots`, `pricing`, and `validate` commands use the
 last seven days by default. To change the window, add `--since` with a value
@@ -63,8 +62,7 @@ The ranking includes only sessions with complete cost data. A note at the
 bottom gives the number of incomplete sessions that the ranking left out. A
 session is incomplete when one of its turns has no price, or when a subagent
 that it started used tokens and has no price.
-Codex Guardian sessions are included when their provisional estimate is
-complete.
+Codex Guardian sessions are included when every turn has an estimate.
 
 ### Inspect one session
 
@@ -188,60 +186,6 @@ before the retirement. Without such sessions, the row shows `no-data`.
 The human tables for `inspect` and `validate` leave out the fidelity and
 provisional-count columns. The JSON output includes them.
 
-### Audit cost publishing
-
-`trajectory cost audit` checks that Trajectory captured and published the
-right cost for each turn. It is a preview feature.
-
-1. Turn on the preview:
-
-   ```bash
-   trajectory config features enable cost_contract_reconciliation
-   ```
-
-2. Audit one session. The command prints the result and any problems it
-   found:
-
-   ```bash
-   trajectory cost audit --session <session-id>
-   ```
-
-3. To audit all sessions from the last day, run this command. It prints only
-   counts and totals, as JSON:
-
-   ```bash
-   trajectory cost audit --since 24h --summary-only --json
-   ```
-
-The audit only reads data. It compares three things for each session:
-
-1. The client's own transcript or rollout file.
-2. A new copy of the Trajectory session JSONL file, built again for the audit.
-3. The rows in the metric outbox that carry `trajectory.cost_contract:v2`. The
-   metric outbox is the local queue of metric rows for Datadog.
-
-The audit ignores outbox rows without a contract tag. It reports each type of
-problem on a separate line. The types are missing coverage, overcount,
-undercount, wrong values, duplicate rows, delivery failures, and timestamp or
-bucket errors.
-
-Details:
-
-- If a Codex record is larger than 8 MiB, the audit writes it to a private
-  file. It keeps only the usage and cost fields in memory.
-- The audit counts billable work that the client aborted or replaced.
-- If a later turn repeats a cumulative token count without changes, the audit
-  does not count it as a new request.
-- If the client file or the outbox data is missing, the result is
-  `inconclusive`.
-- The detailed report marks each row as prepared or delivered. It counts the
-  expected usage once, for any number of destinations.
-- `--summary-only` prints only counts and totals for each stage. It leaves out
-  cost values and all local identifiers.
-
-For exit codes and the full workflow, see
-`trajectory user-guide cost-reconciliation`.
-
 ### Provisional pricing
 
 By default, Trajectory reports only the cost that it recorded with the
@@ -281,21 +225,12 @@ One line below the table explains the mark:
 * Provisional cost: $5.14. Details: trajectory cost pricing --since 7d
 ```
 
-To find a provisional rate, Trajectory uses these steps in order:
+To find a provisional rate, Trajectory checks the organization card first,
+then the provider card bundled with the installed version. It accepts approved
+aliases and the documented model-name forms. Other models stay unpriced.
 
-1. It looks for a current rate for that model name.
-2. It searches one list made from the cached LiteLLM price list and the
-   verified built-in table of public rates. Trajectory uses the LiteLLM cache
-   only while it is fresh. If both sources have the same model, the LiteLLM
-   entry wins.
-3. In that list, it tries a match on the full name first. Next, it tries the
-   longest prefix that ends at a name boundary. Last, it tries a close spelling
-   match, but only when one candidate fits.
-
-Some LiteLLM entries have no cache rates. For those, the report shows the
-assumed rates `read=0.1x_input` and `write=1.25x_input`. Some token data does
-not split cache writes into 5-minute and 1-hour writes. For that data, the
-report says that it assumed 5-minute writes.
+If token data does not split cache writes into 5-minute and 1-hour writes,
+the report says that it assumed 5-minute writes.
 
 To see every provisional price in the window, run
 `trajectory cost pricing --since 7d`. You do not need a session ID. The
@@ -372,6 +307,11 @@ Turns with missing or unclear timestamps show as unavailable. The summary and
 the ranking use the same set of turns. JSON output reports the window limits
 apart from the session start and end times.
 
+A session whose full data aged out has no turns left, only its totals. It
+counts as a whole in a window that holds its end, at the cost stored when it
+aged. So a window that starts during such a session counts all of its cost. `cost inspect` marks it "Summary only". See
+[What reports show for an aged session](CONFIGURATION.md#what-reports-show-for-an-aged-session).
+
 ### Subagents
 
 A session's cost includes the subagents that it started. In a window, a
@@ -400,9 +340,8 @@ inspect by the provisional part.
 ### Automatic history repair
 
 You do not need to run a backfill command before you view cost. Before it
-builds a summary or a ranking, `trajectory cost` does two repair steps.
-
-First, it imports sessions from client history files on disk. This step
+builds a summary or a ranking, `trajectory cost` imports sessions from client
+history files on disk. This step
 covers Claude Code, Codex and Codex.app, Cursor, Pi, and OpenCode sessions in
 the window. A session counts as inactive after two minutes without changes.
 For each inactive session, the command does these things:
@@ -411,29 +350,21 @@ For each inactive session, the command does these things:
 - It adds the session to the local cache if it is missing.
 - It repairs incomplete cache records.
 
-Second, it repairs old Codex cost records for inactive sessions in the window:
+This step is local. It does not read remote credentials, queue metrics, or
+publish data. It skips client files that are still active or changing. If
+you set `--db`, the command skips it.
 
-- It reads only session and model settings, token counters, turn start and
-  end markers, and web-search charges from the Codex rollout files.
-- It skips prompts, responses, tool payloads, and compaction text before it
-  decodes them.
-- It changes only token, model, service-tier, and cost fields, and the session
-  totals that use them.
-- It stops after 25 seconds.
-- If another repair is already running, it skips this step.
-
-Both steps are local. They do not read remote credentials, queue metrics, or
-publish data. They skip client files that are still active or changing. If
-you set `--db`, the command skips both repair steps.
+A Codex session saved by an older version of Trajectory can have a stale cost.
+The background service rebuilds those sessions from their Codex rollouts once
+a day. To rebuild them now, run `trajectory backfill local --apply`.
 
 The **Coverage** section shows three counts. They are sessions found on disk,
 sessions in the local cache, and sessions with incomplete or unpriced cost.
 JSON output has the same counts in `local_history`, with the results for each
-source. JSON output reports the Codex repair in `automatic_cost_repair`.
+source.
 
-Trajectory leaves out a cost row if its source is active or missing. It also
-leaves out a row that the repair did not reach in 25 seconds. It does not use
-an older value for that row. Other sessions still count. The report shows one
+Trajectory leaves out a cost row if its source is active or missing, or if
+its Codex cost is stale. It does not use an older value for that row. Other sessions still count. The report shows one
 total, and a note at the bottom reports the coverage. JSON output gives the
 number of left-out sessions in `incomplete_ranking_sessions` or
 `incomplete_cost_sessions`.
@@ -452,10 +383,14 @@ Trajectory reports Codex tokens, API-equivalent USD, and ChatGPT Codex credits
 as separate values. Do not add credits to USD, because both measure the same
 usage.
 
-- Codex Guardian review uses a provisional proxy rate labeled
-  `codex-auto-review`. OpenAI has not confirmed this rate. Human output shows
-  this note once, at the bottom. JSON output and `cost observations` include
-  the rate and the fidelity details.
+- OpenAI publishes no price for `codex-auto-review`, the model name of a
+  Codex Guardian review on a ChatGPT sign-in. Trajectory estimates it at the
+  list price of the model OpenAI said reviews ran on: `gpt-5.4` before
+  2026-07-30 and `gpt-5.6-luna` from then on. Human output shows this note
+  once, at the bottom. JSON output and `cost observations` include the fidelity
+  details.
+- OpenAI made these reviews free for ChatGPT sign-ins on 2026-10-06. A review
+  from that day on has 0 credits and keeps its API-equivalent USD.
 - If token data is missing, invalid, or incomplete, the cost shows as
   unavailable.
 - If the output tokens already include reasoning tokens, Trajectory does not
@@ -464,7 +399,8 @@ usage.
 ### Cost of Trajectory analysis
 
 `trajectory patterns analyze --yes` calls an LLM to classify your sessions.
-This cost is not agent work.
+It is the only command that makes Trajectory call a model, and only after you
+confirm its estimate. This cost is not agent work.
 
 When you run this command, `trajectory cost` adds a separate
 **Trajectory-owned analysis** table. It has a row for
@@ -494,10 +430,6 @@ trajectory cost --json
 The summary, hotspots, pricing, inspect, observations, and validate commands
 open the local SQLite cache as read-only. To read a test cache, set its path
 with `--db <path>` or `TRAJECTORY_CACHE_DB`.
-
-`trajectory cost audit` does not use the live cache. It reads the Trajectory
-session files, the client files, and the metric outbox under
-`TRAJECTORY_HOME`. It builds the expected values in a temporary database.
 
 ### Token usage in `cost inspect`
 

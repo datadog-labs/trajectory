@@ -2,12 +2,12 @@
 
 File-work indicators show which files an agent read or changed, and how much
 of a PR's cost went to each file. Trajectory sends two file-work metrics by
-default. Both have a `file_path` tag, so they have high cardinality. Trajectory
-limits the number of paths for each turn and PR.
+default. Only the PR indicator has a `file_path` tag, and Trajectory limits the
+number of paths for each PR.
 
 | Metric | Type | Scope | What it measures |
 |---|---|---|---|
-| `trajectory.turn.file_work.weight.additive` | count | turn | File work in a turn. Tags: repository-relative `file_path`, `lens:read` or `lens:intermediate_edit`, `weight_unit`, and `evidence_status`. |
+| `trajectory.turn.file_work.lens_weight.additive` | count | turn | File work in a turn, summed over its files. Tags: `lens:read` or `lens:intermediate_edit`, `weight_unit`, and `evidence_status`. |
 | `trajectory.pr.file_work.cost_indicator.usd.additive` | count | pr | A directional score that splits the PR-work cost across files in one lens, in proportion to their file-work weights. It is safe to correct. |
 
 ### Tags and how to query
@@ -33,11 +33,22 @@ including `_other`. The lens then reports `weight_unit:operations` and
 `evidence_status:partial`. A lens with only byte evidence keeps byte weights.
 Turn metrics keep their own units.
 
+Codex `ApplyPatch` inputs already contribute through the independent file-work
+parser. Its `intermediate_edit` lens includes attempted mutations, even when
+a call fails or has no result. Its successful-tool `final_change` fallback
+requires success. These differ from the successful operation count in
+`trajectory.turn.files_modified.additive`.
+The patch parser attributes a move section to its original path. It does not
+emit a separate destination path for the move. This limitation remains.
+
 ### Path limits
 
-Each turn keeps at most 25 file paths as separate series. Trajectory adds the
-weight of the other paths to `_other`, separately for each lens and unit. Each
-PR lens keeps its 25 paths with the highest weight in the same way. The rest
+The turn metric has no file path. It sends one series for each lens and
+weight unit, so a turn adds at most four series however many files it touched.
+
+Each PR lens keeps its 25 paths with the highest weight as separate series.
+Trajectory adds the weight of the other paths to `_other`, separately for
+each lens and unit. The rest
 goes to `_other`, so the total for each lens stays exact.
 
 ### PR cost indicator
@@ -54,9 +65,10 @@ unavailable.
 When stronger evidence removes a path from a turn, PR, and lens that
 Trajectory rebuilt, Trajectory sends a value that reverses that path. If
 coverage is missing for a whole lens or for the PR allocation, Trajectory
-keeps the earlier values. The OTLP intake accepts points only up to one hour
-old. A correction outside that window is not supported, and replay does not
-move its timestamp forward.
+keeps the earlier values. For a Datadog destination, each contribution goes out
+once, dated when Trajectory handles it. A later change to it sends nothing and
+counts as a `pr_settled_no_correction` drop. Replay does not move its timestamp
+forward.
 
 The `final_change` lens uses distinct file operations from the commit
 contents, which do not change after the commit. If commit contents are not

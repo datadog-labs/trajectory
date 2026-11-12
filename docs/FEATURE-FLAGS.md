@@ -38,9 +38,33 @@ trajectory config reload --yes
 
 ## Runtime Overrides
 
-`frontier_model_catalog` is a rollout flag that defaults off. It lists AI
-Gateway models in the model pickers of Frontier clients. It covers the Codex
-and Claude Code `/model` pickers for launches that do not pin a model.
+`ai_gateway_claude_setting_sources` is a rollout flag that defaults on. It
+applies to Claude Code sessions launched through the AI Gateway. It keeps
+Claude Code's user, project, and local settings on. The session then loads
+your `CLAUDE.md` files, custom commands, subagents, skills, and MCP servers.
+That part applies to Claude Code 2.1.310 or later. The flag also lets these
+sessions start when your settings name another provider, API key, or key
+helper. The session ignores those settings and uses the AI Gateway. Disable
+the flag to turn your settings off in these sessions and to stop the launch
+when they set a route or credential. The flag was called
+`frontier_claude_setting_sources` before, and the old name still works.
+
+`ai_gateway_model_catalog` is a rollout flag that defaults on. It lists the AI
+Gateway models you can use in the Codex and Claude Code `/model` pickers. It
+applies to launches that do not pin a provider with `--provider`. Sometimes the
+Gateway model list cannot load. If the flag is on only by default, the launch
+then starts with the client's own picker and prints a notice. If you enable the
+flag yourself, that launch stops instead.
+To turn the listing off, run
+`trajectory config features disable ai_gateway_model_catalog`. The flag was
+called `frontier_model_catalog` before. Settings and commands that use the old
+name still work.
+
+`frontier_client_gateway_context` is a rollout flag that defaults on. On
+`trajectory claude` and `trajectory codex` Frontier launches, it keeps the AI
+Gateway team and `x-dd-tag-*` tags from your native client headers. Claude Code
+reads `ANTHROPIC_CUSTOM_HEADERS`. Codex reads its selected provider headers.
+Turn it off to send no inherited team or tags. `--gateway-team` still works.
 
 To override flags for one process, use environment variables. Use them for
 tests, for emergency kill switches, or for a single launched process:
@@ -60,6 +84,44 @@ These rules decide which setting wins:
 
 ## Registered Flags
 
+`claude_usage_from_client_file` defaults on. A new Claude Code session counts
+tokens and cost from Claude Code's own session files, once per response. It no
+longer counts what its stops read. Each turn's usage settles two minutes after
+it closes. Trajectory reads the flag when a session starts, and the session keeps
+that path for life. Turning the flag off affects only later sessions. It is a kill
+switch for one release. The same flag covers what Claude Code's native metrics say
+about its background requests: only a session on this path reads them.
+
+`open_turn_usage` defaults on. A turn that runs for a long time, or waits on a
+question, reaches Datadog before it ends. About every 10 minutes, Trajectory sends
+the turn's tokens and cost so far, and the PRs it has opened. With the flag off,
+these wait for the turn to end. Trajectory reads the flag each time it looks at a
+session, and the usage a turn has already sent stays counted.
+
+`pi_usage_from_client_file` defaults on. A new Pi session counts tokens and cost
+from Pi's own session file, once per response. That includes the model calls behind
+a compaction, a branch summary or a tool. Each turn's usage settles two minutes
+after it closes. Trajectory reads the flag when a session starts, and the session
+keeps that path for life. Turning the flag off affects only later sessions. It is
+a kill switch for one release.
+
+`claude_native_subagent_output` defaults on. On some Claude Code versions, a
+sub-agent's file often holds only an early snapshot of a response's output. Versions
+2.1.294 to 2.1.303 did this in our measurements, and 2.1.308 and later did not. When
+a session's native metrics match its files on every other count, Trajectory adds the difference in
+sub-agent output as its own point, tagged `trajectory.output_source:native`. Turning
+it off stops storing native main-thread and sub-agent counts. It is a kill switch for
+one release.
+
+`opencode_usage_from_store` defaults on. A new OpenCode session counts tokens and
+cost from OpenCode's own store, once per response. It no longer counts what the
+plugin delivers, and each turn's usage settles two minutes after it closes. OpenCode
+2 doesn't load the plugin, so a new session on that release is captured from its
+store and published. The plugin still gives timing and permissions on 1.x.
+Trajectory reads the flag when a session starts, and the session keeps that path
+for life. Turning the flag off affects only later sessions. It is a kill switch for
+one release.
+
 `setup_debug_instructions` defaults on. Setup writes local debugging
 instructions for agents under the Trajectory home and records the files it
 owns. Later setup runs refresh owned files that you did not change, and keep
@@ -67,42 +129,36 @@ your edits. If you turn the flag off, setup skips the instructions and leaves
 existing files alone. The instructions point to the user guide of the
 installed binary. They register no global skills.
 
-`automatic_task_segmentation` defaults off. It is the only switch for
-automatic task segmentation and task metrics. While it is off, these things
-happen:
+`agent_security_plugin_restore` defaults on. An earlier release could
+uninstall the Agent Security plugin from Claude Code when its activation
+failed. When your own config still enables Agent Security, the runtime asset
+reconcile finds such an install and starts the activation again in the
+background. It checks once per release, after the release finishes updating.
+It leaves the plugin alone when you uninstalled it yourself with `/plugin`,
+removed it with `trajectory plugins security disable --clients cc
+--remove-hooks`, or turned Agent Security off with
+`trajectory plugins security disable`. If you turn the flag off, Trajectory
+leaves the plugin uninstalled.
 
-- Serve starts no segmentation of any kind: incremental, at session end, in
-  recovery, or in historical catch-up.
-- Serve makes no segmentation LLM calls and uses no segmentation budget.
-- Serve writes no `task_segments` rows.
-- Session end and terminal recovery skip their time budgets for segmentation.
-- No `trajectory.task.*` metrics publish from live sessions or from managed
-  task backfill.
+The former `automatic_task_segmentation` and `agent_console_task_backfill`
+flags are removed with automatic task segmentation, and Trajectory ignores old
+overrides. Both defaulted off. The capture server never splits sessions into
+tasks, and the `segmentation.*` settings are removed too. Task classification
+stays available on demand through `trajectory patterns analyze --yes`. See
+[LLM capacity](LLM-CAPACITY.md#the-capture-server-makes-no-llm-calls).
 
-`segmentation.enabled`, `segmentation.interval`, and
-`segmentation.publish_metrics` apply only when the flag is on. So managed or
-org defaults that set them cannot turn segmentation on alone.
+Trajectory no longer publishes task metrics. When the metric outbox drains, it
+drops task metric rows that an older version left there.
 
-Task metric rows that are already in the metric outbox stay there. Trajectory
-neither sends nor deletes them, and sends them if you turn the flag on later.
-If a config reload turns the flag off, Trajectory holds the rows before the old
-publish engine finishes sending.
-
-When the flag is off, backfill and `trajectory publish history` leave out task
-metrics. A session they publish then is not published again after you turn
-the flag on. The diagnostic
-`trajectory publish metrics canary --zero-task-score-probe` still sends its
-probe.
-
-Explicit `trajectory segment` and `trajectory patterns analyze --yes` runs are
-direct user actions. They do not need the flag. See
-[task metrics](metrics/task-metrics.md).
-
-`pi_history_backfill` defaults off. When it is on, serve imports idle Pi files
-that were never captured into the local catalog. It does this in small
-background batches. It does not rewrite captured sessions, invent a session
-end, or start historical publishing. Managed and environment disables win. A
-config reload stops the import worker and waits for it to finish. See
+Serve always imports idle Pi files that were never captured into the local
+catalog. It does this in small background batches. It does not rewrite
+captured sessions, invent a session end, or start historical publishing. The
+former `pi_history_backfill` flag is removed, and Trajectory ignores old
+overrides. `trajectory config features enable`, `disable`, and `clear` for
+that name succeed and change nothing. `trajectory uninstrument pi` saves Pi in
+`setup.auto_instrument.deny_clients`, which stops the import.
+`trajectory setup --clients pi` removes that entry. The import starts again at
+the next `trajectory config reload --yes` or service start. See
 [Pi history coverage](CLIENT-INSTRUMENTATION.md#pi) for discovery limits,
 one-time import rules, and the files it skips.
 
@@ -136,6 +192,10 @@ removal changes no behavior.
 The former `cost_fidelity_heartbeat` flag is removed with the managed cost
 fidelity heartbeat, and Trajectory ignores old overrides.
 
+The former `cost_contract_reconciliation` flag is removed with the
+`trajectory cost audit` command it gated, and Trajectory ignores old
+overrides. It defaulted off, and the command only read data.
+
 Account billing metadata, parented subagent traces, conditional and command
 publish tags, and managed operational logs no longer have a flag. The former
 `account_billing_metadata`, `parented_subagent_traces`, `publish_tag_resolvers`,
@@ -163,11 +223,32 @@ Trajectory leaves that file in place. An older serve process on another port
 can share the home and still use it. You can delete the file by hand once no
 such process runs. Metric rows that the feature already queued are still sent.
 
-Task metrics always use the current task projection, serve always runs publish
-dedup ledger retention, and `trajectory flare --heap-profile` always works.
-The former `task_segmentation_metrics_v3`, `publish_ledger_retention`, and
+The former `btview` flag is removed with the btview viewer, and Trajectory
+ignores old overrides. It defaulted off. `trajectory view` opens the local
+viewer.
+
+History recovery for Hermes Agent, Amp Code, OpenCode, Kilo Code, and Qwen
+Code always runs when the client is installed. The background service reads
+the client's saved history to recover sessions that its hooks missed. On a
+computer without the client, it does nothing. The former
+`<client>_durable_history` flags for these five clients are removed, and
+Trajectory ignores old overrides. `trajectory uninstrument <client>` saves
+the client in `setup.auto_instrument.deny_clients`, which stops its recovery.
+`trajectory setup --clients <client>` removes that entry. Recovery starts
+again at the next `trajectory config reload --yes` or service start.
+
+To stop one watcher and keep the client set up, set its variable to `1` when
+the service starts. The variables are
+`TRAJECTORY_DISABLE_HERMES_HISTORY_WATCHER`,
+`TRAJECTORY_DISABLE_AMP_HISTORY_WATCHER`,
+`TRAJECTORY_DISABLE_OPENCODE_WATCHER`, `TRAJECTORY_DISABLE_KILO_WATCHER`, and
+`TRAJECTORY_DISABLE_QWEN_WATCHER`.
+
+Serve always runs publish dedup ledger retention, and
+`trajectory flare --heap-profile` always works. The former
+`task_segmentation_metrics_v3`, `publish_ledger_retention`, and
 `heap_profile_flare` flags are removed, and Trajectory ignores old overrides.
-`automatic_task_segmentation` still decides whether task metrics publish.
+Trajectory no longer publishes task metrics.
 
 The former `cost_guidance` and `personal_cost_guard` flags are removed with
 Agent Cost Guidance and Personal Cost Guard. Trajectory ignores old overrides.
@@ -182,12 +263,12 @@ update handoff for one process.
 
 The former `enhanced_segmentation_classification`,
 `two_pass_segmentation_classification`, and `task_meta_segmentation` flags are
-removed, and Trajectory ignores old overrides. All three defaulted off, so
-default task segmentation is unchanged. Confirmed
+removed, and Trajectory ignores old overrides. All three defaulted off.
+Confirmed
 `trajectory patterns analyze` runs still write turn labels and Work Insights
 labels under `patterns_analysis_backfill`.
 
-Seven `metric_samples_*` selections each control one kept distribution sample.
+Six `metric_samples_*` selections each control one kept distribution sample.
 They default on today, so current users keep getting the samples. A later
 release can change the default to off.
 
@@ -195,7 +276,6 @@ release can change the default to off.
 | --- | --- |
 | `metric_samples_turn_cost` | `trajectory.turn.cost.usd.total` |
 | `metric_samples_session_cost` | `trajectory.session.cost.usd.total` |
-| `metric_samples_turn_duration` | `trajectory.turn.duration_ms.total` |
 | `metric_samples_skill_duration` | `trajectory.turn.skill_duration_ms.total` |
 | `metric_samples_skill_tool_uses` | `trajectory.turn.skill_tool_uses.total` |
 | `metric_samples_skill_distinct_tools` | `trajectory.turn.skill_distinct_tools.total` |
@@ -254,12 +334,27 @@ flag is on again. Size pruning can still drop them. Agent Security metrics for a
 collector use the outbox whatever the flag says. The flag stays for one
 release as a kill switch.
 
-`agent_security_incremental_staging` is a temporary rollout kill switch that
-defaults on. When a session's Agent Security records only grew since its last
-publish, Trajectory stages and sends only the new records. It adds them to the
-session totals it kept. The metrics it sends are the same either way. If you
-turn the flag off, Trajectory stages every changed session in full again on
-every publish, as before.
+`inherited_proxy_direct_fallback` is a temporary rollout flag that defaults
+on. The background service takes its proxy from `HTTPS_PROXY` and `HTTP_PROXY`
+in the environment of the process that started it. A coding agent can start
+the service with a proxy that runs only during its session. The flag covers
+what happens when that proxy is on this machine (`localhost`, `127.0.0.1` or
+`::1`) and nothing listens on its port any more:
+
+- The service sends to Datadog, GitHub and your org config source directly.
+- It tries the proxy again after one minute. The wait doubles after each
+  refusal, up to fifteen minutes.
+- When the proxy listens again, the service uses it again.
+- `/health` reports `egress_proxy` with `state` `direct_fallback`, and
+  `trajectory doctor` warns that the service sends directly.
+
+The service never goes around a proxy on another host. It also keeps using a
+proxy that answers, even with an error such as HTTP 407.
+
+If this machine must send everything through a local proxy, turn the flag off
+in managed settings. The service then keeps trying the proxy. Its health record
+reports `publish_delivery` reason `proxy_unreachable`, and doctor names the
+proxy.
 
 In resumed sessions of Claude Code and every other hook client, the previous
 generation can still hold its finalization lock at session end. Serve then
@@ -283,6 +378,26 @@ of the plugin:
 This way, Claude does not report a refused connection on exit. When capture is
 on again, the handler comes back. If you turn the flag off, the handler stays
 in every state.
+
+`claude_direct_hook_start` is a temporary rollout kill switch that defaults on.
+It covers the Claude Code hooks for prompts, turn ends, session starts and ends,
+permissions, compaction, and subagents on macOS and Linux. With the flag on,
+Claude Code starts the Trajectory binary itself for each of these hooks. No
+shell runs in between, so a hook starts one process.
+
+If you turn the flag off, the earlier behavior returns on the next hook of
+every session, with no setup run and no restart. A session keeps the hooks it
+loaded, so the binary reads the flag each time Claude Code starts it for a
+hook. With the flag off, it runs the `capture-with-serve.sh` of the plugin the
+session loaded. The script runs in the environment the earlier hook set, and
+it does the capture. The flag can be off in your `config.yaml`, in your organization's
+configuration, or in `TRAJECTORY_DISABLE_FEATURES`. If the plugin folder has no
+script, the hook captures directly.
+
+Setup and runtime asset reconciliation also write the earlier hooks while the
+flag is off, which run that script through a shell. A Claude Code session
+loads them when it starts. Windows and an installation whose binary path holds
+a space or another character the shell reads always use those hooks.
 
 `claude_resumed_event_queue` is a temporary rollout kill switch that defaults
 on. It covers the order of events in resumed sessions of Claude Code and every
@@ -339,6 +454,52 @@ installed hook that uses the helper straight to the full binary. One
 difference remains. CLI command telemetry does not count a hook that the helper
 delivers as a `capture-hook` start. Codex hooks work the same way today.
 
+`copilot_mcp_tool_hook` is a temporary rollout flag that defaults off. When it
+is on, setup also registers GitHub Copilot CLI's `preMcpToolCall` hook. That
+hook names an MCP tool's server and tool separately. Copilot's tool hooks name
+the tool `<server>-<tool>`, which cannot be split when either part has a
+hyphen. Capture remembers the pair for the session and adds the MCP server and
+tool to the tool events that follow. With the flag off, capture learns the
+same pair from the `permissionRequest` hook, which names the tool
+`<server>/<tool>`. Either way, the first call of a tool has no server on its
+pre event, because Copilot sends both hooks after `PreToolUse`. Run setup for
+Copilot again after you change the flag.
+
+`copilot_cli_stop_read` is a temporary rollout control for GitHub Copilot CLI
+and Agent Security. It defaults on. Copilot's Stop hook carries no reply, and
+Copilot writes the reply to its session log just after the hook starts. While
+the flag is on and AI-EDR evaluates Copilot's Stop, the hook reads that log
+and gives rules the turn's reply as `event.response`. It waits at most 150 ms
+for the log, and never for a subagent's own Stop: Copilot's `subagentStop`
+already carries the subagent's reply. A log too large to read in that time
+gives its Stop no reply. No shipped rule reads a reply, so the
+flag changes no verdict until a managed rule does. AI-EDR stores the reply
+with the Stop's record. A destination's disclosure profile decides whether the
+records it receives hold the reply: `full`, `curated` and `curated+` keep it,
+and `metadata_only` withholds it.
+
+The same flag lets capture read each turn from that log. When Copilot's Stop
+reaches the capture server, the server waits for the turn to land in the log.
+It waits at most 500 ms, five times Copilot's 100 ms flush interval. It then
+writes one `llm_call` record per model request, with its tokens, and the
+turn's reply, before the turn's `turn_end`. The `turn_end` gets the turn's
+model. The session's next hook waits for that read, so a headless `SessionEnd`
+cannot come before the final turn. A request that the native OpenTelemetry
+records already hold, by its request ID, is not written again.
+
+A subagent's requests count as the subagent's, as they do for Claude Code
+and Cursor, not as the turn's. While the flag is on, a `subagentStop` writes
+its `subagent_stop` with `subagent_usage_status: unavailable`. The turn's read
+then writes a `subagent_usage_amendment` with the subagent's tokens, which
+completes that stop. A subagent whose requests never reach the read keeps
+unavailable usage.
+
+If you turn the flag off, the Stop payload is as Copilot sent it. The capture
+server then writes the Stop's `turn_end` at once, without the log's model,
+reply or tokens:
+`trajectory config features disable copilot_cli_stop_read`, or
+`TRAJECTORY_DISABLE_FEATURES=copilot_cli_stop_read`.
+
 `claude_turn_token_settle` is a temporary rollout control for Claude Code turn
 token metrics. It defaults on. When it is on, Trajectory holds each turn until
 it checks the token usage against the transcript. The check happens at the
@@ -356,6 +517,106 @@ the Stop hook at once. In both cases, reconciliation at session end matches
 turns by prompt. See
 [Claude Code turn token settle](metrics/per-turn-metrics.md#claude-code-turn-token-settle).
 
+`deferred_live_projection` is a temporary rollout control for the capture
+server's disk writes. It defaults on. While no reader such as Studio is
+attached, a turn end only writes the turn to the session's local record. The
+capture server then projects, evaluates and publishes all of a session's
+finished turns in one batch. The batch runs at the first of these events:
+
+- 60 seconds without new events in the session
+- 10 minutes after the oldest waiting turn ended
+- session end
+- shutdown, or the next start after a restart
+
+A reader never makes a session publish sooner. The first reader request, and
+a request from `trajectory local-ui` or the MCP tools, which ask before they
+read, project the waiting turns at once. Their publish still waits for the
+batch. While a reader is attached, each turn is projected as it ends and
+published in the batch. Readers see a running turn's state, such as its
+running tools, through the session's coding-agent activity, and its rows
+when it ends.
+
+While nothing reads them, local rows can arrive up to 10 minutes after the
+turn ends. Datadog traces and metrics can arrive up to 10 minutes after the
+turn ends. A session's first published turn is never held, and a home that
+does not publish to Datadog holds no turns. While nothing reads it, the
+capture server also keeps each session's coding-agent activity in memory. It
+saves the activity at most a minute later, or as soon as a reader connects.
+If you turn the flag off, the capture server runs every waiting batch at
+once. After that it projects and publishes each turn as it ends, and saves
+activity at every hook. A reader then gets a running turn's rows again,
+within about a second of each hook:
+
+```bash
+trajectory config features disable deferred_live_projection
+trajectory config reload --yes
+```
+
+`TRAJECTORY_DISABLE_FEATURES=deferred_live_projection` also turns it off for
+one process at start-up.
+
+`open_turn_memory_store` is a temporary rollout control for the capture
+server's disk writes while a reader such as Studio is attached. It defaults
+on. When it is on, the capture server keeps each live session's unfinished
+turn in memory. It answers Reader V1 and V2 requests for that turn from
+there. It writes the turn to the local cache once, when the turn ends, the
+session ends or the capture server stops. A turn larger than 16 MiB goes to
+the cache in paced batches instead. So does a turn that brings the turns held
+in memory over 128 MiB. The session's local record stays the source of every turn, so a
+restart loses nothing. If you turn the flag off, the capture server writes the
+unfinished turn to the cache on each update, as before:
+
+```bash
+trajectory config features disable open_turn_memory_store
+trajectory config reload --yes
+```
+
+`TRAJECTORY_DISABLE_FEATURES=open_turn_memory_store` also turns it off for
+one process at start-up.
+
+`live_projection_read_budget` is a temporary rollout control for long
+sessions. It defaults on. When it is on, the capture server updates the local
+cache of a running session by the new part of its local record only. Each
+update reads at most 32 MiB of new data, and the next update reads on from
+there. A session whose record is larger than 32 MiB gets its local rows,
+turn-level marker points and pull request details while it runs. Each update
+costs the same as one for a small session. Some updates read such a record again
+from its start, such as a rebuild after an update of Trajectory. They wait
+until the session has been quiet for 15 minutes. The capture server then gives
+a record of up to 256 MiB one such read in batches. A session that needs another
+waits longer each time: 15 minutes, then an hour, 4 hours and a day. These reads
+share a limit of about 1.2 GB written a day, which `trajectory doctor` shows
+when they reach it. A larger record waits for the session to end. If you turn
+the flag off, the capture server stops
+updating a running session's local cache once its record passes 32 MiB. The
+session's end then updates it, as before:
+
+```bash
+trajectory config features disable live_projection_read_budget
+trajectory config reload --yes
+```
+
+`TRAJECTORY_DISABLE_FEATURES=live_projection_read_budget` also turns it off
+for one process at start-up.
+
+`claude_desktop_connector_catalog` defaults off. It gates whether
+`trajectory claude-desktop` populates the `managedMcpServers` list in the
+Claude Desktop third-party profile. Two sources fill that list. The first is a
+connector catalog file, `claude-desktop-connectors.json` in the Trajectory
+home. The second is the local (stdio) MCP servers declared in the standard
+profile's `claude_desktop_config.json`.
+
+While the flag is off, the launch writes the profile with no connectors,
+exactly as before. Enabling it adds connectors only. Gateway routing,
+credentials, and model settings are unchanged, and the standard profile is
+never written.
+
+Values whose env names look like secrets are withheld from the disk-backed
+profile and reported at launch. A missing catalog is not an error. A malformed
+one is reported, and the launch proceeds without connectors. The setting is
+temporary. The catalog's long-term source is AI Gateway settings, and the flag is
+removed once that lands.
+
 The per-request prompt size distribution, which includes cache tokens, always
 publishes. See [per-request prompt size](metrics/per-turn-metrics.md#per-request-prompt-size)
 for coverage, deduplication, and percentile queries.
@@ -365,6 +626,26 @@ Datadog accepted a metric submission. This flag retries those submissions in a
 limited number of rounds, and it saves them to disk between rounds. A disable
 in managed config or the environment still works as a kill switch. It stops
 the attempts and keeps the pending retries.
+
+`final_session_claim_reclaim` defaults on. It replaces a final-session claim
+only when the ledger proves transport never started. The stored PID,
+process-start identity, operating-system boot identity, executable, user, and
+serve boot ID must identify a process that is now dead. Claims with a started
+or unknown submit phase remain held for `trajectory publish queue resolve-claim`.
+Disabling the flag sends otherwise safe dead-owner claims to the same operator
+workflow.
+
+`reliable_trace_retry` defaults on. Sometimes the Datadog trace intake
+answers a turn trace with a 5xx server error. This flag keeps that turn
+queued on disk and sends it again later. The wait between tries grows to at
+most one hour, and the tries stop 14 days after the turn was queued. A
+destination that already accepted the turn does not receive it again. A
+disable in managed config or the environment works as a kill switch. It
+stops the retries of turns that wait after a 5xx answer. Those turns stay
+queued and resume if the flag is turned on again. A new 5xx answer then ends
+the turn's retries, as it did before this flag. This flag does not change
+traces sent through a Datadog Agent, because the Agent may already have
+forwarded them.
 
 Trajectory takes flag names, defaults, control restrictions, and short
 descriptions from the flag registry in the binary. To see them, run:
@@ -378,8 +659,8 @@ trajectory config features status <flag>
 The CLI reads the flag list from the binary, so its list is always current.
 
 An explicit `trajectory patterns analyze --yes` run acts with the authority of
-the user. It does not check or use the automation budget. Automatic
-segmentation and backfill still use their documented budgets.
+the user. It shows its estimate first and calls no model until you confirm.
+Backfill still uses its documented budgets.
 
 AI-EDR availability depends on the version:
 
@@ -390,6 +671,32 @@ AI-EDR availability depends on the version:
   overrides.
 - Neither flag turns on the module, installs hooks, selects the evaluator mode,
   or overrides destination publishing gates.
+
+`agent_security_copilot_apply_patch` is a temporary rollout kill switch that
+defaults on, is managed-only, and ignores environment overrides. GitHub
+Copilot CLI edits files with `apply_patch`, one patch that can add, edit,
+delete, or move several files. While the flag is on, AI-EDR rules see each of
+those files as they see a Claude Code `Write` or `Edit`. So a Copilot write to
+`~/.ssh/authorized_keys` is detected and flagged. Enforce mode blocks a call
+only when its policy score reaches the block threshold, as for any other
+tool. A lone `authorized_keys` write scores under the default threshold, so it
+is flagged and still runs. Rules read at most 3,000 files of one patch, so
+the hook stays within its five-second deadline. A larger patch is evaluated
+as far as the limit and marked degraded (`copilot_apply_patch.files_over_limit`).
+When AI-EDR enforces, it also blocks that patch under the rule
+`copilot_apply_patch.files_over_limit`, so harmless files cannot push a
+sensitive one past the limit. In observe mode, or without managed
+enforcement, the larger patch still runs. A managed disable makes AI-EDR read no file from a Copilot patch again, without
+turning off Agent Security for Copilot. Codex `apply_patch` is not covered.
+
+`otlp_zstd_compression` is a default-off temporary rollout control. When
+enabled, Trajectory compresses the bodies of the OTLP traces, logs, and metrics
+requests it sends. Datadog destinations, and `otlp` destinations that do not
+set `compression`, send zstd. An `otlp` destination can set `compression` to
+`zstd`, `gzip`, or `none`. A receiver that refuses the encoding fails the send.
+Trajectory does not try again uncompressed. Disabling the flag sends every
+OTLP request uncompressed, whatever the destination sets. See
+[OTLP destinations](PUBLISH.md#otlp).
 
 `otlp_conventions_trace_shape` is a default-off temporary rollout control for
 generic `otlp` destinations that do not set `trace_shape`. When enabled, their

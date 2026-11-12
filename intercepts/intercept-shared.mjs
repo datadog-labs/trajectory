@@ -1,5 +1,6 @@
 const DEFAULT_CAPTURE_URL = 'http://127.0.0.1:19222';
 const SESSION_ID_ENV_VAR = 'TRAJECTORY_SESSION_ID';
+const LAUNCH_ID_ENV_VAR = 'TRAJECTORY_LLM_CALL_LAUNCH_ID';
 const POST_TIMEOUT_MS = 2000;
 
 export function resolveCaptureURL() {
@@ -52,12 +53,22 @@ function normalizeArray(input) {
 }
 
 function normalizeTokenObject(tokens) {
-  return {
+  const normalized = {
     input_tokens: toInteger(tokens?.input_tokens, 0),
     output_tokens: toInteger(tokens?.output_tokens, 0),
     cache_read_input_tokens: toInteger(tokens?.cache_read_input_tokens, 0),
     cache_creation_input_tokens: toInteger(tokens?.cache_creation_input_tokens, 0),
   };
+  for (const key of ['cache_creation_5m_tokens', 'cache_creation_1h_tokens']) {
+    if (tokens?.[key] !== undefined) {
+      normalized[key] = toInteger(tokens[key], 0);
+      normalized.cache_creation_breakdown_known = true;
+    }
+  }
+  if (tokens?.cache_creation_breakdown_known === true) {
+    normalized.cache_creation_breakdown_known = true;
+  }
+  return normalized;
 }
 
 function normalizeRequestSummary(summary) {
@@ -126,6 +137,18 @@ function mergeUsage(tokens, usage) {
       continue;
     }
     tokens[key] = Math.max(tokens[key] ?? 0, value);
+  }
+
+  const cacheCreation = usage?.cache_creation;
+  for (const [sourceKey, targetKey] of [
+    ['ephemeral_5m_input_tokens', 'cache_creation_5m_tokens'],
+    ['ephemeral_1h_input_tokens', 'cache_creation_1h_tokens'],
+  ]) {
+    const value = takeUsageNumber(cacheCreation, sourceKey);
+    if (value !== null) {
+      tokens[targetKey] = Math.max(tokens[targetKey] ?? 0, value);
+      tokens.cache_creation_breakdown_known = true;
+    }
   }
 }
 
@@ -196,7 +219,19 @@ export function resolveSessionId() {
   } catch {
     // Silent by design.
   }
-  return 'unknown';
+  return '';
+}
+
+export function resolveLaunchId() {
+  try {
+    const launchId = process?.env?.[LAUNCH_ID_ENV_VAR];
+    if (typeof launchId === 'string' && launchId.length > 0) {
+      return launchId;
+    }
+  } catch {
+    // Silent by design.
+  }
+  return '';
 }
 
 export async function parseSSEStream(stream) {
@@ -375,6 +410,22 @@ export function buildLLMCallEvent(fields = {}) {
     response_summary: normalizeResponseSummary(fields?.response_summary),
     error: fields?.error == null ? null : String(fields.error),
   };
+  const launchId = typeof fields?.trajectory_launch_id === 'string'
+    ? fields.trajectory_launch_id
+    : resolveLaunchId();
+  if (launchId.length > 0) {
+    event.trajectory_launch_id = launchId;
+  }
+
+  const requestBody = normalizeOptionalObject(fields?.request_body);
+  if (requestBody) {
+    event.request_body = requestBody;
+  }
+
+  const responseBody = normalizeOptionalObject(fields?.response_body);
+  if (responseBody) {
+    event.response_body = responseBody;
+  }
 
   const contextBreakdown = normalizeOptionalObject(fields?.context_breakdown);
   if (contextBreakdown) {

@@ -1,50 +1,86 @@
 # Trajectory Codex Plugin
 
-Codex marketplace plugin for trajectory agent observability.
+This is the Codex marketplace plugin for Trajectory agent observability.
 
 ## What It Does
 
-- **11 supported lifecycle hooks** provide the full compatibility surface. Setup enables `SessionStart`, `UserPromptSubmit`, `Stop`, and `SessionEnd` plus Bash-only paired `PreToolUse` and `PostToolUse` by default, derives canonical detail and terminal completion from the rollout, and uses the paired hooks only for immediate PR-work evidence; `codex_boundary_capture` can restore all eleven.
-- **MCP server** provides introspection tools (status, sessions, queries, incognito, flush, markers)
-- **`/incognito` skill** toggles publish suppression for the current session while local JSONL capture continues
+- **Hooks.** The compatible hook set covers 11 supported lifecycle events.
+  Setup generates a local plugin with 13 stable handlers. `PreToolUse` and
+  `PostToolUse` each get a permanent Bash-only handler and an all-tools
+  handler.
+- **Boundary mode.** Boundary mode enables `SessionStart`, `UserPromptSubmit`,
+  `Stop`, and `SessionEnd`, plus the paired Bash-only tool hooks. It takes
+  event detail and turn completion from the Codex rollout file. It uses the
+  paired hooks only to take Git snapshots right away for PR work.
+- **MCP server.** The server provides introspection tools for status,
+  sessions, queries, incognito, flush, and markers.
+- **`/incognito` skill.** The skill stops sending the current session's trace
+  and log content to Datadog destinations, except exempt ones. Trajectory still
+  records events locally to JSONL. It still sends accounting and activity
+  metrics, without model and repository names by default.
 
-Codex capture is intentionally hybrid. Four lifecycle/turn hooks plus paired
-Bash-only evidence hooks provide ordered boundaries and immediate before/after
-Git snapshots, while Codex rollout JSONL under
-`~/.codex/sessions/` supplies tool phases, assistant messages, reasoning,
-permissions, compaction, subagent activity, model/token metadata, and
-`shutdown_complete`. Hook `SessionEnd` and watcher `shutdown_complete` converge
-on one quiescent terminal reconciler. Trajectory merges those sources in `trajectory serve`
-before writing normalized session JSONL under `~/.trajectory/trajectories/`.
+## How Capture Works
 
-The built-in Codex watcher (rollout file tailing) serves as a fallback for
-sessions started before the plugin was installed or when hooks cannot notify
-the local server. Codex hooks therefore use the `trajectory capture-hook`
-command path instead of direct `curl` or raw JSONL append: the server merge path
-owns checkpoint reconciliation, duplicate suppression, rollout cursor
-advancement, and token/model enrichment.
-Boundary mode drains every complete rollout record and commits its source
-cursor only after canonical persistence succeeds. Setup and update retain all
-eleven hooks while an old, different-home, or ambiguous capture owner is running;
-updated-owner startup self-repairs to paired boundary mode after proving same-home support.
+Codex capture uses two sources:
 
-`codex exec --ephemeral` writes no rollout, so default boundary mode cannot
-derive its per-tool detail. Disable `codex_boundary_capture` before a new
-ephemeral run when full direct-hook fidelity is required. Manual plugin installs
-do not receive setup-managed per-hook state and therefore use the full eleven-hook
-compatibility surface.
+- **Hooks.** Four lifecycle and turn hooks, plus the paired Bash-only tool
+  hooks, mark the order of events. The tool hooks take Git snapshots right
+  before and after each command.
+- **Rollout files.** Codex writes rollout JSONL under `~/.codex/sessions/`.
+  It supplies tool phases, assistant messages, reasoning, permissions,
+  compaction, subagent activity, model and token metadata, and
+  `shutdown_complete`.
+
+`trajectory serve` merges the two sources. It then writes normalized session
+JSONL under `~/.trajectory/trajectories/`.
+
+The `SessionEnd` hook and the watcher's `shutdown_complete` record both lead
+to the same session-end step. That step runs once the session is quiet.
+
+Codex gives each hook at most three seconds. Every hook leaves spare time
+inside that limit. Slow fallback work or automatic-update work continues in a
+detached process after the hook returns. Trajectory can still repair the end
+of a session from `shutdown_complete`. It retries a pending automatic update
+later.
+
+The built-in Codex watcher tails rollout files. It is a fallback in two cases:
+
+- the session started before you installed the plugin
+- hooks cannot notify the local server
+
+Codex hooks use the `trajectory capture-hook` command. They do not call `curl`
+directly or append raw JSONL. The server merge step handles checkpoint
+reconciliation, duplicate suppression, the rollout read position, and token
+and model enrichment.
+
+Boundary mode reads every complete rollout record. It saves its read position
+only after Trajectory has stored the record.
+
+Setup and update keep all eleven hooks while one of these capture servers is
+running:
+
+- an older server
+- a server that uses a different Trajectory home
+- a server that Trajectory cannot identify
+
+An updated server switches to paired boundary mode by itself. It does this
+after it confirms that it supports the same home.
+
+`codex exec --ephemeral` writes no rollout, so boundary mode cannot get its
+per-tool detail. Manual plugin installs do not get per-hook state from setup.
+They use the full set of eleven hooks.
 
 For CLI usage, run `trajectory user-guide` or see `docs/USER-GUIDE.md`.
 
 ## Prerequisites
 
-Install the trajectory binary before using this plugin:
+Install the Trajectory binary before you use this plugin:
 
 ```bash
 bash install.sh
 ```
 
-Or from the GitHub repo:
+Or install it from the GitHub repository:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main/install.sh)
@@ -52,19 +88,31 @@ bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main
 
 ## Install
 
-Recommended setup-managed install:
+Use setup to install the plugin:
 
 ```bash
 trajectory setup --clients codex
 ```
 
-Setup writes a local Codex marketplace under `~/.trajectory/codex-marketplace`, registers that local path, and makes the trajectory MCP tools available in Codex sessions.
+Setup writes a local Codex marketplace under `~/.trajectory/codex-marketplace`
+and registers that local path. It also makes the Trajectory MCP tools available
+in Codex sessions.
 
-Manual local marketplace installs remain supported for development and recovery. Use a stable local marketplace path with the same shape as setup's `~/.trajectory/codex-marketplace`, and keep the plugin hooks, bundled `.mcp.json`, skills, and Codex MCP registration pointed at the installed trajectory binary:
+### Manual Install
+
+You can still install from a local marketplace for development and recovery.
+
+1. Use a stable local marketplace path with the same layout as
+   `~/.trajectory/codex-marketplace`.
+2. Point the plugin hooks, the bundled `.mcp.json`, the skills, and the Codex
+   MCP registration at the installed Trajectory binary.
 
 ```bash
 codex plugin marketplace add /path/to/local/codex-marketplace
 codex mcp add trajectory -- /absolute/path/to/trajectory mcp
 ```
 
-Remote GitHub marketplace registrations can still work, but setup's local marketplace is preferred for regular installs because Codex refreshes git marketplaces during startup, which can add network or GitHub latency to the first screen.
+A remote GitHub marketplace registration can still work. For regular installs,
+use the local marketplace from setup instead. Codex refreshes git marketplaces
+at startup. That refresh can add network or GitHub delay before the first
+screen appears.

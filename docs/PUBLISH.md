@@ -13,8 +13,8 @@ them, run `trajectory user-guide repo-markers`.
 
 For a simple setup with one destination, you do not need this file. Use the
 `export.*` fields in `~/.trajectory/config.yaml` instead. Do not add `type`
-under `export:`. Only destination objects in managed config or repo overlays
-take a `type` field.
+under `export:`. Only destination objects take a `type` field. To send to an
+OpenTelemetry collector, see `trajectory user-guide otlp`.
 
 ## Quick start
 
@@ -54,6 +54,10 @@ take a `type` field.
 
    The command checks the schema, the trust policy, the credentials, and the
    marker settings. It prints each destination and any authority decisions.
+
+An entry with no `type` changes the trusted destination it names. It does not
+change that destination's type, site, or endpoint. If no trusted destination has
+that name, validation reports `project_trace_destination_rejected`.
 
 ## What this file controls
 
@@ -98,12 +102,27 @@ publish_trust:
 ```
 
 - `allowed_origins` lists the git origins whose publish files Trajectory
-  reads.
-- `require_committed: true` ignores publish files that git does not track.
-  This blocks local changes that nobody committed.
+  reads. Trajectory compares them with the `origin` URL as the repository's
+  Git config writes it. A `url.<base>.insteadOf` rule in your own Git config
+  still applies, so a shorthand of yours such as `gh:Org/repo` matches. A
+  rule in the repository's config does not.
+- `require_committed: true` loads a publish file only when the last commit
+  holds it with the content your working copy has. This blocks local changes
+  that nobody committed. Trajectory ignores a file that is only staged, a
+  committed file with an edit, and a file reached through a symbolic link.
+  After you commit the file, a running session loads it at its next turn.
 - `allowed_sites` lists the Datadog sites that repos may use. If it is empty,
   Trajectory accepts only its known public Datadog sites. A list that you set
   replaces that default.
+
+Trajectory checks a publish file when a session starts and again when the
+file changes. A file it ignores stays ignored for the whole session. It adds
+no destination, and Trajectory sends it no metrics.
+
+Trajectory also ignores a publish file in a repository nested inside the one a
+session started in, including a submodule, whatever origin that repository
+reports. A linked worktree of the same repository is not nested. It writes the
+reason to its log.
 
 A trusted repo can narrow approved trace destinations. It can also add
 metrics-only destinations on approved sites.
@@ -112,6 +131,8 @@ metrics-only destinations on approved sites.
 
 Destination `type` names the backend or transport. It appears only inside a
 `destinations:` or `required_destinations:` list. There is no `export.type`.
+The `destinations:` list in `~/.trajectory/config.yaml` takes only `otlp`.
+Managed `required_destinations` and repo overlays take the others.
 
 | Type | Use it for |
 |---|---|
@@ -137,7 +158,9 @@ destinations:
 
 `datadog_agentless` sends trace spans and all metrics through Datadog's
 agentless OTLP intakes. Set `otlp_traces_url` to send trace spans to another
-OTLP endpoint. `intake_url` does not redirect them.
+OTLP endpoint. `intake_url` does not redirect them. See
+[Where stored keys go](#where-stored-keys-go) before you point a destination
+somewhere other than Datadog.
 
 The retired `traces_transport` values `direct`, `dd`, `llmo`, and `llmobs`
 still load. Trajectory logs one warning for each destination that sets one and
@@ -197,10 +220,12 @@ destinations:
 ```
 
 `otlp` sends traces, metrics, and marker event logs to an OpenTelemetry
-collector. Declare it in trusted config. Trajectory adds `/v1/traces`,
-`/v1/metrics`, and `/v1/logs` to the base `endpoint`. So set `endpoint`
-without a signal path. OTLP destinations authenticate at the collector. They
-do not use Datadog API keys.
+collector. Declare it in `~/.trajectory/config.yaml` or in managed
+`required_destinations`. A repo overlay cannot add one. Trajectory adds
+`/v1/traces`, `/v1/metrics`, and `/v1/logs` to the base `endpoint`. So set
+`endpoint` without a signal path. OTLP destinations do not use Datadog API
+keys. For setup steps and token authentication, see
+`trajectory user-guide otlp`.
 
 `trace_shape` sets the shape of the turn traces an `otlp` destination receives:
 
@@ -212,6 +237,17 @@ do not use Datadog API keys.
 Without `trace_shape`, an `otlp` destination uses `datadog` unless the
 `otlp_conventions_trace_shape` feature is on. Datadog destinations always use
 `datadog`. They reject `trace_shape: conventions`.
+
+`compression` sets how an OTLP destination's request bodies are encoded:
+`zstd`, `gzip`, or `none`. It takes effect only while the
+`otlp_zstd_compression` feature is on. While the feature is on, a destination
+without `compression` sends zstd. This applies to Datadog destinations too.
+Datadog's OTLP intake accepts zstd, and so does every OpenTelemetry Collector
+from v0.81.0 on. Set `compression: gzip` or `compression: none` for an OTLP
+receiver that cannot decode zstd. A receiver that refuses the encoding fails
+the send, as any other refused request does. Trajectory does not try again
+uncompressed. While the feature is off, every OTLP request is sent
+uncompressed.
 
 ### OTLP proxy for client telemetry
 
@@ -560,7 +596,7 @@ Custom marker definitions live in these files:
 
 - `~/.trajectory/markers.yaml`.
 - `~/.trajectory/markers.d/*.yaml`.
-- The repo's `.trajectory/markers.yaml`.
+- The repo's `.trajectory/markers.yaml`, for commands you run in the repo.
 
 For the repo workflow, run `trajectory user-guide repo-markers`. For marker
 syntax, run `trajectory user-guide markers`.
@@ -631,7 +667,7 @@ tags:
 
 Trajectory adds these global tags to published Datadog telemetry. That means
 LLM Observability spans and Trajectory DD metric series for base, marker,
-heartbeat, and task metrics.
+and heartbeat metrics.
 
 Trajectory does not add global tags to these places:
 
@@ -738,6 +774,18 @@ my-monorepo/
 Trajectory starts in your working directory and walks up through each parent
 directory. It merges every `publish.trajectory.yaml` it finds. If the new file
 is missing, Trajectory reads `.trajectory/publish.yaml` instead.
+
+At the end of each turn, Trajectory also walks up from each file the agent
+wrote, edited, or named in a shell command. A relative path in a shell command
+starts from the directory the command ran in. When the agent recorded no such
+directory, the path starts from the directory where the session started.
+Trajectory adds each config it finds in a repo with a trusted git origin, up to
+10 configs per session. It adds them only when the session also started in a
+trusted repo.
+
+A config added this way can make a trusted trace destination apply to the
+session. That destination then also receives the session's earlier turns from
+the last 24 hours. An incognito session sends none of its earlier turns.
 
 ## Merge rules
 
@@ -963,9 +1011,53 @@ instead.
 A publish config file that sets `bearer_token_ref` must use `version: 2`, so
 older binaries reject the file instead of sending without authentication.
 Trajectory rejects managed bearer OTLP destinations, because older binaries
-would treat them as collectors without authentication. A repository's
+would treat them as collectors without authentication. An older binary ignores
+the `destinations:` list in `~/.trajectory/config.yaml`, so a token works there.
+A repository's
 `publish.trajectory.yaml` cannot add a bearer destination: project
 destinations are metrics-only, and they cannot set bearer references.
+
+### Where stored keys go
+
+Trajectory checks a destination before it reads a key. A key from the keychain,
+`auth.key_command`, or `api_key_command` goes only to a Datadog site or to a host
+named by the administrator's machine policy. Machine policy means a device
+configuration profile, or a managed directory whose whole path only root can
+write. On macOS, `/Library/Application Support` is group-writable, so a managed
+directory there can reserve key names but cannot name hosts.
+
+- A `site`, `otlp_traces_url`, `otlp_metrics_url`, `logs_url`, or
+  `ai_usage.endpoint` that points anywhere else gets no stored key. Trajectory
+  sends nothing to that destination, logs one warning, and `trajectory doctor`
+  warns. Other destinations keep publishing. Queued data waits until you change
+  the setting.
+- `trajectory setup` and `trajectory destination configure` follow the same
+  rule when they check a key against a site. A stored key is not sent to a site
+  outside Datadog and machine policy. `setup` warns, saves the site you named,
+  and leaves traces and metrics on, so `trajectory doctor` warns until you change
+  the site. Managed setup checks its other destinations. `destination configure --non-interactive` stops and asks for
+  `--api-key-stdin` or `DD_API_KEY`. A key you type or pipe in goes to the site
+  you chose.
+- A stored key never goes over plain HTTP, except to a loopback address that
+  machine policy names. A `http://` URL counts as refused even on a Datadog host.
+- A request that carries a Datadog key follows a redirect only on the same host,
+  or to a host the key could reach directly. A refused redirect counts as a
+  failed send, and the data stays queued.
+- A key you supply through `DD_API_KEY` or `DATADOG_API_KEY` still goes to the
+  destination you configured, because you already hold that key.
+- To send to your own forwarder with a stored secret, use `bearer_token_ref`
+  with a token meant for that forwarder.
+- A `bearer_token_ref` in your `destinations:` list cannot name a Datadog key or
+  a key a managed destination uses. It also cannot name a known secret such as
+  `anthropic_api_key` or `github-token`. Store the collector's token under its
+  own name.
+- `TRAJECTORY_OTLP_METRICS_URL` and `TRAJECTORY_OTLP_TRACES_URL` are for tests.
+  A shipped build ignores them with a warning. They count only for a Datadog
+  host, or for a loopback address when the key comes from `DD_API_KEY` or
+  `DATADOG_API_KEY`.
+- A `DD_SITE` value outside Datadog is ignored, and AI Guard uses the default
+  site. An AI Guard `endpoint` outside Datadog and machine policy is refused,
+  except a loopback address, which gets only keys from the environment.
 
 ## Managed-only outputs
 
@@ -1073,7 +1165,7 @@ Other profile values:
 
 Project configs cannot create event stream destinations, turn on the stream,
 or raise its privacy level. Turning on `event_stream` does not turn on marker
-logs, metrics, segmentation logs, or traces. Each of those keeps its own
+logs, metrics, or traces. Each of those keeps its own
 setting. The stream also does not need the optional `agent-security` runtime
 module.
 
@@ -1117,6 +1209,12 @@ by default and only managed config can turn it on.
 To stop the stream, turn off `operational_logs` in managed config. Trajectory
 then stops queueing new events and stops delivery. It does not delete queued
 events.
+
+Operational logs follow the user's privacy choices. While the user is opted out
+of publishing, only destinations with `incognito_exempt: true` get operational
+events, and Trajectory drops the queued events for every other destination. An
+event that names an incognito session goes only to exempt destinations. See
+[privacy controls](PRIVACY.md).
 
 Operational events contain fixed codes, the endpoint and process identity, an
 optional session ID, and fixed triage fields. They never contain raw error
@@ -1225,19 +1323,15 @@ A project overlay can lower a trusted destination from `full` to `summary` or
 `off`, or from `summary` to `off`. It cannot raise it. Without the key, the
 trusted destination keeps its setting.
 
-### Task metrics
+### Task data
 
-Task segmentation builds a local task model. It can publish task metrics
-when `segmentation.publish_metrics`, `export.metrics`, and the destination
-settings allow them.
+Trajectory no longer publishes task metrics, task traces, or classification
+evaluations. Task classification stays available on demand through
+`trajectory patterns`, which keeps its results on this computer.
 
-Task metrics carry `session_id`, `task_id`, and the start and end turn as
-tags. They also carry a gauge with the task's turn count, counting both ends.
-The free-form task label is never a metric tag.
-
-Trajectory accepts the older `segmentation.publish_traces` and
-`segmentation.task_insights.publish` keys but ignores them. Trajectory no
-longer publishes task traces or classification evaluations.
+The `segmentation.*` settings and a destination's `segmentation:` block were
+removed. A configuration that still carries them loads, and Trajectory ignores
+them.
 
 ## Validation messages
 
@@ -1245,7 +1339,7 @@ Publish validation and logs report authority decisions with these codes:
 
 | Code | Meaning |
 | --- | --- |
-| `project_trace_destination_rejected` | A project tried to add a trace destination |
+| `project_trace_destination_rejected` | A project tried to add a trace destination, or named a destination that does not exist |
 | `project_trace_level_clamped` | A project asked for a higher trace level than allowed |
 | `project_metrics_destination_accepted` | Trajectory added a project metrics-only destination |
 | `project_metrics_authority_clamped` | Trajectory removed endpoint or credential settings from a project metrics destination |
@@ -1286,28 +1380,14 @@ trajectory doctor publish --session <id>
 ```
 
 The command checks local capture and span mapping against the transcript. It
-reports the trace and metric plan from config. It also shows a short metric
-plan from the local SQLite cache:
-
-- The expected metric counts.
-- The outbox row counts.
-- The expected rows that are missing.
-- The `publish metrics audit --session <id> --readback` command to run next.
-
-`doctor publish` does not query Datadog.
+reports the trace and metric plan from config. `doctor publish` does not query
+Datadog.
 
 ### Check metrics on first run
 
 | Command | What it does |
 | --- | --- |
-| `trajectory doctor metrics session --latest` | Rebuilds the metrics of the latest session from local data |
-| `trajectory doctor metrics session --session <id>` | Rebuilds the metrics of one session |
 | `trajectory doctor metrics canary` | Sends a current test metric set and tries to read it back |
-
-`metrics session` reads only local data. It prints metric names, session tag
-filters, and outbox status. It sends nothing to Datadog. For sessions older
-than 24 hours, use it as a local preview only. Datadog intake of historical
-metrics, and reading them back, are not reliable enough for onboarding.
 
 `metrics canary` sends a current test metric set through the normal publish
 path. It tries to read the points back from Datadog when one destination and
@@ -1317,46 +1397,14 @@ The canary always prints a `trajectory.canary_run` tag that finds the points
 it sent. To make the command fail when Datadog does not return the points, add
 `--readback`.
 
-### Audit metric publishing
+### Application key for Datadog reads
 
-To compare local expectations with what Trajectory queued, run:
+Reading metrics back from Datadog needs an application key with the
+`timeseries_query` scope. Store it in the keychain:
 
 ```bash
-trajectory publish metrics audit --latest
+trajectory config set-secret dd_app_key --stdin
 ```
-
-The audit rebuilds the Datadog metric points that Trajectory should publish.
-It uses the local SQLite cache and the publish config. It then matches those
-points with metric outbox rows, if the session-end publish has run. The audit
-sends nothing.
-
-| Option | Effect |
-| --- | --- |
-| `--session <id>` | Audits one session |
-| `--builtin-details` | Shows each built-in metric as `observed`, `not_observed`, or `out_of_scope` |
-| `--readback` | Reads the stable `.completed_count` dashboard metrics back from Datadog |
-| `--readback-all --strict-fidelity` | Checks that every sent metric group reads back with the same values |
-| `--readback-app-key-ref <secret-name>` | Uses a custom keychain secret for the application key |
-| `--destination <name>` | Audits one destination |
-
-The audit leaves `content_length_estimate` token and cost rows out of the
-expected metrics. It warns when the selected sessions contain them.
-
-`--readback` needs a Datadog application key with the `timeseries_query`
-scope. By default, the audit uses `DD_APP_KEY`, `DATADOG_APP_KEY`, or the
-keychain secret `dd_app_key`.
-
-1. Store the application key:
-
-   ```bash
-   trajectory config set-secret dd_app_key --stdin
-   ```
-
-2. Run the audit and read the metrics back from Datadog:
-
-   ```bash
-   trajectory publish metrics audit --session <id> --readback
-   ```
 
 Metric reads from Datadog and `publish sync` look for the application key in
 the same order:
@@ -1367,25 +1415,10 @@ the same order:
 
 Managed keychain mode uses the keychain names as written, in the same order.
 
-The audit prints the outbox counts for the selected session and destination:
-recorded, pending, sent, failed, and dropped. Its `matched` and `missing`
-counts compare the metric payload with its outbox source, including tags and
-value. The audit records timestamps but does not match on them.
-
-Use `--readback-all --strict-fidelity` for CI, canaries, or incident follow-up.
-This mode requires every sent outbox group to read back from Datadog with the
-same values. That includes volatile duration and last-seen metrics.
-
 For delivery health, start with `trajectory publish queue --kind metrics`. For
 full row details, the older `trajectory publish metrics outbox
 <status|drain|prune>` command still works. It will enter deprecation after two
 releases.
-
-Older sessions can have outbox rows from before the current metric catalog
-tags existed. The audit reports these rows as `historical_contract_drift`. It
-still shows the missing and unexpected counts. This state is expected for old
-rows. On a new session or canary, it means the current code does not send the
-required tags.
 
 ### Client-native OTLP metrics
 
@@ -1433,18 +1466,14 @@ Use these commands in order when you roll out or debug publishing:
 |---|---|---|
 | Before you turn on a repo or destination | `trajectory publish validate` | Schema, trust policy, destinations, and credentials |
 | Before a session starts | `trajectory publish status` | Whether traces, metrics, both, or only local capture are on |
-| Diagnosing one session | `trajectory doctor publish --session <session-id>` | Capture, span mapping, trace plan, metric plan, and outbox summary |
-| Previewing first-run metrics | `trajectory doctor metrics session --latest` | Metrics rebuilt from existing local sessions |
-| Checking first-run metrics in Datadog | `trajectory doctor metrics canary` | Sends a test metric and can read it back |
-| Auditing expected metrics | `trajectory publish metrics audit --latest` | Expected points for the latest finished session. It sends nothing. |
-| Auditing built-in metric coverage | `trajectory publish metrics audit --latest --builtin-details` | Built-in metrics against local session data |
-| Reading metrics back from Datadog | `trajectory publish metrics audit --latest --readback` | The stable completed-count metrics in Datadog |
-| Strict metric check | `trajectory publish metrics audit --session <session-id> --destination <name> --readback-all --strict-fidelity` | The outbox against its sources, and each sent group in Datadog |
+| Diagnosing one session | `trajectory doctor publish --session <session-id>` | Capture, span mapping, and the trace and metric plan |
+| Checking first-run metrics in Datadog | `trajectory doctor metrics canary --publish --readback` | Sends a test metric set and reads it back |
+| Metrics waiting to be sent | `trajectory publish queue --kind metrics` | The queued metric rows and their delivery state |
 | Before you rely on marker metrics | `trajectory publish preview` | Marker metrics for the latest matching session |
-| Missing Datadog metrics | `trajectory publish metrics audit --session <session-id> --readback` | The session's completed-count metrics in Datadog |
 | Local mapper or source mismatch | `trajectory session audit --session <session-id> --deep` | Local data against the client's own files |
 | A metric row stuck in `ambiguous_delivery` | `trajectory publish queue resolve --kind metrics --id <row-id> --action abandon --yes` | Drops the row. `--action resend` queues it again. |
 | A trace row in `retry_exhausted` with no held claim | `trajectory publish queue resolve --kind traces --session <session-id> --artifact-kind final_session --action resend --dry-run` | Previews a new retry budget. Run it again with `--yes` to apply. |
+| A missing trace destination that will never return | `trajectory publish queue resolve --kind traces --id <row-id> --action abandon --dry-run` | Previews removal. Replace `--dry-run` with `--yes` to discard the row. |
 | A held final-session claim | The `trajectory publish queue resolve-claim ...` command that `trajectory publish queue claims` prints | Resolves the claim and the matching trace row |
 | Support data | `trajectory flare` or `trajectory flare --privileged --session <session-id>` | Redacted diagnostics. Privileged mode adds raw data for one session. |
 
@@ -1457,11 +1486,11 @@ To confirm data in Datadog, use one of these:
 - The LLM Observability UI.
 - Intake logs.
 - `trajectory patterns markers canary --keep-home`.
-- `trajectory publish metrics audit --readback`.
+- `trajectory doctor metrics canary --publish --readback`.
 
 To fill gaps in your own metrics history, use `trajectory publish history
---yes`. To send one metric family, use `cost publish`, `session publish`, or
-`patterns publish`. For which command sends what, run
+--yes`. To send one metric family, use `cost publish` or `session publish`.
+For which command sends what, run
 `trajectory user-guide backfill`.
 
 ### Log-based metric definitions
@@ -1485,7 +1514,7 @@ trajectory config set-secret dd_app_key --stdin
 
 `publish validate` checks the Datadog API key that publishing uses. It does
 not check the application key for Datadog configuration APIs. To check that
-key, run `publish sync` or `publish metrics audit --readback`.
+key, run `publish sync` or `doctor metrics canary --publish --readback`.
 
 ### Delivery queue
 
@@ -1611,6 +1640,47 @@ For a final-session claim, the decision also handles the matching trace row:
 
 You make one ledger decision. You do not need a separate queue repair.
 
+#### Claims past the intake window
+
+Datadog LLM Observability rejects spans older than 24 hours. After that, a
+resend of a held turn or task trace fails too. Once a held claim is 25 hours
+old, serve completes it on its own when that cannot lose output that was
+never sent:
+
+- A turn or task trace claim for a Datadog destination in your user or
+  managed configuration. The trace can no longer be delivered.
+- A session-end claim whose owner saw every output succeed.
+- A session-end claim for the whole session, once every destination's claim
+  is complete.
+
+Every other claim stays held. A session-end claim for one destination might
+hide an output that was never sent. A replay cannot safely tell what was sent
+once its old records are gone, so you decide. Claims for a collector, a
+project destination, or a destination you removed also stay held. So do trace
+claims for a Datadog destination whose traces `otlp_traces_url`,
+`intake_url`, `TRAJECTORY_OTLP_TRACES_URL` or `TRAJECTORY_INTAKE_URL` sends
+elsewhere, since that receiver may not reject old spans. Event
+stream, module span and AI Usage claims keep the seven-day rule below.
+
+Serve records why a completed claim was held:
+
+- `ambiguous_expired`: the export might have reached the destination.
+- `unrecorded_expired`: the export succeeded, but Trajectory could not save
+  the completion.
+- `orphan_expired`: the owner stopped before it recorded a reason.
+
+`trajectory doctor` lists a command for each claim that needs you:
+
+- A claim under 25 hours old gets its `--action release` command. Run it to
+  resend while the destination still accepts the data. A resend might
+  duplicate data.
+- An older claim that serve keeps gets its `--action complete` command. Use
+  `--action release` instead to resend it.
+
+A trace row can stop on a held output claim, such as a marker-log claim.
+Resolving that claim also rearms the row, so the rest of the session can
+finish.
+
 ### Trace rows from older binaries
 
 An older binary might have written rows as `status=failed
@@ -1638,9 +1708,22 @@ These options choose the rows:
 - `--artifact-kind final_session|turn_trace` narrows a session or `--all`
   selection. Without it, the command acts on both kinds.
 
-`resend` grants a new, limited retry budget. It might send an export twice if
-the destination already accepted it. `abandon` retires the row and might leave
+`resend` grants a new, limited retry budget. It can send an export twice if
+the destination already accepted it. `abandon` retires the row and can leave
 a gap in delivery.
+
+### Missing destinations
+
+Trajectory keeps unsent traces when a recorded destination disappears. Restore
+the same destination to resume delivery. A different address cannot receive
+these saved traces.
+
+If the destination will never return, preview removal with
+`trajectory publish queue resolve --kind traces --id <row-id> --action abandon --dry-run`.
+Replace `--dry-run` with `--yes` to discard the selected row. This loses its
+unsent data and permits source cleanup when no other rows need the file.
+The command leaves active claims unchanged. `resend` does not select pending
+rows for missing destinations.
 
 ### Monitor held claims
 
@@ -1660,6 +1743,11 @@ in buckets:
 - `completion_unrecorded` means the export succeeded but Trajectory could not
   save the local completion.
 - `ambiguous_export` means the request might have reached the destination.
+- `legacy_evidence_missing` means the stored row lacks a transport phase and
+  requires `publish queue resolve-claim`.
+
+A dead-process claim is reclaimed automatically only when its stored process
+identity is exact and its submit phase still says transport did not start.
 
 A running serve process sends zero values for detail groups that disappear
 after a repair. The all and final-session gauge is the health signal across
@@ -1673,15 +1761,18 @@ queries, run `trajectory user-guide metrics`.
 
 ### Ledger retention
 
-Serve runs ledger retention maintenance every day. Each pass
-force-completes old destination claims that are not final-session claims:
+Serve runs ledger retention maintenance every day. Each pass first completes
+up to 5,000 held claims past their intake window, as
+[Claims past the intake window](#claims-past-the-intake-window) describes.
+Then it force-completes old destination claims that are not final-session
+claims:
 
 - It completes up to 1,000,000 claims older than seven days.
 - It works in transactions of 100,000 claims.
 - It keeps duplicate blocking. It never releases a claim for replay.
 - It accepts that some old deliveries might have a gap.
 
-Final-session claims stay open for manual repair after you check the
+Other final-session claims stay open for manual repair after you check the
 destination.
 
 The same daily maintenance deletes a completed row only when two things are
@@ -1695,22 +1786,15 @@ byte limits report pressure, but they do not erase completed identities that
 can still replay.
 
 The local retention snapshot and `/health` report
-`publish_ledger_forced_completed_claims` with `retention_error`,
-`row_limit_ok`, and `byte_limit_ok`. The serve log records the same count. You
+`publish_ledger_forced_completed_claims` and
+`publish_ledger_expired_claims` with `retention_error`, `row_limit_ok`, and
+`byte_limit_ok`. The serve log records the same counts. You
 can still watch ledger pressure through the held-claim detail, completed-row,
 and allocated-byte gauges.
 
 ### Historical metrics
 
-To repair historical metrics, start with the local audit instead of live
-publishing:
-
-```bash
-trajectory publish metrics audit --since YYYY-MM-DD --destination <name>
-```
-
-For the historical audit and the commands that send history, run
-`trajectory user-guide backfill`.
+For the commands that send history, run `trajectory user-guide backfill`.
 
 ## Local-only capture
 

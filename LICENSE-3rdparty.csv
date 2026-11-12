@@ -27,6 +27,7 @@ github.com/fsnotify/fsnotify@v1.10.1,https://github.com/fsnotify/fsnotify,BSD-3-
 github.com/go-jose/go-jose/v4@v4.1.3,https://github.com/go-jose/go-jose/v4,Apache-2.0,See upstream license notice
 github.com/go-logr/logr@v1.4.3,https://github.com/go-logr/logr,Apache-2.0,See upstream license notice
 github.com/go-logr/stdr@v1.2.2,https://github.com/go-logr/stdr,Apache-2.0,See upstream license notice
+github.com/goccy/go-json@v0.11.2,https://github.com/goccy/go-json,MIT,See upstream license notice
 github.com/godbus/dbus/v5@v5.2.2,https://github.com/godbus/dbus/v5,BSD-2-Clause,See upstream license notice
 github.com/golang/glog@v1.2.5,https://github.com/golang/glog,Apache-2.0,See upstream license notice
 github.com/golang/protobuf@v1.5.4,https://github.com/golang/protobuf,BSD-3-Clause,See upstream license notice

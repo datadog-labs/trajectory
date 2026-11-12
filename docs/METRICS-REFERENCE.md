@@ -18,10 +18,10 @@ correct.
 
 These pages list only the metrics to use. They leave out deprecated, legacy,
 internal, and debug metrics. To see every built-in metric that your installed
-version sends, run:
+version sends, run this command and read its `catalog` field:
 
 ```bash
-trajectory publish metrics audit --latest --builtin-details
+trajectory publish metrics canary --include-diagnostics --json
 ```
 
 ## Related Guides
@@ -47,7 +47,7 @@ every session-derived gauge and count that Trajectory can replay safely. The
 legacy `metric_slices` setting cannot remove metrics from this list.
 
 Reconciliation does not replay distribution, operational, or live-only
-metrics. To see the default list, the task-gated list, and the exclusions, run
+metrics. To see the default list and the exclusions, run
 `trajectory user-guide backfill`.
 
 ## Reference Sections
@@ -64,7 +64,6 @@ Each metric family has its own page:
 - [Automated Oversight Metrics](metrics/automated-oversight-metrics.md)
 - [Per-Session Metrics](metrics/per-session-metrics.md)
 - [Agent Security Metrics](metrics/agent-security-metrics.md)
-- [Task Metrics](metrics/task-metrics.md)
 - [Built-In Marker Metrics](metrics/built-in-marker-metrics.md)
 - [Publish and Serve Health Metrics](metrics/publish-and-serve-health-metrics.md)
 - [Claude Native OTLP Metrics](metrics/claude-native-otlp-metrics.md)
