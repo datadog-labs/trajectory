@@ -572,6 +572,8 @@
     {"canonical": "gemini-1.5-pro", "ids": ["gemini-1-5-pro"]},
     {"canonical": "gemini-1.5-flash", "ids": ["gemini-1-5-flash"]},
     {"canonical": "codex-mini", "ids": ["gpt-5.1-codex-mini"]},
+    {"canonical": "claude-fable-5-2", "ids": ["fable-5.2"]},
+    {"canonical": "claude-mythos-5-2", "ids": ["mythos-5.2"]},
     {"canonical": "claude-fable-5-1", "ids": ["fable-5.1"]},
     {"canonical": "claude-mythos-5-1", "ids": ["mythos-5.1"]},
     {"canonical": "claude-opus-5-5", "ids": ["opus-5.5"]},

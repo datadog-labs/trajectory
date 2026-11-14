@@ -3,7 +3,7 @@
   "source": {
     "repository": "DataDog/trajectory",
     "path": "pricing/engine/ratecards",
-    "commit": "da5af59cda1e035d5f8faf92b2459d01d83049ec"
+    "commit": "71a9edd923e89d3f7025e7cf734e544150e76b0c"
   },
   "spec_version": "0.1.0",
   "files": [
@@ -21,7 +21,7 @@
     },
     {
       "path": "aliases.json",
-      "sha256": "b98a3051f77d4b05a9d4e2d3b241a65ad0a4e010df8a9dcd46e4d8c6059a77b9"
+      "sha256": "dddb4baeb7d305f69c8ab55956bb4103d72a9d029924e4d6f66f036c29ad4eeb"
     },
     {
       "path": "cards/anthropic.2026-02-07.card.json",
@@ -62,6 +62,10 @@
     {
       "path": "cards/anthropic.2026-10-07.card.json",
       "sha256": "fe0302b0e3e87b7543331da518a9ec5e81ee3a4786e3417d1743b0319b380ad4"
+    },
+    {
+      "path": "cards/anthropic.2026-11-09.card.json",
+      "sha256": "8221d2ae0a132a4841a4938f2876e961dcce6557298d017910ebc676c9a5f7e5"
     },
     {
       "path": "cards/anthropic.initial.card.json",
