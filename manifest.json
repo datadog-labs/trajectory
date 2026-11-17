@@ -3,7 +3,7 @@
   "source": {
     "repository": "DataDog/trajectory",
     "path": "pricing/engine/ratecards",
-    "commit": "6052d266c0943e92c2ad38bfd67945584fc09b10"
+    "commit": "e719f10b9cfaa775c0aaf31e750afaa86ae4d76f"
   },
   "spec_version": "0.1.0",
   "files": [
@@ -198,6 +198,14 @@
     {
       "path": "cards/openai.2026-10-30.card.json",
       "sha256": "620934a2f1f0a145abce5695f43762415de5ba3bb401f33c05f2cddd13ef3953"
+    },
+    {
+      "path": "cards/openai.2026-11-17.card.json",
+      "sha256": "01f0665e4954edae6ef58bdf8d18dacf78af6d389224674b46f68d8395112a11"
+    },
+    {
+      "path": "cards/openai.2027-03-01.card.json",
+      "sha256": "4aa7a6b2c511067e499c8f4a273b8e8534974a949e3765b4529ffcc4319e3c21"
     },
     {
       "path": "cards/openai.initial.card.json",
