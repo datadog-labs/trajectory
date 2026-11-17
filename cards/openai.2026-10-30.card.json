@@ -64,7 +64,7 @@
       "provider": {
         "kind": "provider_page",
         "name": "OpenAI's pricing page",
-        "retrieved_at": "2026-10-29T04:18:37Z",
+        "retrieved_at": "2026-11-05T12:00:00Z",
         "url": "https://developers.openai.com/api/docs/pricing"
       },
       "provider-codex-mini-latest": {
@@ -1940,6 +1940,14 @@
             "litellm-2026-11-05",
             "provider"
           ],
+          "decision": {
+            "decided_on": "2026-11-05",
+            "evidence": "Web search | Web search (all models) | $10.00 / 1k calls + Search content tokens billed at model rates.",
+            "reason": "Only one source states this price, so OpenAI's own pricing page decides it (rule R1).",
+            "rule": "R1",
+            "source": "provider",
+            "why": "single_source"
+          },
           "id": "web_search",
           "if_absent": "skip",
           "per": "1",
