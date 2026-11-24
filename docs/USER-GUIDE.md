@@ -97,7 +97,7 @@ To set up every client that setup manages, run
 
 ### Client setup commands
 
-Run the commands in a row in order. Preview clients need their feature flag
+Run the commands in a row in order. Preview clients need their setting
 before setup. The [supported-client matrix](SUPPORTED-CLIENTS.md) is the full
 list.
 
@@ -113,37 +113,37 @@ list.
 | Continue CLI (command shim) | `trajectory setup --clients continue --install-client-shims` |
 | Mistral Vibe (command shim) | `trajectory setup --clients mistral-vibe --install-client-shims` |
 | Codebuff (command shim) | `trajectory setup --clients codebuff --install-client-shims` |
-| Grok Build | `trajectory config features enable grok_build_instrumentation`, then `trajectory setup --clients grok` |
+| Grok Build | `trajectory config set clients.grok.enabled true`, then `trajectory setup --clients grok` |
 | Kilo Code | `trajectory setup --clients kilo` |
 | Kiro CLI | `trajectory setup --clients kiro` |
 | Factory Droid (beta, live capture) | `trajectory setup --clients droid` |
-| Devin CLI (preview) | `trajectory config features enable devin_cli_instrumentation`, then `trajectory setup --clients devin` |
-| Zed (passive-history preview) | `trajectory config features enable zed_passive_history`, then `trajectory setup --clients zed` |
-| Qoder CLI (preview) | `trajectory config features enable qoder_cli_instrumentation`, then `trajectory setup --clients qoder` |
-| ZCode (preview) | `trajectory config features enable zcode_instrumentation`, then `trajectory setup --clients zcode` |
-| CommandCode (preview) | `trajectory config features enable commandcode_instrumentation`, then `trajectory setup --clients commandcode` |
-| Kimi Code CLI (preview) | `trajectory config features enable kimi_cli_instrumentation`, then `trajectory setup --clients kimi` |
-| gptme (preview) | `trajectory config features enable gptme_instrumentation`, then `trajectory setup --clients gptme` |
-| CodeWhale (preview) | `trajectory config features enable codewhale_instrumentation`, then `trajectory setup --clients codewhale` |
-| ForgeCode (passive-history preview) | `trajectory config features enable forgecode_instrumentation`, then `trajectory setup --clients forgecode` |
-| VS Code Copilot (fixture preview) | `trajectory config features enable vscode_copilot_instrumentation`, then `trajectory setup --clients vscode-copilot` |
-| Windsurf (preview) | `trajectory config features enable windsurf_instrumentation`, then `trajectory setup --clients windsurf` |
+| Devin CLI (preview) | `trajectory config set clients.devin.enabled true`, then `trajectory setup --clients devin` |
+| Zed (passive-history preview) | `trajectory config set clients.zed.enabled true`, then `trajectory setup --clients zed` |
+| Qoder CLI (preview) | `trajectory config set clients.qoder.enabled true`, then `trajectory setup --clients qoder` |
+| ZCode (preview) | `trajectory config set clients.zcode.enabled true`, then `trajectory setup --clients zcode` |
+| CommandCode (preview) | `trajectory config set clients.commandcode.enabled true`, then `trajectory setup --clients commandcode` |
+| Kimi Code CLI (preview) | `trajectory config set clients.kimi.enabled true`, then `trajectory setup --clients kimi` |
+| gptme (preview) | `trajectory config set clients.gptme.enabled true`, then `trajectory setup --clients gptme` |
+| CodeWhale (preview) | `trajectory config set clients.codewhale.enabled true`, then `trajectory setup --clients codewhale` |
+| ForgeCode (passive-history preview) | `trajectory config set clients.forgecode.enabled true`, then `trajectory setup --clients forgecode` |
+| VS Code Copilot (fixture preview) | `trajectory config set clients.vscode-copilot.enabled true`, then `trajectory setup --clients vscode-copilot` |
+| Windsurf (preview) | `trajectory config set clients.windsurf.enabled true`, then `trajectory setup --clients windsurf` |
 
 ### Turn on saved-history sync for a client
 
 Some clients save their own session history on disk. Trajectory can read that
 history to fill gaps in live capture. For Hermes Agent, Amp Code, OpenCode,
 Kilo Code, and Qwen Code, it does this whenever the client is installed, with
-no feature flag. Most other clients have a feature flag for it, and its name
-ends in `_durable_history`.
+no setting. Most other clients have a `clients.<client>.history_sync` setting
+for it, which is off by default. Codex and Goose read it by default.
 
 | Client | Commands | What it does |
 | --- | --- | --- |
-| Aider | `trajectory config features enable aider_durable_history`, then `trajectory session import aider` | Imports Aider history from the folders you configure |
+| Aider | `trajectory config set clients.aider.history_sync true`, then `trajectory session import aider` | Imports Aider history from the folders you configure |
 | Kilo Code | `trajectory session import kilo` | Imports Kilo SQLite and JSON history |
 | ZCode | `trajectory session import zcode` | Repairs ZCode history that is already on disk |
-| Kiro CLI | `trajectory config features enable kiro_durable_history`, then `trajectory config reload --yes` | Syncs Kiro JSONL and SQLite history in passes of limited size |
-| cursor-agent CLI | `trajectory config features enable cursor_agent_durable_history`, then `trajectory config reload --yes` | Syncs cursor-agent transcripts in passes of limited size |
+| Kiro CLI | `trajectory config set clients.kiro.history_sync true`, then `trajectory config reload --yes` | Syncs Kiro JSONL and SQLite history in passes of limited size |
+| cursor-agent CLI | `trajectory config set clients.cursor.history_sync true`, then `trajectory config reload --yes` | Syncs cursor-agent transcripts in passes of limited size |
 
 Run `trajectory config reload` without `--yes` first to preview the change.
 
@@ -303,9 +303,8 @@ setup:
 ```
 
 `allow_clients` and `deny_clients` still accept `gemini`, so config from an
-older release still loads. The entry has no effect. Gemini CLI is
-[retired](SUPPORTED-CLIENTS.md#gemini-cli-retired), and Trajectory never
-detects or installs it.
+older release still loads. The entry has no effect. Gemini CLI is retired,
+and Trajectory never detects or installs it.
 
 ### Forward finished sessions to a local server
 
@@ -617,9 +616,9 @@ to inspect local data:
 - the `get_session_trajectory`, `trajectory_schema`, and `trajectory_query`
   MCP tools
 
-Pi registers these tools as native extension tools. MCP clients that setup
-manages get the same tools through `trajectory mcp`. Ask for the schema first,
-then run queries. For how to do this and how to use `TRAJECTORY_CACHE_DB`, run
+MCP clients that setup manages get these tools through `trajectory mcp`. The
+Pi extension does not register them. Ask for the schema first, then run
+queries. For how to do this and how to use `TRAJECTORY_CACHE_DB`, run
 `trajectory user-guide query`.
 
 ### Use the MCP tools
@@ -728,7 +727,7 @@ If Codex turns repeat or LLM Obs spans look wrong, look for these signals:
 | Signal | Type | Meaning |
 | --- | --- | --- |
 | `codex.session_id_change_ignored` | Serve diagnostic event | A replayed Codex rollout tried to change `session_id` after the first `session_start`. Trajectory kept the original child session ID and ignored the parent context. |
-| `trajectory.instrumentation.capture.gap` with `client_source:codex`, `signal:jsonl`, and `reason:duplicate_event` | Instrumentation-health metric | Codex JSONL had more than one `session_start` for the same session. |
+| `trajectory.instrumentation.capture.gap` with `trajectory.client_source:codex`, `signal:jsonl`, and `reason:duplicate_event` | Instrumentation-health metric | Codex JSONL had more than one `session_start` for the same session. |
 | `incompatible duplicate span identity` | Publish error | Two spans in one export batch had the same `(trace_id, span_id)` but different content. Trajectory stopped that export. |
 | `skipping incomplete turn ... (incremental)` | Publish log | A turn had no `turn_end` yet, so Trajectory waited. It did not publish part of a turn. |
 
@@ -764,11 +763,9 @@ share. The ZIP contains doctor output, process state, metric diagnostics,
 config files, and managed `config.defaults.yaml`. It also has cohort overlay
 files, the end of each log, and version and pricing details.
 On a managed installation, the ZIP also has the records of managed client
-setup, the client refresh after an update, and the last background reconcile.
-On macOS, it adds the status of the managed reconcile LaunchAgent. The status
-says whether the LaunchAgent is loaded, how often it ran, and its last exit
-code. The ZIP's `manifest.json` lists under `absent` each of these
-records that the computer does not have.
+setup, the client refresh after an update, and the last user reconcile. The
+ZIP's `manifest.json` lists under `absent` each of these records that the
+computer does not have.
 
 If support needs the raw data for one session, run
 `trajectory flare --privileged --session <id>`. Review that ZIP before you
@@ -925,7 +922,9 @@ For example, this happens with `metrics:false` and `traces:off`.
 Neither command checks that Datadog accepted the data. Neither one reads data
 back from Datadog.
 
-To see what Trajectory would publish, run `trajectory publish preview`.
+`trajectory publish preview` prints "Nothing to preview" and exits with
+status 0. It has nothing to show since the marker heartbeat metrics were
+retired.
 
 ### Check that metrics reach Datadog
 
@@ -980,19 +979,12 @@ To see the metric rows Trajectory queued and their delivery state, run:
 trajectory publish queue --kind metrics
 ```
 
-### Create log-based metrics
+### Log-based metrics
 
-`trajectory publish sync` creates log-based metric definitions through the
-Datadog Logs configuration API. It needs the Datadog API key that you use for
-publishing and a Datadog application key.
-
-`publish validate` can accept your API key while `publish sync` still fails.
-This happens if `DD_APP_KEY` or `dd_app_key` is missing, or the key cannot
-write log configuration. To save the application key, run:
-
-```bash
-trajectory config set-secret dd_app_key --stdin
-```
+`trajectory publish sync` no longer creates log-based metric definitions. It
+prints "Nothing to sync", exits with status 0, and needs no application key.
+If `publish sync` ran in your Datadog organization before, its log-based
+metrics stay there until you delete them in Datadog.
 
 ### Run the full metric canary
 
@@ -1018,8 +1010,7 @@ If you configure more than one Datadog metric destination, pick one with
 `--destination <name>`.
 
 For the publish runbook, run `trajectory user-guide publish`. It covers
-validate, status, preview, missing Datadog data, `publish sync`, and publish
-ledger repair.
+validate, status, missing Datadog data, and publish ledger repair.
 
 ### Check marker metrics
 
@@ -1065,7 +1056,7 @@ count, even before the next cleanup runs.
 Read `trajectory user-guide cost-attribution` before you build cost
 dashboards. Ungrouped cost metrics give totals that you can add up. Do not add
 turn, session, and PR views of the same usage. To share the full guide, link to
-[COST-ATTRIBUTION.md](COST-ATTRIBUTION.md).
+[COST-ATTRIBUTION.md](COSTS.md).
 
 Read `trajectory user-guide cost-reconciliation` before you treat a cost total
 as correct. It describes what each cost source covers. The sources are
@@ -1162,7 +1153,7 @@ process ID and the name of the process that started it. `trajectory doctor`,
 `trajectory status`, and the capture server's `/health` report it. For
 example: "capture disabled for every coding agent since 2026-10-07 04:14 PDT
 by `trajectory uninstrument all --for-uninstall` (pid 4242, started by
-install-release)". After 24 hours, doctor and `/health` show it as a warning.
+uninstall.sh)". After 24 hours, doctor and `/health` show it as a warning.
 
 To stop capture for one process tree only, set `TRAJECTORY_DISABLED=1`. This
 environment variable overrides the saved user setting. Unset it before you
@@ -1193,7 +1184,7 @@ variables:
 
 If a flag is in both, it is off. User config cannot turn on a flag that managed
 `config.defaults.yaml` turns off. For rollout rules and the list of flags, see
-[`FEATURE-FLAGS.md`](FEATURE-FLAGS.md).
+[`FEATURE-FLAGS.md`](CONFIGURATION.md).
 
 ### Save credentials
 
@@ -1468,162 +1459,123 @@ Don't use Trajectory on a computer you share with accounts you don't trust.
 
 ### Update to the latest release
 
-To recover from a stuck update and install the latest release in one step,
-run:
+To install the release your ring names, run:
 
 ```bash
-trajectory update --force
+trajectory update
 ```
 
-The command does these steps in order:
+The ring is `deployment.ring`, `stable` by default. The floor is
+`deployment.minimum_version`, the lowest release the computer may run. One run
+does these steps:
 
-1. It quarantines old or inconsistent activation and selector data.
-2. It retries a latest release that was blocked on this computer.
-3. It keeps a checked previous release that works, even when a newer pending
-   release replaced the one in between.
-4. It installs the checked latest release.
-5. It replaces the current user's processes.
+1. It takes the binary update lock, the file `trajectory.update.lock` next to
+   the binary. If another update holds it, the run waits up to 30 seconds. Then
+   it reports `busy`. With the lock, it removes the files an interrupted
+   update left next to the binary: `trajectory.new`, `trajectory.old` and
+   `.aside` copies.
+2. It reads the release list. That is `deployment.update_url` when it is set,
+   then the `RELEASES.json` that org sync fetched, then Datadog's public list.
+   It picks the release the ring names.
+3. If that release is newer than the installed one and not below the floor, it
+   downloads it. It checks the checksum. On macOS it also checks Datadog's
+   Developer ID signature. It writes the release next to the binary and renames
+   it into place.
+4. It stops your capture service and starts it on the new binary. If the
+   service does not answer, or stops answering within 10 seconds, it puts
+   the previous binary back and starts it.
 
-It still follows managed deployment policy and release selection. It still
-checks the signature, checksum, version, readiness, user, and process names.
-To recover only the update state, without stopping processes, run
-`trajectory update --force-recover`.
+When the installed release is current, the run installs nothing. An update
+can stop after it places a release and before it restarts the capture service.
+Then the service still runs another release, so the run restarts it on the
+installed binary. It reports reason `serve_other_release`. A service that runs
+a development build stays as it is.
 
-Caution: `trajectory update --force` stops processes without the usual
-ownership checks. The OS picks the current user's processes named
-`trajectory`, `trajectory.real` and `trajectory-*`. The command then skips the checks for
-coordinator ownership, generation, process identity, heartbeat, active
-sessions, and the outbox. It sends TERM, then KILL after a time limit. Then it
-restarts the target.
+Update never installs a release older than the installed one. It keeps no
+record between runs. A run that fails leaves the binary as it was, and the next
+run starts from the beginning.
 
-The only process it does not stop is the one that runs the update. A top-level
-update first runs the installed target binary, and then it replaces processes.
-So no older Trajectory supervisor has to survive the sweep.
+The command takes only these flags:
 
-`--force` still checks artifact integrity, version, managed deployment, and
-target readiness. It never targets another user's processes. Other `--force`
-commands keep their own, smaller set of skipped checks, as their docs describe.
-`trajectory serve ensure` never forces a restart. A request to start the server
-does not allow Trajectory to stop the running one.
+| Flag | Effect |
+| --- | --- |
+| `--source jamf\|agent\|timer\|manual\|floor` | What started the run, `manual` by default. It tags the result and changes nothing else. |
+| `--force` | Installs the ring's release even when it is the installed version, never an older one. First stops your Trajectory processes that hold the update lock. |
+| `--dry-run` | Reads and compares, and changes nothing. |
+| `--format text\|json` | Prints the result as one line, or as one JSON object. |
 
-### Retry or force a process handoff
+The JSON object has these fields: `command` (`update`), `source`, `outcome`,
+`reason`, `from_version`, `to_version`, `ring`, `floor`, `ring_version` and
+`duration_ms`. A version is `none` when it is unknown or not set.
+
+| Outcome | Exit code | Meaning |
+| --- | --- | --- |
+| `updated` | 0 | A newer release is in place, and the capture service answers on it. |
+| `reinstalled` | 0 | With `--force`, the ring's release is in place again, and the service answers. |
+| `current` | 0 | The installed release is the ring's release or newer. |
+| `ring_below_floor` | 0 | The ring's release is below the floor, so nothing was installed. |
+| `busy` | 0 | Another update held the lock for 30 seconds. That update does the work. |
+| `rolled_back` | 1 | The service did not answer on the new release, or stopped answering within 10 seconds. The previous binary is back and running. |
+| `failed` | 1 | A step failed and the binary is as it was. `reason` names the step. |
+
+A usage error exits 2. To follow updates across a fleet, use
+`trajectory.ops.update.state`, as
+[Update state](metrics/instrumentation-health-metrics.md#update-state)
+describes.
+
+### Restart the capture service on the installed release
+
+`trajectory update` restarts the capture service itself when it places a
+release. To restart it on the installed binary without an update, run one of
+these:
 
 | Command | Effect |
 | --- | --- |
-| `trajectory update repair` | Shows why an update handoff is waiting. It changes nothing. |
-| `trajectory update repair --apply --yes` | Retries the coordinated handoff to the installed version |
-| `trajectory update repair --apply --yes --force` | Replaces the current user's Trajectory processes now |
-| `trajectory serve replace --force` | Does the same forced replacement in one command and waits for a ready server |
-| `trajectory serve retire-stale --yes --force` | Stops a stale owner process even when sessions are active |
-| `trajectory update repair --apply --yes --reload-config` | Also reloads managed config and credentials, and checks required destinations |
-| `trajectory update repair --apply --yes --allow-publish-interruption` | Hands over before the new process can confirm its Datadog credentials |
+| `trajectory update repair` | Shows what a confirmed run would do. It changes nothing. |
+| `trajectory update repair --apply --yes` | Leaves a capture service that already runs the installed release. Any other is stopped and started from the installed binary. |
+| `trajectory update repair --apply --yes --force` | Stops every Trajectory process of your user, then starts the installed release. |
+| `trajectory serve replace --force` | Does the same forced restart in one command and waits for a ready server. |
+| `trajectory serve retire-stale --yes --force` | Stops a stale owner process even when sessions are active. |
+| `trajectory update repair --apply --yes --reload-config` | Also reloads managed config and credentials, and checks the required destinations. |
 
-The forced repair does not stop when ownership or identity is unclear. Before
-it signals any process, it marks the installed binary as pending. An old
-probation selector, which marks a release that is still on trial, then cannot
-make the replacement exit. `trajectory serve replace --force` finds the
-version, replaces the processes, and checks that a ready owner exists.
-
-`--allow-publish-interruption` is for a handoff that an SDK or embedding host
-starts on purpose. For example, the new credentials may arrive separately. The
-command still checks the owner, active sessions, the outbox, and whether the
-new process is ready. It lets the new process start before it can confirm its
-Datadog publish credentials. Automatic updates never use this mode.
+`--force` stops processes without ownership checks. It sends TERM, then KILL,
+to every process of your user named `trajectory` or `trajectory-*`, except the
+command itself. Then it starts and checks the installed release. The new
+process catches up from the session history on disk and the JSONL files. You
+do not need to end active agent sessions.
 
 `--reload-config` is for a managed recovery that must also apply the current
 org config and new keychain credentials. The command targets the ready owner.
 It fails unless every managed required destination in scope is active in a
-fresh health check. You must run it by hand. Normal and automatic updates keep
-their own handoff behavior.
+fresh health check.
 
-### How automatic updates hand over
+### Updates from older releases
 
-After a binary update, the old process keeps running. It waits until a
-registered client calls a hook. That hook call then takes over the pending
-update. It can stop old Trajectory processes that are detached or orphaned,
-without the usual ownership checks.
+An older release that updates itself to this one runs commands on the new
+binary: `trajectory update reconcile`, `trajectory update converge` or
+`trajectory update runtime-assets-reconcile`. These commands are hidden, and
+they accept the flags older releases pass. Each one leaves a capture service
+that already runs the installed release, and stops and starts any other from
+the installed binary. With `TRAJECTORY_UPDATE_RECONCILE_PROCESSES=false`,
+`update runtime-assets-reconcile` leaves the capture service as it is.
 
-The hook call works like this:
-
-1. It delivers the hook event that started it.
-2. It checks each process again before it signals it.
-3. It starts the installed target.
-4. It confirms that one serve owner, and only one, is ready.
-
-Trajectory matches hooks that a shell wraps to the client process that
-started them. While an activation is pending, a healthy Codex relay can also
-start this handoff. The handoff does not wait for coordinator identity, such
-as `process_identity_reused`.
-
-After the restart, startup catch-up and backfill rebuild any missing data.
-They read the client's saved history, Trajectory's session JSONL, delivery
-receipts, and publish outboxes. You do not need to end active agent sessions.
-
-A newer release can arrive while an earlier one still waits for activation.
-The updater then checks the installed pending binary and both saved release
-images before it goes on. It keeps the previous release that is known to work.
-If activation or selector data is corrupt, the updater first checks the
-installed or downloaded binary. Then it quarantines the bad sidecar file and
-rebuilds the update. The updater never interrupts another process that is
-writing the binary. It stops and tries again at the next maintenance run.
-
-A serve process can start normally and find a pending probation selector for
-another version. It then keeps running as a normal capture owner. It does not
-claim or promote that version, which stays pending for a later activation.
-
-A hook call comes only while a coding agent uses Trajectory. When no session
-has used the old process in the last few minutes, Trajectory waits 90 seconds
-for a hook. Then the update hands over by itself. It checks the new version
-and stops only the old process. It starts the new version and confirms that
-one serve owner is ready. When a session uses the old process, the update waits
-for that session's next hook instead.
-
-`trajectory update` prints `installed v<version>` when the new binary is in
-place. It prints `updated to v<version>` only when no older Trajectory service
-still runs. Otherwise it says that the service still uses the previous version.
-
-### Turn off automatic process replacement
-
-To turn off automatic process replacement completely, set
-`TRAJECTORY_UPDATE_RECONCILE_PROCESSES=false`.
-
-To go back to automatic recovery with the usual ownership checks, turn off the
-`automatic_nuclear_update_replacement` feature. You can turn it off in user
-config, managed config, or `TRAJECTORY_DISABLE_FEATURES`. A `--force` command
-always does the full replacement.
+The `automatic_nuclear_update_replacement` feature is retired. Updates never
+wait for a coding-agent hook, and `trajectory doctor` reports a managed setting
+that names the feature.
 
 ### Update managed installs
 
-After a managed installer puts a binary in place, it runs this command:
+A managed installer puts a release in place and runs `trajectory install`,
+which updates the computer when the installed release is below
+`deployment.minimum_version`. Older installer kits also run
+`trajectory update converge --yes --target-version VERSION`, which restarts the
+capture service on the installed binary when it runs another release.
 
-```bash
-trajectory update converge --yes --force --target-version VERSION --source managed-post-install
-```
-
-If that version is older than the release the runtime selected, the command
-prints a warning and still switches to it.
-
-Run `update converge` from the installed binary, `$TRAJECTORY_HOME/bin/trajectory`,
-which is `~/.trajectory/bin/trajectory` by default. Run from another copy,
-such as a downloaded binary, it changes nothing and prints the command to run
-from the installed binary.
-
-To preview what convergence would do, run
-`trajectory update converge --dry-run`. With `--target-version`, the preview
-includes `"downgrade": true` when the version is older.
-
-Managed org config can also publish a `deployment.json` generation that never
-changes after it is published. A generation names a target version to move
-forward to, or a controlled rollback. While that managed policy is active,
-release-ring checks fail closed. `trajectory update` then tells you to run
-`trajectory update converge --yes`.
-
-If controlled downgrade is on, generations that Trajectory accepted before can
-fix a binary that drifted to another version, in either direction. A new older
-target still needs both of these:
-
-- a new `rollback` generation
-- the separately managed `controlled_binary_downgrade` feature
+Trajectory reads no `deployment.json`. The release ring and
+`deployment.minimum_version` choose the release, and an update never moves a
+computer to an older release. The `controlled_binary_downgrade` feature and a
+`deployment.json` entry in `organization_sync.files` are retired: computers
+accept them, and `trajectory doctor` reports each one.
 
 ### Run the capture server
 
@@ -1648,20 +1600,39 @@ back.
 To stop capturing some clients and keep the rest of Trajectory, see
 [Remove a client](#remove-a-client).
 
-To remove a personal install, run:
+To remove Trajectory from your user account, run:
+
+```bash
+trajectory uninstall
+```
+
+The command stops the capture server, removes every client integration, and
+then removes the binary and the rest of `~/.trajectory`. It keeps only the
+publish records that stop a later install from sending the same history to
+Datadog again. If it cannot stop the capture server or remove an integration,
+it stops and keeps the binary, so you can run it again. A file it cannot
+remove after the binary is gone is named in the result. To see what it would
+remove and keep, add `--dry-run`. To remove the
+kept records too, add `--purge`. For the list of kept files, run
+`trajectory user-guide install`.
+
+The uninstall script also removes a personal install:
 
 ```bash
 bash ~/.trajectory/uninstall.sh
 ```
 
-The script removes every client integration, stops the capture server, and
-then removes the binary. If any client cleanup fails, it stops before it
-removes the binary. To see what it would remove, add `--dry-run`.
-
-The script keeps your sessions in `~/.trajectory/trajectories/` and your
-`~/.trajectory/config.yaml`. To delete them too, add `--remove-data` or
-`--remove-config`. To delete all of `~/.trajectory/` and every known or
-ownership-tracked Trajectory keychain entry, add `--purge`.
+When the installed binary has `trajectory uninstall`, the script runs it, so
+both remove and keep the same files. Without it, the script removes the client
+integrations it can and then the rest of `~/.trajectory`. It keeps the same
+publish records. While capture is off, it removes nothing unless you add
+`--purge`, because only `trajectory uninstall` records that period for a later
+install. If any client cleanup fails, it stops before it removes the binary.
+To see what it would remove, add `--dry-run`. To delete all of
+`~/.trajectory/` and every known or ownership-tracked Trajectory keychain
+entry, add `--purge`. The script also removes your sessions and
+`~/.trajectory/config.yaml`, so `--remove-data` and `--remove-config` no longer
+change anything.
 
 If your organization installed Trajectory through MDM, an administrator
 removes it. See the
@@ -1695,7 +1666,9 @@ repository names. The metrics keep these fields:
 Set the mode to `standard` to send the normal metric tags.
 `export.redacted_model_suffixes` can list model ID suffixes. Models whose IDs
 end in one of them are always model-redacted in metrics and AI Usage events,
-even in `standard` mode. Those metrics carry
+even in `standard` mode. A suffix also matches the end of each part of a
+model ID. Parts are split at `_`, `/`, `:`, `@`, `,` and brackets, never at a
+hyphen. So a context marker sent as `_1m` still matches. Those metrics carry
 `trajectory.model_disclosure:redacted`. With no list, no model is redacted
 this way. `pricing.unbilled_model_suffixes` is a separate list that only
 organization configuration sets: those models cost $0. There is no metric-off mode, because cost and token accounting
@@ -1745,7 +1718,7 @@ Corrections move forward in time.
 | Import Claude Code transcripts and refresh the local UI | `trajectory session import claude && trajectory session refresh-local` |
 | Refresh the local UI from cached sessions | `trajectory session refresh-local` |
 | Import Codex rollouts, newest first, from active and archived folders | `trajectory session import codex --limit 100` |
-| Import GitHub Copilot CLI history | `trajectory config features enable copilot_durable_history`, then `trajectory session import copilot` |
+| Import GitHub Copilot CLI history | `trajectory config set clients.copilot.history_import true`, then `trajectory session import copilot` |
 | Repair one Hermes session from `state.db` | `trajectory session import hermes --session <id>` |
 | Import one OpenCode session from SQLite or saved JSON | `trajectory session import opencode --session <id>` |
 | Import a date range of Claude Code, Codex, Pi, or OpenCode history | `trajectory session import pi --since 2026-07-24 --until 2026-08-23` |
@@ -2044,6 +2017,18 @@ assigned `cohort.yaml` if there is one, then `config.yaml`. If you set both the
 command and the suffix, the command wins when it returns a valid email.
 Otherwise, Trajectory uses the suffix.
 
+Trajectory never adds the suffix to root or to a system or service account,
+because its name is not a person's email. It checks the account that
+`trajectory.user` names. These accounts get no suffix:
+
+- `root`, `nobody`, and any account with user ID 0
+- On Linux, any account with a user ID below 1000
+- On macOS, any account with a user ID below 500 or a name that starts with `_`
+
+Sessions from these accounts have no `trajectory.user_email` unless one of the
+first three sources gives one. `trajectory doctor` reports this case and how to
+set an email.
+
 To set your email, use one of these options:
 
 | Option | Command |
@@ -2076,10 +2061,12 @@ they return valid values.
 
 Use these tags to filter in LLM Obs and Metrics Explorer:
 
-- **LLM Obs**: filter traces by `@trajectory.user:<your-name>`.
-- **Metrics Explorer**: scope dashboards with `trajectory.user:<your-name>`.
-- **Identity**: filter with `github.username:<your-gh-login>` or
-  `git.email:<your-git-email>`, when you configure them or Git config has them.
+- **LLM Obs**: filter traces by `@trajectory.user:<your-name>`, or by
+  `github.username` or `git.email` when you configure them or Git config has
+  them.
+- **Metrics Explorer**: scope dashboards with `trajectory.user:<your-name>` or
+  `trajectory.user_email:<your-email>`. Metrics do not carry `git.email` or
+  `github.username`.
 
 These tags help on shared computers or in CI, where several users create
 sessions.
@@ -2105,7 +2092,7 @@ metrics. It does not add them in these places:
 - local JSONL
 - OTLP exports
 - Claude native OTLP proxy metrics
-- process-level health and privacy counters
+- process-level health counters
 
 Trajectory combines the user and managed `tags:` maps. If both have the same
 key, the value from the managed `config.defaults.yaml` wins.
@@ -2126,18 +2113,34 @@ Trajectory adds repository labels with few distinct values to session metrics:
   value is `unknown`.
 - `owner`: the org or user from the parsed Git remote. For fallback labels,
   the value is `unknown`.
-- `git_remote_host`: the Git remote host from the parsed origin. For a custom
-  SSH alias, Trajectory reads `HostName` from your OpenSSH config. It limits
-  the config size and how deep `Include` lines go. For fallback labels, the
-  value is `unknown`.
 - `trajectory.repo_source`: where the repository labels came from. The value is
-  `git_origin`, `git_origin_unparsed`, `project_dir`, `configured`, or
-  `unknown`.
+  `git_origin`, `git_remote`, `git_origin_unparsed`, `turn_activity`,
+  `project_dir`, `configured`, or `unknown`.
+
+Trajectory can also tag a turn's metrics with the Git repository the turn
+edited, or otherwise worked in, with `trajectory.repo_source:turn_activity`.
+This is off by default while it rolls out. Trajectory finds the repository from
+the files the turn's tools touched and the folders its shell commands ran in. So a
+session started in a folder that holds several repositories tags each turn
+with its own repository. A turn that touched no repository keeps the session's
+labels. Session metrics take the repository of most of the session's turns.
+See [Repository tags](METRICS.md#repository-tags).
+
+Turn metrics leave out `git_remote_host`. Use session metrics to filter on it.
 
 For repository dashboards you can trust, filter on
-`trajectory.repo_source:git_origin` before you group by `repo` or `owner`. To
-check fallback coverage, use `trajectory.repo_source:project_dir` or
-`unknown`. Keep fallback labels out of repository rankings.
+`trajectory.repo_source:git_origin` or `turn_activity` before you group by
+`repo` or `owner`. A `project_dir` label is the name of the session's folder,
+not a repository. To check fallback coverage, use
+`trajectory.repo_source:project_dir` or `unknown`. Keep fallback labels out of
+repository rankings.
+
+Claude Desktop (Cowork) runs in a virtual machine with no repository. A Cowork
+session that reports no project folder sends `repo:unknown`, `owner:unknown`,
+and `trajectory.repo_source:unknown`. Trajectory uses your home folder only to
+find publish settings, never as the repository name. Its turns keep these
+labels when turn repository tags are on. A pull request that a Cowork turn opens
+with `gh` still carries its own `owner` and `repo`.
 
 Public `*.github.com` transport aliases map straight to the GitHub host.
 Looking up a custom SSH alias never runs SSH or uses the network. Trajectory
@@ -2145,7 +2148,7 @@ leaves bad, missing, conditional-only, and unknown mappings unresolved.
 
 ## Metric notes
 
-For the full metric catalog, see [METRICS-REFERENCE.md](METRICS-REFERENCE.md).
+For the full metric catalog, see [METRICS-REFERENCE.md](METRICS.md).
 
 ### Distributions for finished samples
 
@@ -2154,24 +2157,19 @@ as populations in Metrics Explorer. Use percentile functions such as `p95:`
 only on current distributions. First turn on Datadog percentile aggregations
 for the metric.
 
-- `trajectory.turn.cost.usd.total`: the cost of a finished, priced turn.
+- `trajectory.turn.skill_duration_ms.total`: how long a skill-assisted turn
+  took.
+
+For cost totals, sum `trajectory.turn.cost.usd.additive`. It is a count, so it
+has no percentiles.
 
 Related turn and session metrics:
 
 - `trajectory.turn.duration_ms`: how long a finished turn took, when the
   client gives it or Trajectory can work it out. It is a gauge tagged with
   `trajectory.turn_id`.
-- `trajectory.turn.permission_wait_ms.additive`: the estimated time a person
-  spent approving actions in a finished turn. Trajectory sends it when it can
-  work out a permission wait.
-- `trajectory.turn.permission_prompts.additive`: permission prompt counts by
-  `decision`, `permission_mode`, and `approval_path`. The `approval_path`
-  values are `manual_prompt`, `auto_mode_prompt`, `auto_classifier`, or a few
-  fallback values. Older inferred tool accepts use
-  `permission_mode:not_captured`. `unknown` means the source data is missing or
-  bad.
-- `trajectory.session.web_search.cost.usd.accumulated`: a gauge of WebSearch
-  cost so far, and at the end.
+- `trajectory.turn.web_search.cost.usd.additive`: the WebSearch cost of a
+  finished turn. Sum it by `session_id` for a session's WebSearch cost.
 - `trajectory.turn.prs`: one count for the turn that created a PR or MR. It is
   tagged with the PR or MR identity, `session_id`, and `trajectory.turn_id`.
 - `trajectory.pr.interactions.total`, `trajectory.pr.work_turns.additive`, and
@@ -2186,7 +2184,7 @@ Current Trajectory versions no longer send the deprecated distribution
 metrics. Count metrics replace most of them. A few have no replacement.
 Older versions keep sending them until
 they upgrade. If you still see them, some clients run an older version.
-[METRICS-REFERENCE.md](METRICS-REFERENCE.md) lists the metrics to use.
+[METRICS-REFERENCE.md](METRICS.md) lists the metrics to use.
 
 To compare with Claude Code, note what each metric measures:
 
@@ -2332,11 +2330,11 @@ controls whether Trajectory reads it.
 |--------|--------------|-------------------|------------------|----------|--------|
 | Claude Code | Native HTTP hooks for tools and messages, plus command hooks with receipts | Yes | Yes | Transcript backfill and live-event repair | Yes |
 | Codex CLI | Command hooks, with the rollout watcher as fallback | Yes | Yes | Codex rollout backfill | Yes |
-| GitHub Copilot CLI | Beta plugin command hooks. Optional session-state watcher, off by default. Native OTel with content turned off. | Hooks give lifecycle, prompt, tool, and session events. History adds assistant text, reasoning, tool results, permissions, and subagents. | Native `chat` spans give usage per request, and public-rate USD when both managed features are on. Shutdown totals are the fallback. | Bulk backfill. Automatic discovery needs `copilot_cli_durable_history`. | Not yet |
-| Antigravity CLI (`agy`) | Native plugin command hooks | Prompts, tool calls, errors, and Stop metadata, but no tool output. With `antigravity_durable_history`, also models and the prompts the hooks did not record. | Live provider rows give token counts per request and public-rate USD. Saved history does not produce metrics. | Optional watcher for saved JSONL and SQLite rows, off by default. Backfill repairs older history. | No setup-managed resume |
+| GitHub Copilot CLI | Beta plugin command hooks. Optional session-state watcher, off by default. Native OTel with content turned off. | Hooks give lifecycle, prompt, tool, and session events. History adds assistant text, reasoning, tool results, permissions, and subagents. | Native `chat` spans give usage per request, and public-rate USD when both managed features are on. Shutdown totals are the fallback. | Bulk backfill. Automatic discovery needs `clients.copilot.history_sync`. | Not yet |
+| Antigravity CLI (`agy`) | Native plugin command hooks | Prompts, tool calls, errors, and Stop metadata, but no tool output. With `clients.agy.history_sync`, also models and the prompts the hooks did not record. | Live provider rows give token counts per request and public-rate USD. Saved history does not produce metrics. | Optional watcher for saved JSONL and SQLite rows, off by default. Backfill repairs older history. | No setup-managed resume |
 | Goose | Open Plugins command hooks | Session, prompt, assistant, and tool events. Hooks omit tool IDs and result bodies, so matching tools with the same name is best effort. | Hooks omit usage. `goose_durable_history`, on by default, adds model, tokens, and compaction. Only complete provider-reported USD counts. | Read-only SQLite sync through `goose_durable_history` | Native hooks start a new generation with the same ID on resume. No setup-managed resume command. |
 | Cline CLI | File hooks | Lifecycle, prompt, tool, assistant-message, turn, and session-end events | Not in current hook payloads (`turn_end.tokens_status=unavailable`) | Not yet | No setup-managed resume |
-| Aider | Opt-in command shim. Optional sync of native Markdown history from folders you name, off by default. | The wrapper gives lifecycle, prompt, assistant, and turn events. History adds prompt, assistant, model, and status text, but no structured tool calls. | The wrapper keeps provider usage and cost. History counts mix provider data and local estimates, rounded for display. Printed cost is the client's own figure. | Watcher plus `session import aider`, behind `aider_durable_history` | No setup-managed resume. History has no end marker. |
+| Aider | Opt-in command shim. Optional sync of native Markdown history from folders you name, off by default. | The wrapper gives lifecycle, prompt, assistant, and turn events. History adds prompt, assistant, model, and status text, but no structured tool calls. | The wrapper keeps provider usage and cost. History counts mix provider data and local estimates, rounded for display. Printed cost is the client's own figure. | Watcher plus `session import aider`, behind `clients.aider.history_sync` | No setup-managed resume. History has no end marker. |
 | Continue CLI | Opt-in `cn` command shim | Lifecycle, prompt, assistant-message, tool, outer-turn, and session events | Yes, from Continue session JSON when it has usage data | Current run only. No bulk history. | Native `--resume` and `--fork` are captured when the start job sets a clean baseline. Otherwise attribution fails closed. |
 | Mistral Vibe | Opt-in `vibe` command shim, plus native identity and tool hooks | Lifecycle, prompt, tool, assistant-message, and turn events | Session totals and the client's cost estimate. No per-turn attribution. Unclear continuation totals are dropped. | Optional watcher, off by default, plus repair backfill | Native data wins. Resume and child sessions keep their provider IDs. Saved snapshots stay incomplete until the native session ends. |
 | Grok Build | Preview native global hooks, plus sync from the client's saved files | Lifecycle, prompt when present, assistant and reasoning text, tools and results, model, and parent-child links | No tokens or cost per turn. Session counters are for diagnosis only. | Optional watcher, off by default, plus repair backfill | Native data wins. Snapshots and deletions never mark a session as ended. |
@@ -2345,19 +2343,19 @@ controls whether Trajectory reads it.
 | cursor-agent CLI | Native command hooks when dispatched, plus a shared passive JSONL watcher | Text, thinking, tool requests, tool results, and turn markers | Same native token set as Desktop. Passive records have no token data and stay unpriced. | Current and older JSONL layouts. Backfill uses live metric names with original timestamps. | No setup-managed resume |
 | Factory Droid | Beta Factory plugin command hooks | Documented lifecycle, prompt, tool, notification, compaction, stop, and subagent-stop events | Not in current documented hook payloads | Not yet | Not yet |
 | Pi | TypeScript extension | Yes | Yes | Import from `.pi/agent/sessions`. An automatic import picks up idle files that were never captured. | Yes |
-| Oh My Pi (`omp`) | Preview native extension plus history sync, behind a feature flag | Lifecycle, prompts, assistant and model, tool results and errors, compaction, and session links from headers | Native input, output, cache, and total tokens, plus provider cost when present | Profile-aware v3 sync plus full-history repair | Native resume, switch, and branch. Trajectory records them but does not start resume. |
+| Oh My Pi (`omp`) | Preview native extension plus history sync, behind a setting | Lifecycle, prompts, assistant and model, tool results and errors, compaction, and session links from headers | Native input, output, cache, and total tokens, plus provider cost when present | Profile-aware v3 sync plus full-history repair | Native resume, switch, and branch. Trajectory records them but does not start resume. |
 | Hermes Agent | Observer plugin hooks, plus history sync | Yes | Live usage when present. Saved history keeps session totals without per-turn attribution. | Read-only `state.db` watcher plus backfill | No setup-managed resume |
 | Amp Code | Setup-managed system plugin | Yes | Live events omit usage. Saved history adds model and token data. Provider credits are not counted as USD. | `T-*.json` thread sync. Native plugin traces win. | No setup-managed resume |
 | Qwen Code | Native HTTP hooks, plus history sync | Yes | Yes, from Qwen `usageMetadata` with transcript fallback | Chat JSONL watcher plus manual backfill, including archives | No setup-managed resume |
-| OpenHands | Command hooks, plus optional history sync | Hooks give lifecycle, prompt, and tool events. Saved bundles add assistant text, thinking, tool input and results, model, and CWD. | Hooks have no usage. `base_state.json` gives provider totals and cost per session only. | `trajectory session import openhands` plus a watcher behind `openhands_durable_history` | Native resume uses the same conversation ID. No setup-managed resume command. |
+| OpenHands | Command hooks, plus optional history sync | Hooks give lifecycle, prompt, and tool events. Saved bundles add assistant text, thinking, tool input and results, model, and CWD. | Hooks have no usage. `base_state.json` gives provider totals and cost per session only. | `trajectory session import openhands` plus a watcher behind `clients.openhands.history_sync` | Native resume uses the same conversation ID. No setup-managed resume command. |
 | OpenCode | Plugin SDK events | Yes | Yes | `session import opencode` for JSON storage and SQLite. A watcher for new and changed sessions. | Yes |
 | Kilo Code | Plugin SDK events | Yes | Native model, provider, input, output, reasoning, cache-read, and cache-write tokens, and cost. Optional native OTLP. | `session import kilo` plus a SQLite and JSON watcher | No setup-managed resume |
 | ZCode | Preview wake hooks plus SQLite sync | Session ID, parent, CWD, prompt, assistant and thinking text, model, provider, and tools | Tokens per attempt and per turn, including reasoning and cache. Cost only when a known rate applies. | Automatic sync plus `session import zcode` | Active updates keep a session open. Only archived data can end a session. |
-| Kiro CLI | Agent command hooks (V2), global command hooks (V3) | Prompt, tool, and saved models and timestamps. V2 also has the assistant response, and on V3 `Stop` reads the turn's reply from Kiro's own session store | No tokens. On V3, per-turn credits, read once the `Stop` hook returns. Credits are not counted as USD. | Optional JSONL and SQLite sync through `kiro_durable_history`, off by default. Native hook traces win. | Native `--resume-id`. No setup-managed resume. |
+| Kiro CLI | Agent command hooks (V2), global command hooks (V3) | Prompt, tool, and saved models and timestamps. V2 also has the assistant response, and on V3 `Stop` reads the turn's reply from Kiro's own session store | No tokens. On V3, per-turn credits, read once the `Stop` hook returns. Credits are not counted as USD. | Optional JSONL and SQLite sync through `clients.kiro.history_sync`, off by default. Native hook traces win. | Native `--resume-id`. No setup-managed resume. |
 | CommandCode | Preview watcher. Native hooks start the transcript sync. | Prompt, assistant, thinking, tools and results, CWD when given, and Stop turn boundaries. No terminal SessionEnd. | No native usage or cost. Later estimates stay marked as estimates. | Existing and changed transcripts sync in passes of limited size | Native resume only. No setup-managed resume. |
 | gptme | Preview watcher. Metadata-only hooks start the sync. | Prompt, assistant, thinking, tools and results, model, and lifecycle | Native per-message tokens, added up for each user turn. Recorded cost has computed provenance. | Existing and changed sources sync in passes of limited size | Native gptme resume. No setup-managed resume. |
 | ForgeCode | Preview read-only `.forge.db` sync | System, prompt, assistant, reasoning, tools, results, failures, model, CWD, and child conversations | Actual native values count as real. Approximate values stay marked as estimates. Provider cost keeps its source label. | Existing and changed conversations sync in passes of limited size | No setup-managed resume. Provider rows do not mark sessions as live or ended. |
-| OpenClaw | Saved-history import beta: JSONL sync, off by default. No live capture in released builds | Prompt, response, thinking, tools and results, model, compaction, and agent links | Per-message native tokens and provider-billed cost when saved. | `session import openclaw` plus a watcher behind `openclaw_durable_history` | No setup-managed resume |
+| OpenClaw | Saved-history import beta: JSONL sync, off by default. No live capture in released builds | Prompt, response, thinking, tools and results, model, compaction, and agent links | Per-message native tokens and provider-billed cost when saved. | `session import openclaw` plus a watcher behind `clients.openclaw.history_sync` | No setup-managed resume |
 
 ### Privacy and derived features
 
@@ -2400,6 +2398,6 @@ automatically.
 | OpenClaw | Control plane only. Released builds have no live OpenClaw capture to control. | No | Saved-history sessions are treated as headless and skipped. | Deferred: setup, MCP, and incognito are not available. |
 
 Released Trajectory builds do not capture OpenClaw live. To sync the history
-that OpenClaw saves, turn on `openclaw_durable_history`. For a full repair, run
+that OpenClaw saves, turn on `clients.openclaw.history_sync`. For a full repair, run
 `trajectory session import openclaw`. Setup-managed install and MCP and
 incognito controls are not available.

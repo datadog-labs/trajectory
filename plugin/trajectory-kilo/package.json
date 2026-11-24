@@ -1,6 +1,6 @@
 {
   "name": "@datadog/trajectory-kilo",
-  "version": "3.0.4",
+  "version": "3.1.0",
   "description": "Trajectory capture plugin for Kilo Code",
   "type": "module",
   "exports": {

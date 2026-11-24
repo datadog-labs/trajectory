@@ -5,11 +5,20 @@ set -e
 TRAJECTORY_HOME="${TRAJECTORY_HOME:-${HOME}/.trajectory}"
 DRY_RUN="${TRAJECTORY_DRY_RUN:-0}"
 NON_INTERACTIVE=0
-REMOVE_CONFIG=0
-REMOVE_DATA=0
 REMOVE_SECRETS=0
 PURGE=0
 UNINSTALL_CLIENTS=1
+BINARY=""
+PROBE_HOME=""
+
+# What `trajectory uninstall` keeps, so that a later install does not send the
+# same history to Datadog again: the records publish and backfill read before
+# they send. TestScriptKeepsWhatUninstallKeeps checks that they match the
+# command's list.
+KEPT_HOME_ENTRIES="layout.json standard-publish.disabled"
+KEPT_STATE_DATABASES="delivery-outbox.sqlite metric-publish-outbox.sqlite publish-dedup-ledger.sqlite trace-publish-outbox.sqlite operational-log-outbox.sqlite"
+KEPT_STATE_ENTRIES="published-session-ends capture-off-windows.json capture-disabled-sessions"
+KEPT_STATE_PREFIXES="incognito- provider-incognito- ended-incognito-"
 
 info()  { echo "[trajectory]  $1"; }
 warn()  { echo "[trajectory]  WARNING: $1" >&2; }
@@ -19,16 +28,20 @@ usage() {
     cat <<'EOF'
 Usage: bash uninstall.sh [options]
 
-Remove the Trajectory binary, installed helper assets, and setup-managed client
-integrations. User config and captured session data are preserved by default.
+Remove Trajectory from this user account: the client integrations setup
+added, the binary, and the rest of ~/.trajectory, including settings, sessions
+and logs. Only the publish records that stop a later install from sending the
+same history to Datadog again stay. When the installed binary has
+`trajectory uninstall`, the script runs it.
 
 Options:
   -y, --non-interactive  Do not prompt before uninstalling
       --dry-run          Show what would be removed without changing files
       --skip-clients     Leave coding-agent integrations in place
-      --remove-config    Also remove ~/.trajectory/config.yaml
-      --remove-data      Also remove ~/.trajectory/trajectories/ and logs
-      --purge            Leave no trace: remove all Trajectory files and keychain entries
+      --purge            Leave no trace: also remove the kept publish records
+                         and keychain entries
+      --remove-config    No effect; uninstall removes config.yaml
+      --remove-data      No effect; uninstall removes sessions and logs
   -h, --help             Show this help
 EOF
 }
@@ -47,18 +60,11 @@ while [ "$#" -gt 0 ]; do
             UNINSTALL_CLIENTS=0
             shift
             ;;
-        --remove-config)
-            REMOVE_CONFIG=1
-            shift
-            ;;
-        --remove-data)
-            REMOVE_DATA=1
+        --remove-config|--remove-data)
             shift
             ;;
         --purge)
             PURGE=1
-            REMOVE_CONFIG=1
-            REMOVE_DATA=1
             REMOVE_SECRETS=1
             shift
             ;;
@@ -116,7 +122,7 @@ confirm() {
         fail "Refusing to uninstall from a non-interactive shell without --non-interactive."
     fi
 
-    printf '[trajectory]  Remove Trajectory runtime files from %s? [y/N] ' "$TRAJECTORY_HOME"
+    printf '[trajectory]  Remove Trajectory from %s? [y/N] ' "$TRAJECTORY_HOME"
     read -r response
     case "$response" in
         y|Y|yes|YES) ;;
@@ -124,19 +130,83 @@ confirm() {
     esac
 }
 
+# binary_answers reports whether a binary, run with the given arguments,
+# succeeds. It runs against a throwaway home: a release that lacks the command
+# starts up as it does for any command, and that can write in its home.
+binary_answers() {
+    local binary="$1"
+    shift
+    if [ -z "$PROBE_HOME" ]; then
+        PROBE_HOME="$(mktemp -d "${TMPDIR:-/tmp}/trajectory-uninstall.XXXXXX")" || return 1
+        trap 'rm -rf "$PROBE_HOME"' EXIT
+    fi
+    TRAJECTORY_HOME="$PROBE_HOME" TRAJECTORY_ROOT="$PROBE_HOME" TRAJECTORY_CACHE_DB="$PROBE_HOME/cache.db" \
+        "$binary" "$@" >/dev/null 2>&1
+}
+
 find_trajectory_binary() {
-    if [ -x "$TRAJECTORY_HOME/bin/trajectory" ]; then
-        printf '%s\n' "$TRAJECTORY_HOME/bin/trajectory"
-        return 0
+    local candidate
+    for candidate in "$TRAJECTORY_HOME/bin/trajectory" "$TRAJECTORY_HOME/bin/trajectory.exe" "$(command -v trajectory 2>/dev/null || true)"; do
+        if [ -n "$candidate" ] && [ -x "$candidate" ] && binary_answers "$candidate" --version; then
+            printf '%s\n' "$candidate"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# `trajectory uninstall` runs on macOS and Linux, and always removes the client
+# integrations.
+binary_uninstalls() {
+    if [ -z "$BINARY" ] || [ "$UNINSTALL_CLIENTS" != "1" ]; then
+        return 1
     fi
-    if [ -x "$TRAJECTORY_HOME/bin/trajectory.exe" ]; then
-        printf '%s\n' "$TRAJECTORY_HOME/bin/trajectory.exe"
-        return 0
+    case "$(uname -s 2>/dev/null)" in
+        Darwin|Linux) ;;
+        *) return 1 ;;
+    esac
+    binary_answers "$BINARY" uninstall --help
+}
+
+# run_binary_uninstall removes Trajectory with `trajectory uninstall`, which
+# decides what goes and what stays. That command leaves keychain entries, and
+# purge-secrets reads the settings it removes. So --purge removes the keychain
+# entries in between: once a dry run shows the command will go ahead, and the
+# client integrations and capture are gone, so a failed run keeps its keys.
+run_binary_uninstall() {
+    local args=() preview
+    if [ "$DRY_RUN" = "1" ]; then
+        args+=(--dry-run)
     fi
-    if command -v trajectory >/dev/null 2>&1; then
-        command -v trajectory
-        return 0
+    if [ "$PURGE" = "1" ]; then
+        args+=(--purge)
+        if [ "$DRY_RUN" != "1" ]; then
+            if ! preview="$("$BINARY" uninstall --dry-run --purge)"; then
+                printf '%s\n' "$preview"
+                fail "Trajectory cannot be uninstalled yet, so nothing was removed. Fix what the result names and run this script again."
+            fi
+            if ! "$BINARY" uninstrument all --non-interactive --for-uninstall; then
+                fail "Client cleanup or runtime retirement was incomplete. The Trajectory binary, files and keychain entries were preserved so cleanup can be retried. If the uninstrument_command feature flag is off, turn it on with 'trajectory config features clear uninstrument_command', or run this script without --purge."
+            fi
+        fi
+        purge_secrets
     fi
+    if ! "$BINARY" uninstall "${args[@]}"; then
+        fail "trajectory uninstall did not finish. Fix what the result names and run this script again."
+    fi
+}
+
+# capture_off_open reports whether capture is off in the home. The marker and
+# the client fence hold that period open. Only `trajectory uninstall` records
+# it before they go, so that a later install leaves out the client history
+# written meanwhile.
+capture_off_open() {
+    local path
+    for path in "$TRAJECTORY_HOME/capture.disabled" "$TRAJECTORY_HOME/state/legacy-client-capture-fence.json"; do
+        if [ -e "$path" ] || [ -L "$path" ]; then
+            return 0
+        fi
+    done
     return 1
 }
 
@@ -160,11 +230,17 @@ legacy_live_serve_present() {
     return 1
 }
 
+# Without a binary that runs, nothing runs Trajectory's hooks, so the
+# integrations can stay, unless a serve process may still be live.
 uninstall_clients() {
-    local binary client failed
+    local binary="$BINARY" client failed
 
-    if ! binary="$(find_trajectory_binary 2>/dev/null)"; then
-        fail "Trajectory binary not found; cannot fence capture or verify cleanup. Restore the binary before uninstalling."
+    if [ -z "$binary" ]; then
+        if legacy_live_serve_present; then
+            fail "No working Trajectory binary was found to stop a live Trajectory serve process. Stop it first; the files were preserved."
+        fi
+        warn "No working Trajectory binary was found, so coding-agent integrations stay in place. To remove them, install Trajectory again and run 'trajectory uninstall'."
+        return
     fi
 
     if [ "$DRY_RUN" = "1" ]; then
@@ -175,7 +251,7 @@ uninstall_clients() {
         fi
         return
     fi
-    if "$binary" uninstrument --help >/dev/null 2>&1; then
+    if binary_answers "$binary" uninstrument --help; then
         if [ "$UNINSTALL_CLIENTS" = "1" ]; then
             if ! "$binary" uninstrument all --non-interactive --for-uninstall; then
                 fail "Client cleanup or runtime retirement was incomplete. The Trajectory binary was preserved so cleanup can be retried."
@@ -207,13 +283,14 @@ uninstall_clients() {
 }
 
 purge_secrets() {
-    local binary
+    local binary="$BINARY"
 
     if [ "$REMOVE_SECRETS" != "1" ]; then
         return
     fi
-    if ! binary="$(find_trajectory_binary 2>/dev/null)"; then
-        fail "Trajectory binary not found; cannot purge OS-keychain entries. Restore the binary and retry."
+    if [ -z "$binary" ]; then
+        warn "No working Trajectory binary was found, so Trajectory's OS-keychain entries stay. To remove them, install Trajectory again and run this script with --purge."
+        return
     fi
     if [ "$DRY_RUN" = "1" ]; then
         info "Would run: $binary config purge-secrets --yes"
@@ -247,42 +324,78 @@ remove_empty_dir() {
     fi
 }
 
+kept_home_entry() {
+    local kept
+    for kept in $KEPT_HOME_ENTRIES; do
+        if [ "$1" = "$kept" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# A kept database keeps its journal files, which hold rows that may not be in
+# it yet. A folder named like an incognito record is not one.
+kept_state_entry() {
+    local name="$1" path="$2" kept
+    for kept in $KEPT_STATE_DATABASES; do
+        case "$name" in
+            "$kept"|"$kept-wal"|"$kept-shm"|"$kept-journal") return 0 ;;
+        esac
+    done
+    for kept in $KEPT_STATE_ENTRIES; do
+        if [ "$name" = "$kept" ]; then
+            return 0
+        fi
+    done
+    if [ -d "$path" ] && [ ! -L "$path" ]; then
+        return 1
+    fi
+    for kept in $KEPT_STATE_PREFIXES; do
+        case "$name" in
+            "$kept"*) return 0 ;;
+        esac
+    done
+    return 1
+}
+
+remove_state() {
+    local state="$1" entry
+    for entry in "$state"/* "$state"/.[!.]* "$state"/..?*; do
+        [ -e "$entry" ] || [ -L "$entry" ] || continue
+        if kept_state_entry "${entry##*/}" "$entry"; then
+            # An empty kept folder holds no record.
+            remove_empty_dir "$entry"
+            if [ -e "$entry" ] || [ -L "$entry" ]; then
+                info "Keeping $entry"
+            fi
+            continue
+        fi
+        remove_path "$entry"
+    done
+    remove_empty_dir "$state"
+}
+
 remove_installed_files() {
+    local entry name
     if [ "$PURGE" = "1" ]; then
         remove_path "$TRAJECTORY_HOME"
         return
     fi
-
-    remove_path "$TRAJECTORY_HOME/bin/trajectory"
-    remove_path "$TRAJECTORY_HOME/bin/trajectory.exe"
-    remove_empty_dir "$TRAJECTORY_HOME/bin"
-
-    remove_path "$TRAJECTORY_HOME/intercepts"
-    remove_path "$TRAJECTORY_HOME/claude-marketplace"
-    remove_path "$TRAJECTORY_HOME/codex-marketplace"
-    remove_path "$TRAJECTORY_HOME/copilot-marketplace"
-    remove_path "$TRAJECTORY_HOME/factory-marketplace"
-    remove_path "$TRAJECTORY_HOME/state"
-    remove_path "$TRAJECTORY_HOME/.state"
-    remove_path "$TRAJECTORY_HOME/capture.disabled"
-    remove_path "$TRAJECTORY_HOME/selfupdate.conf"
-    remove_path "$TRAJECTORY_HOME/uninstall.sh"
-
-    if [ "$REMOVE_CONFIG" = "1" ]; then
-        remove_path "$TRAJECTORY_HOME/config.yaml"
-    else
-        info "Preserving $TRAJECTORY_HOME/config.yaml"
-    fi
-
-    if [ "$REMOVE_DATA" = "1" ]; then
-        remove_path "$TRAJECTORY_HOME/trajectories"
-        remove_path "$TRAJECTORY_HOME/logs"
-        remove_path "$TRAJECTORY_HOME/live-sessions"
-    else
-        info "Preserving $TRAJECTORY_HOME/trajectories/"
-        info "Preserving $TRAJECTORY_HOME/logs/"
-    fi
-
+    for entry in "$TRAJECTORY_HOME"/* "$TRAJECTORY_HOME"/.[!.]* "$TRAJECTORY_HOME"/..?*; do
+        [ -e "$entry" ] || [ -L "$entry" ] || continue
+        name="${entry##*/}"
+        # A state/ that is a link stays whole: removing the link would hide
+        # the kept files from a new install, and what it points at is not
+        # the home's to remove.
+        if kept_home_entry "$name" || { [ "$name" = "state" ] && [ -L "$entry" ]; }; then
+            info "Keeping $entry"
+        elif [ "$name" = "state" ] && [ -d "$entry" ]; then
+            remove_state "$entry"
+        else
+            remove_path "$entry"
+        fi
+    done
     remove_empty_dir "$TRAJECTORY_HOME"
 }
 
@@ -294,9 +407,17 @@ info "Install directory: $TRAJECTORY_HOME"
 info ""
 
 confirm
-uninstall_clients
-purge_secrets
-remove_installed_files
+BINARY="$(find_trajectory_binary)" || BINARY=""
+if binary_uninstalls; then
+    run_binary_uninstall
+else
+    if [ "$PURGE" != "1" ] && capture_off_open; then
+        fail "Capture is off, and only \`trajectory uninstall\` can record that period so that a later install does not send what was written meanwhile. Run this script with a current Trajectory binary and without --skip-clients, or add --purge. Nothing was removed."
+    fi
+    uninstall_clients
+    purge_secrets
+    remove_installed_files
+fi
 
 info ""
 info "Trajectory uninstall complete."

@@ -18,6 +18,8 @@ type PiAssistantMessage = {
 	usage?: unknown;
 	model_pricing?: PiModelPricing;
 	observed_at?: string;
+	thinkingLevel?: unknown;
+	model_reasoning?: boolean;
 };
 
 export interface PiAgentRunRequest {
@@ -27,6 +29,8 @@ export interface PiAgentRunRequest {
 	usage: Record<string, unknown>;
 	model_pricing?: PiModelPricing;
 	observed_at?: string;
+	thinking_level?: string;
+	model_reasoning?: boolean;
 }
 
 function finiteNonNegative(value: unknown): number | undefined {
@@ -139,6 +143,9 @@ export function summarizePiAgentRunRequests(messages: unknown): PiAgentRunReques
 		if (typeof candidate.model === "string" && candidate.model) request.model = candidate.model;
 		if (typeof candidate.provider === "string" && candidate.provider) request.provider = candidate.provider;
 		if (typeof candidate.api === "string" && candidate.api) request.api = candidate.api;
+		// Pi 0.99 and later record the thinking level each response asked for.
+		if (typeof candidate.thinkingLevel === "string" && candidate.thinkingLevel) request.thinking_level = candidate.thinkingLevel;
+		if (typeof candidate.model_reasoning === "boolean") request.model_reasoning = candidate.model_reasoning;
 		requests.push(request);
 	}
 	return requests;

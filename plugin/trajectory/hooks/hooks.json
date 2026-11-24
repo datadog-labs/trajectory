@@ -5,16 +5,16 @@
       { "type": "command", "command": "exec bash -c '[ -f \"$1\" ] || { d=\"${TRAJECTORY_HOME:-$HOME/.trajectory}/logs\"; r=\"$(basename \"$(dirname \"$(dirname \"$1\")\")\")\"; mkdir -p \"$d\"; printf \"[capture-hook-start:%s] %s event=%s plugin_root=%s result=missing_script\\n\" \"$$\" \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$2\" \"$r\" >>\"$d/capture-hook-start.log\"; exit 0; }; source \"$@\" >/dev/null 2>&1 || true' -- \"${CLAUDE_PLUGIN_ROOT}/hooks/capture-with-serve.sh\" UserPromptSubmit 2s >/dev/null 2>&1", "timeout": 8 }
     ] }],
     "PreToolUse": [{ "matcher": "", "hooks": [
-      { "type": "http", "url": "http://127.0.0.1:19222/capture/PreToolUse?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.30", "timeout": 5, "headers": { "X-Trajectory-Home": "${HOME}/.trajectory" }, "allowedEnvVars": ["HOME"] }
+      { "type": "http", "url": "http://127.0.0.1:19222/capture/PreToolUse?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.32", "timeout": 5, "headers": { "X-Trajectory-Home": "${TRAJECTORY_HOME}" }, "allowedEnvVars": ["TRAJECTORY_HOME"] }
     ] }],
     "PostToolUse": [{ "matcher": "", "hooks": [
-      { "type": "http", "url": "http://127.0.0.1:19222/capture/PostToolUse?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.30", "timeout": 5, "headers": { "X-Trajectory-Home": "${HOME}/.trajectory" }, "allowedEnvVars": ["HOME"] }
+      { "type": "http", "url": "http://127.0.0.1:19222/capture/PostToolUse?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.32", "timeout": 5, "headers": { "X-Trajectory-Home": "${TRAJECTORY_HOME}" }, "allowedEnvVars": ["TRAJECTORY_HOME"] }
     ] }],
     "PostToolUseFailure": [{ "matcher": "", "hooks": [
-      { "type": "http", "url": "http://127.0.0.1:19222/capture/PostToolUseFailure?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.30", "timeout": 5, "headers": { "X-Trajectory-Home": "${HOME}/.trajectory" }, "allowedEnvVars": ["HOME"] }
+      { "type": "http", "url": "http://127.0.0.1:19222/capture/PostToolUseFailure?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.32", "timeout": 5, "headers": { "X-Trajectory-Home": "${TRAJECTORY_HOME}" }, "allowedEnvVars": ["TRAJECTORY_HOME"] }
     ] }],
     "MessageDisplay": [{ "matcher": "", "hooks": [
-      { "type": "http", "url": "http://127.0.0.1:19222/capture/MessageDisplay?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.30", "timeout": 1, "headers": { "X-Trajectory-Home": "${HOME}/.trajectory" }, "allowedEnvVars": ["HOME"] }
+      { "type": "http", "url": "http://127.0.0.1:19222/capture/MessageDisplay?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.32", "timeout": 1, "headers": { "X-Trajectory-Home": "${TRAJECTORY_HOME}" }, "allowedEnvVars": ["TRAJECTORY_HOME"] }
     ] }],
     "Stop": [{ "matcher": "", "hooks": [
       { "type": "command", "command": "exec bash -c '[ -f \"$1\" ] || { d=\"${TRAJECTORY_HOME:-$HOME/.trajectory}/logs\"; r=\"$(basename \"$(dirname \"$(dirname \"$1\")\")\")\"; mkdir -p \"$d\"; printf \"[capture-hook-start:%s] %s event=%s plugin_root=%s result=missing_script\\n\" \"$$\" \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$2\" \"$r\" >>\"$d/capture-hook-start.log\"; exit 0; }; source \"$@\" >/dev/null 2>&1 || true' -- \"${CLAUDE_PLUGIN_ROOT}/hooks/capture-with-serve.sh\" Stop 2s >/dev/null 2>&1", "timeout": 10 }
@@ -31,7 +31,7 @@
     "SubagentStart": [{ "matcher": "", "hooks": [{ "type": "command", "command": "exec bash -c '[ -f \"$1\" ] || { d=\"${TRAJECTORY_HOME:-$HOME/.trajectory}/logs\"; r=\"$(basename \"$(dirname \"$(dirname \"$1\")\")\")\"; mkdir -p \"$d\"; printf \"[capture-hook-start:%s] %s event=%s plugin_root=%s result=missing_script\\n\" \"$$\" \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$2\" \"$r\" >>\"$d/capture-hook-start.log\"; exit 0; }; source \"$@\" >/dev/null 2>&1 || true' -- \"${CLAUDE_PLUGIN_ROOT}/hooks/capture-with-serve.sh\" SubagentStart 2s >/dev/null 2>&1", "timeout": 8 }] }],
     "SubagentStop": [{ "matcher": "", "hooks": [{ "type": "command", "command": "exec bash -c '[ -f \"$1\" ] || { d=\"${TRAJECTORY_HOME:-$HOME/.trajectory}/logs\"; r=\"$(basename \"$(dirname \"$(dirname \"$1\")\")\")\"; mkdir -p \"$d\"; printf \"[capture-hook-start:%s] %s event=%s plugin_root=%s result=missing_script\\n\" \"$$\" \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$2\" \"$r\" >>\"$d/capture-hook-start.log\"; exit 0; }; source \"$@\" >/dev/null 2>&1 || true' -- \"${CLAUDE_PLUGIN_ROOT}/hooks/capture-with-serve.sh\" SubagentStop 2s >/dev/null 2>&1", "timeout": 8 }] }],
     "SessionEnd": [{ "matcher": "", "hooks": [
-      { "type": "http", "url": "http://127.0.0.1:19222/capture/SessionEnd?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.30", "timeout": 1, "headers": { "X-Trajectory-Home": "${HOME}/.trajectory" }, "allowedEnvVars": ["HOME"] },
+      { "type": "http", "url": "http://127.0.0.1:19222/capture/SessionEnd?trajectory_plugin_id=trajectory&trajectory_plugin_version=1.2.32", "timeout": 1, "headers": { "X-Trajectory-Home": "${TRAJECTORY_HOME}" }, "allowedEnvVars": ["TRAJECTORY_HOME"] },
       { "type": "command", "command": "exec bash -c '[ -f \"$1\" ] || { d=\"${TRAJECTORY_HOME:-$HOME/.trajectory}/logs\"; r=\"$(basename \"$(dirname \"$(dirname \"$1\")\")\")\"; mkdir -p \"$d\"; printf \"[capture-hook-start:%s] %s event=%s plugin_root=%s result=missing_script\\n\" \"$$\" \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" \"$2\" \"$r\" >>\"$d/capture-hook-start.log\"; exit 0; }; source \"$@\" >/dev/null 2>&1 || true' -- \"${CLAUDE_PLUGIN_ROOT}/hooks/capture-with-serve.sh\" SessionEnd 2s >/dev/null 2>&1", "timeout": 2 }
     ] }]
   }

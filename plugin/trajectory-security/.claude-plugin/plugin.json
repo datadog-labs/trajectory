@@ -1,7 +1,7 @@
 {
   "name": "trajectory-security",
-  "description": "AI Guard and AI-EDR security controls for coding agents, powered by Trajectory",
-  "version": "0.1.0",
+  "description": "AI Guard, AI-EDR, and skill scanning for coding agents, powered by Trajectory",
+  "version": "0.1.1",
   "author": {
     "name": "Datadog",
     "email": "no-reply@datadoghq.com"

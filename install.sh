@@ -9,6 +9,7 @@
 #   bash install.sh --site datadoghq.com --ml-app my-agents --api-key $KEY \
 #                   --clients cc --non-interactive
 #   bash install.sh --security --app-key $DD_APP_KEY   # with Datadog Security
+#   bash install.sh --plugin ai-gateway       # also set up AI Gateway, installing Pup if needed
 #
 # Setup flags (--site, --ml-app, --api-key, --clients, --non-interactive, and
 # --local-only) are passed through to `trajectory setup`. Run `trajectory setup
@@ -47,10 +48,9 @@
 #                stored when security is enabled, and it is never passed to
 #                `trajectory setup` or to the security command itself.
 #
-# Enabling security also creates the 'ai-guard-apm' required destination (a
-# compatibility name) in
-# config.defaults.yaml, which publishes Agent Security findings and AI-EDR
-# custody-backed projections as Logs and enables
+# Enabling security also creates the 'ai-guard-apm' required destination in
+# config.defaults.yaml. It publishes AI Guard module spans as traces, Agent
+# Security findings and AI-EDR custody-backed projections as Logs, and enables
 # app-key readback. It must live in the managed defaults file: publish reads
 # required_destinations only from that layer, never from user config.yaml. Its
 # site and ml_app follow --site/--ml-app, then the site and ML app Trajectory is
@@ -71,11 +71,15 @@
 #                                and the binary is already present.
 #
 # Public installs require only curl.
+#
+# Maintainers: keep this installer slim. It downloads, verifies and places the
+# binary, then hands off to `trajectory setup`. Client discovery, client files
+# and repairs belong in the binary, where setup, doctor and updates reuse them.
+# CI fails a change that adds code lines to this file.
 set -e
 
 INSTALL_DIR="$HOME/.trajectory"
 BIN_DIR="$INSTALL_DIR/bin"
-INTERCEPT_DIR="$INSTALL_DIR/intercepts"
 # BINARY and BINARY_SUFFIX are finalised after detect_platform() runs - they
 # become trajectory.exe on Windows (Git Bash / MSYS / Cygwin) and trajectory
 # on darwin/linux.
@@ -110,7 +114,7 @@ SECURITY_PRIVACY_MODE=""
 # keychain as dd_app_key, which Agent Security needs for result readback.
 APP_KEY=""
 API_KEY_PROVIDED=0
-# Required destination created for Agent Security Logs. Site and ML app follow
+# Required destination created for Agent Security. Site and ML app follow
 # --site/--ml-app so the destination is correct on every Datadog site, then the
 # values already configured for Trajectory (an interactive setup and a
 # pre-existing install both set them without any installer flag), and finally
@@ -324,8 +328,13 @@ yaml_quote() {
     printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
 }
 
-# Create the required destination that publishes Agent Security Logs.
-# Called only from the security activation workflow.
+# Create the required destination that publishes AI Guard module spans and
+# Agent Security Logs. Called only from the security activation workflow.
+#
+# The module_spans grant names the whole agent-security module. Publish keeps
+# AI-EDR projection records on the Logs path even under this grant. AI Guard
+# spans share the destination's incognito exemption with findings, so they
+# also publish during incognito sessions.
 #
 # This must be config.defaults.yaml, not config.yaml. Publish reads
 # required_destinations only from the managed defaults layer. The same key in
@@ -344,7 +353,7 @@ ensure_security_destination() {
         else
             warn "$config_file already exists, so the $SECURITY_DESTINATION_NAME destination was not added."
             warn "      That file is managed configuration this installer does not own."
-            warn "      Add the destination there manually to publish Agent Security Logs."
+            warn "      Add the destination there manually to publish Agent Security data."
         fi
         return 0
     fi
@@ -368,10 +377,8 @@ required_destinations:
     incognito_exempt: true
     api_key_ref: dd_api_key
     app_key_ref: dd_app_key
-    agent_security:
-      metrics: true
-      findings: true
-      disclosure_profile: curated
+    agent_security: {metrics: true, findings: true, disclosure_profile: curated}
+    module_spans: {enabled: true, modules: [agent-security], native_composite_attributes: [agent-security]}
 EOF
     then
         warn "Could not write $config_file; $SECURITY_DESTINATION_NAME was not added."
@@ -379,50 +386,15 @@ EOF
     fi
     chmod 0644 "$config_file" 2>/dev/null || true
     info "      Wrote $config_file with the $SECURITY_DESTINATION_NAME destination"
-    info "      (site=$site, ml_app=$ml_app) for Agent Security Logs."
+    info "      (site=$site, ml_app=$ml_app) for AI Guard spans and Agent Security Logs."
 }
 
-codex_marketplace_add() {
-    local output status marketplace_dir
-    marketplace_dir="$1"
-    if output=$(codex plugin marketplace add "$marketplace_dir" 2>&1); then
-        if [ -n "$output" ]; then printf '%s\n' "$output"; fi
-        return 0
-    fi
-    status=$?
-    case "$output" in
-        *"unexpected argument"*"marketplace"*|*"unrecognized subcommand"*"marketplace"*|*"unknown command"*"marketplace"*|*"invalid command"*"marketplace"*)
-            warn "Codex CLI does not support plugin marketplace; MCP-only setup was handled by trajectory setup. Upgrade Codex to enable live plugin hooks."
-            return 0
-            ;;
-    esac
-    if [ -n "$output" ]; then printf '%s\n' "$output" >&2; fi
-    return "$status"
-}
-
-copilot_plugin_command() {
-    local output status prompt
-    if output=$(copilot "$@" 2>&1); then
-        if [ -n "$output" ]; then printf '%s\n' "$output"; fi
-        return 0
-    fi
-    status=$?
-    if [ -n "$output" ]; then printf '%s\n' "$output" >&2; fi
-    case "$output" in
-        *"Invalid command format"*|*"Did you mean: copilot -p"*|*"use the -p"*|*"unexpected argument"*)
-            prompt="$*"
-            copilot -p "$prompt"
-            return $?
-            ;;
-    esac
-    return "$status"
-}
-
+# A failed or unverified download never replaces or removes the installed
+# binary: the download goes to its own file and is moved into place last.
+# Cleared here so a DOWNLOAD inherited from the caller is never deleted.
+DOWNLOAD=""
 cleanup() {
-    if [ -n "${_PARTIAL_INSTALL:-}" ] && [ -f "$BINARY" ]; then
-        rm -f "$BINARY"
-        info "Cleaned up partial install."
-    fi
+    if [ -n "${DOWNLOAD:-}" ]; then rm -f "$DOWNLOAD"; fi
 }
 trap cleanup EXIT
 
@@ -449,10 +421,23 @@ detect_platform() {
     echo "${os}-${arch}"
 }
 
+# Pin one release for the binary and its checksums: two requests to the moving
+# latest URL can land on different releases. GitHub redirects
+# releases/latest to releases/tag/<tag>, which needs no API call.
+resolve_release_url() {
+    local effective
+    effective=$(curl -fsSL -o /dev/null -w '%{url_effective}' --connect-timeout 15 --max-time 60 \
+        "https://github.com/$REPO/releases/latest" 2>/dev/null) || effective=""
+    case "$effective" in
+        */releases/tag/?*) RELEASE_URL="https://github.com/$REPO/releases/download/${effective##*/releases/tag/}" ;;
+        *) RELEASE_URL="https://github.com/$REPO/releases/latest/download" ;;
+    esac
+}
+
 # Download the latest stable public release without using the rate-limited API.
 download_latest_binary() {
     local asset="$1" dest="$2" url attempt
-    url="https://github.com/$REPO/releases/latest/download/$asset"
+    url="$RELEASE_URL/$asset"
 
     for attempt in 1 2 3; do
         if curl -fL --connect-timeout 15 --max-time 600 --progress-bar \
@@ -470,25 +455,27 @@ download_latest_binary() {
     fail "Could not download $asset from the latest public GitHub release after 3 attempts. Check https://github.com/$REPO/releases/latest and your network connection."
 }
 
-install_intercept_assets() {
-    local asset src dest tmp
-    mkdir -p "$INTERCEPT_DIR"
-
-    for asset in intercept-shared.mjs bun-llm-intercept.mjs node-llm-spy.cjs; do
-        src="$SCRIPT_DIR/intercepts/$asset"
-        dest="$INTERCEPT_DIR/$asset"
-        if [ -f "$src" ]; then
-            cp "$src" "$dest"
-        else
-            tmp="${dest}.tmp.$$"
-            if ! curl -sfL -o "$tmp" "https://raw.githubusercontent.com/$REPO/main/intercepts/$asset"; then
-                rm -f "$tmp"
-                fail "Could not install Claude intercept asset: $asset"
-            fi
-            mv "$tmp" "$dest"
-        fi
-        chmod 0644 "$dest" 2>/dev/null || true
-    done
+# Check the binary against the release's checksums.sha256, like install.ps1.
+verify_checksum() {
+    local asset="$1" file="$2" sums expected actual
+    sums="${file}.checksums.$$"
+    if ! curl -fsSL --connect-timeout 15 --max-time 60 -o "$sums" \
+        "$RELEASE_URL/checksums.sha256"; then
+        rm -f "$sums"
+        fail "Could not download checksums.sha256 to verify $asset."
+    fi
+    expected=$(awk -v name="$asset" '$2 == name || $2 == "*" name { print $1; exit }' "$sums")
+    rm -f "$sums"
+    if command -v sha256sum >/dev/null 2>&1; then
+        actual=$(sha256sum "$file" | awk '{ print $1 }')
+    elif command -v shasum >/dev/null 2>&1; then
+        actual=$(shasum -a 256 "$file" | awk '{ print $1 }')
+    else
+        fail "Need sha256sum or shasum to verify $asset."
+    fi
+    if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+        fail "Checksum mismatch for $asset: expected ${expected:-no entry}, got $actual."
+    fi
 }
 
 install_uninstaller() {
@@ -541,9 +528,8 @@ prepare_user_config() {
 }
 
 # Enable the Datadog Security product plugin for the coding agents the main
-# install already detected. SECURITY_CLIENTS is populated by the per-client
-# detection blocks below, so detection happens exactly once and security can
-# never target a client the installer did not see.
+# install detected. SECURITY_CLIENTS is filled just before the call, so
+# security never targets a client that is not installed.
 #
 # Runs only when --security is passed; security is never enabled by binary
 # presence or by baseline setup alone. --security defaults to enforce mode,
@@ -634,7 +620,7 @@ esac
 BINARY="${BIN_DIR}/trajectory${BINARY_SUFFIX}"
 printf -v BINARY_COMMAND '%q' "$BINARY"
 ASSET="trajectory-${PLATFORM}${BINARY_SUFFIX}"
-info "[1/5] Detected platform: $PLATFORM"
+info "[1/4] Detected platform: $PLATFORM"
 
 mkdir -p "$BIN_DIR"
 
@@ -650,31 +636,32 @@ elif [ "$NON_INTERACTIVE" = "1" ] && [ -x "$BINARY" ]; then
 fi
 
 if [ "$SKIP_DOWNLOAD" = "1" ]; then
-    info "[2/5] Skipping download - using existing binary at $BINARY"
-    info "[3/5] Codesign skipped (binary pre-staged)"
+    info "[2/4] Skipping download - using existing binary at $BINARY"
+    info "[3/4] Codesign skipped (binary pre-staged)"
 else
-    info "[2/5] Downloading latest release..."
+    info "[2/4] Downloading latest release..."
 
-    _PARTIAL_INSTALL=1
-    download_latest_binary "$ASSET" "$BINARY"
-
-    chmod +x "$BINARY"
+    DOWNLOAD="$BINARY.download.$$"
+    resolve_release_url
+    download_latest_binary "$ASSET" "$DOWNLOAD"
+    verify_checksum "$ASSET" "$DOWNLOAD"
+    chmod +x "$DOWNLOAD"
+    mv -f "$DOWNLOAD" "$BINARY"
+    DOWNLOAD=""
 
     if [ "$(uname -s)" = "Darwin" ] && command -v codesign >/dev/null 2>&1; then
         if codesign --verify --deep --strict "$BINARY" >/dev/null 2>&1; then
-            info "[3/5] Preserving existing valid macOS signature"
+            info "[3/4] Preserving existing valid macOS signature"
         else
-            info "[3/5] Applying ad-hoc signature to unsigned binary (macOS)..."
+            info "[3/4] Applying ad-hoc signature to unsigned binary (macOS)..."
             codesign -f -s - "$BINARY"
         fi
     else
-        info "[3/5] Codesign skipped (not macOS or codesign not available)"
+        info "[3/4] Codesign skipped (not macOS or codesign not available)"
     fi
 
-    _PARTIAL_INSTALL=""
 fi
 
-install_intercept_assets
 install_uninstaller
 write_install_metadata
 if [ "$ENABLE_SECURITY" = "1" ]; then
@@ -682,15 +669,15 @@ if [ "$ENABLE_SECURITY" = "1" ]; then
 fi
 
 if [ "$NON_INTERACTIVE" = "1" ] && [ "$LOCAL_ONLY" = "1" ]; then
-    info "[4/5] Running setup (non-interactive local-only)..."
+    info "[4/4] Running setup (non-interactive local-only)..."
     info "      No Datadog API key is required; capture stays local until you configure export."
 elif [ "$NON_INTERACTIVE" = "1" ]; then
-    info "[4/5] Running setup (non-interactive)..."
+    info "[4/4] Running setup (non-interactive)..."
 elif [ "$LOCAL_ONLY" = "1" ]; then
-    info "[4/5] Running setup in local-only mode..."
+    info "[4/4] Running setup in local-only mode..."
     info "      No Datadog API key is required; capture stays local until you configure export."
 else
-    info "[4/5] Running setup wizard..."
+    info "[4/4] Running setup wizard..."
     info ""
     info "      The setup wizard will ask for:"
     info "        - Datadog site (e.g., datadoghq.com, us5.datadoghq.com)"
@@ -702,385 +689,15 @@ fi
 
 "$BINARY" setup "${SETUP_ARGS[@]+"${SETUP_ARGS[@]}"}"
 
-PLUGIN_INSTALLED=0
-# Coding agents detected below that the Datadog Security product plugin
-# supports. Consumed by enable_security_modules when --security is passed, so
-# detection happens once and security never targets an undetected client.
+# Setup wires and reports every client. Only --security still needs the list
+# of supported clients present here; it moves into setup next.
 SECURITY_CLIENTS=()
-
-# Claude Code plugin
-CC_PLUGIN_DIR="$SCRIPT_DIR/plugin/trajectory"
-if command -v claude >/dev/null 2>&1; then
-    SECURITY_CLIENTS+=("cc")
-    if [ -d "$CC_PLUGIN_DIR" ]; then
-        if [ -f "$HOME/.claude/plugins/installed_plugins.json" ] && grep -q "trajectory@trajectory" "$HOME/.claude/plugins/installed_plugins.json"; then
-            info "[5/5] Claude Code plugin is installed; setup reconciled its Trajectory-owned payload without changing Claude settings."
-            PLUGIN_INSTALLED=1
-        else
-            warn "[5/5] Claude Code plugin is not installed. Trajectory staged its marketplace but did not change Claude settings."
-            warn "      Install trajectory@trajectory through Claude's plugin administration path."
-        fi
-    fi
-else
-    info "[5/5] Claude Code CLI not detected - skipping Claude Code plugin."
-fi
-
-# Codex plugin (marketplace-based)
-if command -v codex >/dev/null 2>&1; then
-    SECURITY_CLIENTS+=("codex")
-    CODEX_MARKETPLACE_DIR="$INSTALL_DIR/codex-marketplace"
-    if [ -d "$CODEX_MARKETPLACE_DIR/.agents" ]; then
-        info "      Installing Codex marketplace plugin..."
-        codex_marketplace_add "$CODEX_MARKETPLACE_DIR" || {
-            warn "Codex marketplace install failed. Install manually:"
-            warn "  ~/.trajectory/bin/trajectory setup --clients codex"
-        }
-        PLUGIN_INSTALLED=1
-    else
-        info "      Codex CLI detected, but Codex setup was not selected - skipping Codex plugin."
-        info "      To refresh client wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients codex"
-        PLUGIN_INSTALLED=1
-    fi
-else
-    info "      Codex CLI not detected - skipping Codex plugin."
-fi
-
-# GitHub Copilot CLI plugin (marketplace-based, beta)
-if command -v copilot >/dev/null 2>&1; then
-    SECURITY_CLIENTS+=("copilot")
-    COPILOT_MARKETPLACE_DIR="$INSTALL_DIR/copilot-marketplace"
-    if [ -d "$COPILOT_MARKETPLACE_DIR/.github/plugin" ]; then
-        info "      Installing GitHub Copilot CLI plugin (beta)..."
-        copilot_plugin_command plugin marketplace add "$COPILOT_MARKETPLACE_DIR" && copilot_plugin_command plugin install trajectory@trajectory || {
-            warn "GitHub Copilot CLI plugin install failed. Install manually:"
-            warn "  ~/.trajectory/bin/trajectory setup --clients copilot"
-        }
-        PLUGIN_INSTALLED=1
-    else
-        info "      GitHub Copilot CLI detected, but Copilot setup was not selected - skipping Copilot plugin."
-        info "      To refresh client wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients copilot"
-        PLUGIN_INSTALLED=1
-    fi
-else
-    info "      GitHub Copilot CLI not detected - skipping Copilot plugin."
-fi
-
-# Factory Droid plugin (marketplace-based, beta)
-if command -v droid >/dev/null 2>&1; then
-    DROID_MARKETPLACE_DIR="$INSTALL_DIR/factory-marketplace"
-    if [ -d "$DROID_MARKETPLACE_DIR/.factory-plugin" ]; then
-        info "      Installing Factory Droid plugin (beta)..."
-        droid plugin marketplace add "$DROID_MARKETPLACE_DIR" && droid plugin install trajectory@trajectory --scope user || {
-            warn "Factory Droid plugin install failed. Install manually:"
-            warn "  ~/.trajectory/bin/trajectory setup --clients droid"
-        }
-        PLUGIN_INSTALLED=1
-    else
-        info "      Factory Droid CLI detected, but Droid setup was not selected - skipping Droid plugin."
-        info "      To refresh client wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients droid"
-        PLUGIN_INSTALLED=1
-    fi
-else
-    info "      Factory Droid CLI not detected - skipping Droid plugin."
-fi
-
-# Antigravity CLI configuration (handled by setup wizard)
-if command -v agy >/dev/null 2>&1; then
-    info "      Antigravity CLI detected - configuration is handled by the setup wizard."
-    info "      To refresh Antigravity wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients agy"
-    PLUGIN_INSTALLED=1
-else
-    info "      Antigravity CLI not detected - skipping Antigravity configuration guidance."
-fi
-
-# Goose configuration (handled by setup wizard)
-if command -v goose >/dev/null 2>&1; then
-    info "      Goose detected - configuration is handled by the setup wizard."
-    info "      To refresh Goose wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients goose"
-    PLUGIN_INSTALLED=1
-else
-    info "      Goose CLI not detected - skipping Goose configuration guidance."
-fi
-
-# Cline CLI configuration (handled by setup wizard)
-if command -v cline >/dev/null 2>&1; then
-    info "      Cline CLI detected - configuration is handled by the setup wizard."
-    info "      To refresh Cline wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients cline"
-    PLUGIN_INSTALLED=1
-else
-    info "      Cline CLI not detected - skipping Cline configuration guidance."
-fi
-
-# Aider configuration (opt-in command shim handled by setup wizard)
-if command -v aider >/dev/null 2>&1; then
-    info "      Aider detected - opt-in command shim configuration is handled by the setup wizard."
-    info "      To refresh Aider shim wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients aider --install-client-shims"
-    PLUGIN_INSTALLED=1
-else
-    info "      Aider CLI not detected - skipping Aider configuration guidance."
-fi
-
-# Continue CLI configuration (opt-in command shim handled by setup wizard)
-if command -v cn >/dev/null 2>&1; then
-    info "      Continue CLI detected - opt-in command shim configuration is handled by the setup wizard."
-    info "      To refresh Continue CLI shim wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients continue --install-client-shims"
-    PLUGIN_INSTALLED=1
-else
-    info "      Continue CLI not detected - skipping Continue CLI configuration guidance."
-fi
-
-# Mistral Vibe configuration (opt-in command shim handled by setup wizard)
-if command -v vibe >/dev/null 2>&1; then
-    info "      Mistral Vibe detected - opt-in command shim and hooks configuration is handled by the setup wizard."
-    info "      To refresh Mistral Vibe shim wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients mistral-vibe --install-client-shims"
-    PLUGIN_INSTALLED=1
-else
-    info "      Mistral Vibe CLI not detected - skipping Mistral Vibe configuration guidance."
-fi
-
-# Codebuff configuration (opt-in command shim handled by setup wizard)
-if command -v codebuff >/dev/null 2>&1 || command -v cb >/dev/null 2>&1; then
-    info "      Codebuff detected - opt-in command shim configuration is handled by the setup wizard."
-    info "      To refresh Codebuff shim wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients codebuff --install-client-shims"
-    PLUGIN_INSTALLED=1
-else
-    info "      Codebuff CLI not detected - skipping Codebuff configuration guidance."
-fi
-
-# Cursor configuration (handled by setup wizard)
-if command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1; then
-    SECURITY_CLIENTS+=("cursor")
-    info "      Cursor detected - configuration is handled by the setup wizard."
-    info "      To refresh Cursor wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients cursor"
-    PLUGIN_INSTALLED=1
-else
-    info "      Cursor CLI not detected - skipping Cursor configuration guidance."
-fi
-
-# Hermes Agent configuration (handled by setup wizard)
-if command -v hermes >/dev/null 2>&1; then
-    info "      Hermes Agent detected - configuration is handled by the setup wizard."
-    info "      To refresh Hermes wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients hermes"
-    PLUGIN_INSTALLED=1
-else
-    info "      Hermes Agent CLI not detected - skipping Hermes configuration guidance."
-fi
-
-# Amp Code configuration (handled by setup wizard)
-if command -v amp >/dev/null 2>&1; then
-    info "      Amp Code detected - configuration is handled by the setup wizard."
-    info "      To refresh Amp Code wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients amp"
-    PLUGIN_INSTALLED=1
-else
-    info "      Amp Code CLI not detected - skipping Amp Code configuration guidance."
-fi
-
-# Qwen Code configuration (handled by setup wizard)
-if command -v qwen >/dev/null 2>&1; then
-    info "      Qwen Code detected - configuration is handled by the setup wizard."
-    info "      To refresh Qwen Code wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients qwen"
-    PLUGIN_INSTALLED=1
-else
-    info "      Qwen Code CLI not detected - skipping Qwen Code configuration guidance."
-fi
-
-# Kiro CLI configuration (handled by setup wizard)
-if command -v kiro-cli >/dev/null 2>&1 || command -v kiro >/dev/null 2>&1; then
-    SECURITY_CLIENTS+=("kiro")
-    info "      Kiro CLI detected - configuration is handled by the setup wizard."
-    info "      To refresh Kiro CLI wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients kiro"
-    PLUGIN_INSTALLED=1
-else
-    info "      Kiro CLI not detected - skipping Kiro CLI configuration guidance."
-fi
-
-# Devin CLI preview guidance (explicit opt-in; installer does not enable or mutate it)
-if command -v devin >/dev/null 2>&1; then
-    info "      Devin CLI detected - preview instrumentation is disabled by default."
-    info "      Enable Devin explicitly, then run setup:"
-    info "        1. ~/.trajectory/bin/trajectory config features enable devin_cli_instrumentation"
-    info "        2. ~/.trajectory/bin/trajectory setup --clients devin"
-    PLUGIN_INSTALLED=1
-else
-    info "      Devin CLI not detected - skipping Devin CLI preview guidance."
-fi
-
-# Qoder CLI preview guidance (explicit opt-in; installer does not enable or mutate it)
-if command -v qodercli >/dev/null 2>&1; then
-    info "      Qoder CLI detected - preview instrumentation is disabled by default."
-    info "      Enable Qoder explicitly, then run setup:"
-    info "        1. ~/.trajectory/bin/trajectory config features enable qoder_cli_instrumentation"
-    info "        2. ~/.trajectory/bin/trajectory setup --clients qoder"
-    PLUGIN_INSTALLED=1
-else
-    info "      Qoder CLI not detected - skipping Qoder CLI preview guidance."
-fi
-
-# CommandCode preview guidance (explicit opt-in; never probe the generic `cmd` alias)
-if command -v command-code >/dev/null 2>&1 || command -v commandcode >/dev/null 2>&1 || command -v cmdc >/dev/null 2>&1 || [ -d "$HOME/.commandcode/projects" ]; then
-    info "      CommandCode detected - preview instrumentation is disabled by default."
-    info "      Enable CommandCode explicitly, then run setup:"
-    info "        1. ~/.trajectory/bin/trajectory config features enable commandcode_instrumentation"
-    info "        2. ~/.trajectory/bin/trajectory setup --clients commandcode"
-    PLUGIN_INSTALLED=1
-else
-    info "      CommandCode not detected - skipping CommandCode preview guidance."
-fi
-
-# Zed preview guidance (explicit opt-in; installer does not enable or mutate it)
-if command -v zed >/dev/null 2>&1 || [ -f "$HOME/Library/Application Support/Zed/threads/threads.db" ] || [ -f "${XDG_DATA_HOME:-$HOME/.local/share}/zed/threads/threads.db" ]; then
-    info "      Zed detected - passive-history preview instrumentation is disabled by default."
-    info "      Enable Zed explicitly, then run setup:"
-    info "        1. ~/.trajectory/bin/trajectory config features enable zed_passive_history"
-    info "        2. ~/.trajectory/bin/trajectory setup --clients zed"
-    PLUGIN_INSTALLED=1
-else
-    info "      Zed not detected - skipping Zed preview guidance."
-fi
-
-# Kimi Code CLI preview guidance (explicit opt-in; installer does not mutate it)
-if command -v kimi >/dev/null 2>&1; then
-    info "      Kimi Code CLI detected - preview instrumentation is disabled by default."
-    info "      Enable Kimi explicitly, then run setup:"
-    info "        1. ~/.trajectory/bin/trajectory config features enable kimi_cli_instrumentation"
-    info "        2. ~/.trajectory/bin/trajectory setup --clients kimi"
-    PLUGIN_INSTALLED=1
-else
-    info "      Kimi Code CLI not detected - skipping Kimi preview guidance."
-fi
-
-# VS Code Copilot Chat preview guidance. Installation never mutates VS Code;
-# setup does so only after the explicit default-off feature is enabled.
-if command -v code >/dev/null 2>&1 || command -v code-insiders >/dev/null 2>&1 || command -v codium >/dev/null 2>&1; then
-    info "      VS Code Copilot Chat detected - preview instrumentation is disabled by default."
-    info "        1. ~/.trajectory/bin/trajectory config features enable vscode_copilot_instrumentation"
-    info "        2. ~/.trajectory/bin/trajectory setup --clients vscode-copilot"
-fi
-
-# Windsurf preview guidance (explicit opt-in; installer does not mutate it)
-if command -v windsurf >/dev/null 2>&1 || [ -d "$HOME/.windsurf" ] || [ -d "$HOME/.codeium/windsurf" ]; then
-    info "      Windsurf detected - preview instrumentation is disabled by default."
-    info "        1. ~/.trajectory/bin/trajectory config features enable windsurf_instrumentation"
-    info "        2. ~/.trajectory/bin/trajectory setup --clients windsurf"
-    PLUGIN_INSTALLED=1
-else
-    info "      Windsurf not detected - skipping Windsurf preview guidance."
-fi
-
-# OpenHands configuration (handled by setup wizard)
-if command -v openhands >/dev/null 2>&1; then
-    info "      OpenHands detected - configuration is handled by the setup wizard."
-    info "      To refresh OpenHands wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients openhands"
-    PLUGIN_INSTALLED=1
-else
-    info "      OpenHands CLI not detected - skipping OpenHands configuration guidance."
-fi
-
-# OpenCode plugin
-OPENCODE_PLUGIN_DIR="$SCRIPT_DIR/plugin/trajectory-opencode"
-if command -v opencode >/dev/null 2>&1; then
-    if [ -d "$OPENCODE_PLUGIN_DIR" ]; then
-        info "      Installing OpenCode plugin..."
-        opencode plugin "$OPENCODE_PLUGIN_DIR" || {
-            warn "OpenCode plugin install failed. Install manually:"
-            warn "  opencode plugin /path/to/trajectory/plugin/trajectory-opencode"
-            warn "  or run: ~/.trajectory/bin/trajectory setup --clients opencode"
-        }
-    else
-        warn "OpenCode CLI detected, but local plugin directory not found: $OPENCODE_PLUGIN_DIR"
-        warn "Refresh OpenCode wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients opencode"
-    fi
-    PLUGIN_INSTALLED=1
-else
-    info "      OpenCode CLI not detected - skipping OpenCode plugin."
-fi
-
-# Kilo Code plugin
-KILO_PLUGIN_DIR="$SCRIPT_DIR/plugin/trajectory-kilo"
-KILO_CLI=""
-if command -v kilo >/dev/null 2>&1; then
-    KILO_CLI="kilo"
-elif command -v kilocode >/dev/null 2>&1; then
-    KILO_CLI="kilocode"
-fi
-if [ -n "$KILO_CLI" ]; then
-    if [ -d "$KILO_PLUGIN_DIR" ]; then
-        info "      Installing Kilo Code plugin..."
-        "$KILO_CLI" plugin "$KILO_PLUGIN_DIR" || {
-            warn "Kilo Code plugin install failed. Install manually:"
-            warn "  kilo plugin /path/to/trajectory/plugin/trajectory-kilo"
-            warn "  or run: ~/.trajectory/bin/trajectory setup --clients kilo"
-        }
-    else
-        warn "Kilo Code CLI detected, but local plugin directory not found: $KILO_PLUGIN_DIR"
-        warn "Refresh Kilo Code wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients kilo"
-    fi
-    PLUGIN_INSTALLED=1
-else
-    info "      Kilo Code CLI not detected - skipping Kilo Code plugin."
-fi
-
-# Pi extension
-PI_PLUGIN_DIR="$SCRIPT_DIR/plugin/trajectory-pi"
-if command -v pi >/dev/null 2>&1; then
-    if [ -d "$PI_PLUGIN_DIR" ]; then
-        info "      Installing Pi extension..."
-        pi install "$PI_PLUGIN_DIR" || {
-            warn "Pi extension install failed. Install manually:"
-            warn "  pi install /path/to/trajectory/plugin/trajectory-pi"
-            warn "  or run: ~/.trajectory/bin/trajectory setup --clients pi"
-        }
-    else
-        warn "Pi CLI detected, but local plugin directory not found: $PI_PLUGIN_DIR"
-        warn "Refresh Pi wiring later without Datadog prompts: ~/.trajectory/bin/trajectory setup --clients pi"
-    fi
-    PLUGIN_INSTALLED=1
-else
-    info "      Pi CLI not detected - skipping Pi plugin."
-fi
-
-if [ "$PLUGIN_INSTALLED" = "0" ]; then
-    info ""
-    info "  No coding assistant CLIs detected. Refresh client wiring later without Datadog prompts:"
-    info "    Claude Code: ~/.trajectory/bin/trajectory setup --clients cc (stages assets; Claude managed policy owns registration)"
-    info "    Codex:       ~/.trajectory/bin/trajectory setup --clients codex"
-    info "    Copilot beta: ~/.trajectory/bin/trajectory setup --clients copilot"
-    info "    Droid beta:  ~/.trajectory/bin/trajectory setup --clients droid"
-    info "    Antigravity: ~/.trajectory/bin/trajectory setup --clients agy"
-    info "    Goose:       ~/.trajectory/bin/trajectory setup --clients goose"
-    info "    Cline CLI:   ~/.trajectory/bin/trajectory setup --clients cline"
-    info "    Aider:       ~/.trajectory/bin/trajectory setup --clients aider --install-client-shims"
-    info "    Continue CLI: ~/.trajectory/bin/trajectory setup --clients continue --install-client-shims"
-    info "    Mistral Vibe: ~/.trajectory/bin/trajectory setup --clients mistral-vibe --install-client-shims"
-    info "    Codebuff:    ~/.trajectory/bin/trajectory setup --clients codebuff --install-client-shims"
-    info "    Cursor:      ~/.trajectory/bin/trajectory setup --clients cursor"
-    info "    Hermes:      ~/.trajectory/bin/trajectory setup --clients hermes"
-    info "    Amp Code:    ~/.trajectory/bin/trajectory setup --clients amp"
-    info "    Qwen Code:   ~/.trajectory/bin/trajectory setup --clients qwen"
-    info "    Kiro CLI:    ~/.trajectory/bin/trajectory setup --clients kiro"
-    info "    Devin preview (explicit opt-in):"
-    info "      1. ~/.trajectory/bin/trajectory config features enable devin_cli_instrumentation"
-    info "      2. ~/.trajectory/bin/trajectory setup --clients devin"
-    info "    Qoder preview (explicit opt-in):"
-    info "      1. ~/.trajectory/bin/trajectory config features enable qoder_cli_instrumentation"
-    info "      2. ~/.trajectory/bin/trajectory setup --clients qoder"
-    info "    CommandCode preview (explicit opt-in):"
-    info "      1. ~/.trajectory/bin/trajectory config features enable commandcode_instrumentation"
-    info "      2. ~/.trajectory/bin/trajectory setup --clients commandcode"
-    info "    Zed passive-history preview (explicit opt-in):"
-    info "      1. ~/.trajectory/bin/trajectory config features enable zed_passive_history"
-    info "      2. ~/.trajectory/bin/trajectory setup --clients zed"
-    info "    Kimi preview (explicit opt-in):"
-    info "      1. ~/.trajectory/bin/trajectory config features enable kimi_cli_instrumentation"
-    info "      2. ~/.trajectory/bin/trajectory setup --clients kimi"
-    info "    Windsurf preview (explicit opt-in):"
-    info "      1. ~/.trajectory/bin/trajectory config features enable windsurf_instrumentation"
-    info "      2. ~/.trajectory/bin/trajectory setup --clients windsurf"
-    info "    OpenHands:   ~/.trajectory/bin/trajectory setup --clients openhands"
-    info "    Kiro CLI:    ~/.trajectory/bin/trajectory setup --clients kiro"
-    info "    OpenCode:    ~/.trajectory/bin/trajectory setup --clients opencode"
-    info "    Kilo Code:   ~/.trajectory/bin/trajectory setup --clients kilo"
-    info "    Pi:          ~/.trajectory/bin/trajectory setup --clients pi"
+if [ "$ENABLE_SECURITY" = "1" ]; then
+    if command -v claude >/dev/null 2>&1; then SECURITY_CLIENTS+=("cc"); fi
+    if command -v codex >/dev/null 2>&1; then SECURITY_CLIENTS+=("codex"); fi
+    if command -v copilot >/dev/null 2>&1; then SECURITY_CLIENTS+=("copilot"); fi
+    if command -v cursor >/dev/null 2>&1 || command -v cursor-agent >/dev/null 2>&1; then SECURITY_CLIENTS+=("cursor"); fi
+    if command -v kiro-cli >/dev/null 2>&1 || command -v kiro >/dev/null 2>&1; then SECURITY_CLIENTS+=("kiro"); fi
 fi
 
 if [ "$ENABLE_SECURITY" = "1" ]; then

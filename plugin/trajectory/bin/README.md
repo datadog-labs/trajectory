@@ -1,6 +1,4 @@
-# Plugin binary directory
+# Plugin Binary Directory
 
-Claude Code adds this directory to `PATH` whenever it loads the Trajectory
-plugin. Trajectory does not ship an executable inside the plugin. This file
-keeps the directory present in source archives, local marketplaces, and
-installed plugin caches. It does this without adding an unsupported launcher.
+Claude Code adds this directory to `PATH` when it loads the Trajectory plugin.
+It holds only this README. No executable ships here.

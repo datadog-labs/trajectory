@@ -9,7 +9,7 @@
  * Or symlink: ln -s /path/to/plugin/trajectory-pi ~/.pi/agent/extensions/trajectory
  */
 
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { execFile, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -21,7 +21,6 @@ import { fileURLToPath } from "node:url";
 import { registerSubagentEvidence } from "./subagent-evidence.ts";
 import { BoundedSerialQueue } from "./async-queue.ts";
 import { aggregatePiAgentRun, PiAgentRunTracker, summarizePiAgentRunRequests } from "./agent-run.ts";
-import { TrajectoryMCPSession } from "./query-tools.ts";
 import {
 	isHeadlessPiRun,
 	piSessionIdentityFields,
@@ -50,10 +49,28 @@ const PI_TRAJECTORY_HOME_POINTER = "trajectory-home";
 const PLUGIN_PROVENANCE = {
 	plugin: {
 		id: "trajectory-pi",
-		version: "3.2.16",
+		version: "3.2.17",
 		source_scope: "trajectory_plugin",
 	},
 };
+// Pi 0.99 and later keep `deferred` tools out of the model's tool list until
+// its tool_search tool finds them, so trajectory_status costs no prompt tokens
+// until a model looks for it. Older Pi ignores the field and lists it.
+// A spread keeps older Pi typings from rejecting the unknown property.
+const DEFERRED_TOOL = { exposure: "deferred" } as const;
+const TOOL_SEARCH = "tool_search";
+
+// Pi registers tool_search inactive, so deferred tools are unreachable until
+// something turns it on. Turn it on as Pi does for deferred MCP servers. Pi
+// leaves a tool that --tools or --exclude-tools rules out unregistered, so a
+// user's choice still holds. Older Pi has no tool_search, so nothing changes.
+export function activateToolSearch(pi: Partial<Pick<ExtensionAPI, "getAllTools" | "getActiveTools" | "setActiveTools">>): void {
+	if (typeof pi.getAllTools !== "function" || typeof pi.getActiveTools !== "function" || typeof pi.setActiveTools !== "function") return;
+	if (!pi.getAllTools().some((tool) => tool.name === TOOL_SEARCH)) return;
+	const active = pi.getActiveTools();
+	if (!active.includes(TOOL_SEARCH)) pi.setActiveTools([...active, TOOL_SEARCH]);
+}
+
 export interface TrajectoryExtensionRuntime {
 	captureQueue?: BoundedSerialQueue;
 	captureHook?: (eventType: string, body: Record<string, unknown>, deliveryId: string) => Promise<void>;
@@ -290,6 +307,7 @@ export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: Trajector
 	pi.registerTool({
 		name: "trajectory_status",
 		label: "Trajectory Status",
+		...DEFERRED_TOOL,
 		description: "Shows the current trajectory capture status including active sessions and event counts",
 		parameters: Type.Object({}),
 		async execute(_toolCallId, _params, signal) {
@@ -413,76 +431,6 @@ export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: Trajector
 			} catch (err) {
 				ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
 			}
-		},
-	});
-
-	const mcpSession = new TrajectoryMCPSession();
-
-	async function runMCPTool(name: string, params: object, signal?: AbortSignal) {
-		const home = trajectoryHome();
-		const result = await mcpSession.call(name, params, findTrajectoryBinary(home)!, childEnvironmentForHome(home), signal);
-		return { ...result, details: { result } };
-	}
-
-	pi.registerTool({
-		name: "trajectory_schema",
-		label: "Trajectory Schema",
-		description: "Introspects the local Trajectory SQLite cache schema. Call this before trajectory_query so SQL matches the live cache.",
-		parameters: Type.Object({
-			include_row_counts: Type.Optional(Type.Boolean({ description: "Include SELECT COUNT(*) per table. Defaults to false." })),
-		}),
-		async execute(_toolCallId, params, signal) {
-			return runMCPTool("trajectory_schema", params, signal);
-		},
-	});
-
-	pi.registerTool({
-		name: "trajectory_query",
-		label: "Trajectory Query",
-		description: "Runs a guarded read-only SQL query against the local Trajectory SQLite cache. Call trajectory_schema first unless the schema was already fetched. SELECT, WITH, and a bounded allowlist of metadata-only PRAGMAs are accepted after stripping comments.",
-		parameters: Type.Object({
-			query: Type.String({ description: "SQL query. First keyword after comments must be SELECT, WITH, or PRAGMA; PRAGMA is restricted to bounded metadata reads." }),
-			params: Type.Optional(Type.Record(Type.String(), Type.Any(), { description: "Optional named SQL parameters. Use placeholders such as :session_id." })),
-			limit: Type.Optional(Type.Number({ description: "Maximum rows to return. Defaults to 100, max 1000." })),
-			row_limit: Type.Optional(Type.Number({ description: "Alias for limit." })),
-		}),
-		async execute(_toolCallId, params, signal) {
-			return runMCPTool("trajectory_query", params, signal);
-		},
-	});
-
-	pi.registerTool({
-		name: "trajectory_search",
-		label: "Trajectory Search",
-		description: "Full-text search over historical Trajectory tool calls and turns using the existing SQLite FTS5 indexes. Use tool_calls (default) for literal substrings such as paths, IDs, SHAs, and URLs (at least 3 characters). Use turns for prose with word matching and bm25 ranking. Results include snippets, rank (lower is better), and session metadata. The tool-call index is built on demand; retry if the result says it is being built.",
-		parameters: Type.Object({
-			query: Type.String({ description: "Search text: a literal substring for tool_calls, or whitespace-separated terms for turns." }),
-			target: Type.Optional(Type.Union([Type.Literal("tool_calls"), Type.Literal("turns")], { description: "Index to search. Defaults to tool_calls." })),
-			tool_name: Type.Optional(Type.String({ description: "Restrict to a tool name. Only valid with target=tool_calls." })),
-			session_id: Type.Optional(Type.String({ description: "Restrict to a session ID." })),
-			start_date: Type.Optional(Type.String({ description: "Inclusive lower bound on started_at (ISO8601 timestamp or date)." })),
-			end_date: Type.Optional(Type.String({ description: "Inclusive upper bound on started_at (ISO8601 timestamp or date)." })),
-			limit: Type.Optional(Type.Number({ description: "Maximum rows to return. Defaults to 20, max 100." })),
-		}),
-		async execute(_toolCallId, params, signal) {
-			return runMCPTool("trajectory_search", params, signal);
-		},
-	});
-
-	pi.registerTool({
-		name: "get_session_trajectory",
-		label: "Session Trajectory",
-		description: "Pull trajectory data for a session. For large sessions, use max_turns and offset to paginate detailed results. Raw results use max_events and the opaque pagination.next_cursor value.",
-		parameters: Type.Object({
-			session_id: Type.String({ description: "The session ID to query" }),
-			depth: Type.Optional(Type.Union([Type.Literal("summary"), Type.Literal("detailed"), Type.Literal("raw")], { description: "Level of detail: 'summary' (default), 'detailed', or 'raw'" })),
-			max_turns: Type.Optional(Type.Number({ description: "Max turns to return for detailed depth (default 50)" })),
-			offset: Type.Optional(Type.Number({ description: "Skip first N turns for detailed pagination (default 0); raw pagination uses cursor" })),
-			max_events: Type.Optional(Type.Number({ description: "Max events to return for raw depth (default 200)" })),
-			cursor: Type.Optional(Type.String({ description: "Opaque pagination.next_cursor returned by the previous raw page" })),
-		}),
-		async execute(_toolCallId, params, signal) {
-			return runMCPTool("get_session_trajectory", params, signal);
 		},
 	});
 
@@ -653,6 +601,34 @@ export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: Trajector
 		enqueueCapture(eventType, body, true, true);
 	}
 
+	// runThinkingLevel is the level Pi reported when the open run's prompt
+	// arrived. Older Pi settles a run only when the next prompt arrives, after
+	// the user may have changed the level for that next prompt.
+	let runThinkingLevel: string | undefined;
+
+	// Pi's thinking level is the reasoning effort it asks the model for.
+	function thinkingLevel(): string | undefined {
+		try {
+			const level = pi.getThinkingLevel?.();
+			return typeof level === "string" && level ? level : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
+	// A model whose reasoning flag is false takes no thinking level, and Pi
+	// clamps every level to off for it.
+	function modelReasoning(ctx: ExtensionContext, provider: unknown, model: unknown): boolean | undefined {
+		try {
+			const found = ctx.model?.provider === provider && ctx.model?.id === model
+				? ctx.model
+				: typeof provider === "string" && typeof model === "string" ? ctx.modelRegistry?.find?.(provider, model) : undefined;
+			return typeof found?.reasoning === "boolean" ? found.reasoning : undefined;
+		} catch {
+			return undefined;
+		}
+	}
+
 	function completeAgentRun(sourceDialect: string): boolean {
 		if (unsettledMessages.length === 0) return false;
 		const sourceEventId = agentRuns.complete();
@@ -682,6 +658,11 @@ export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: Trajector
 		};
 		if (aggregate.model) body.model = aggregate.model;
 		if (aggregate.provider) body.provider = aggregate.provider;
+		// Requests record the level they asked for since Pi 0.99. The run's
+		// own level stands in for older Pi.
+		const level = runThinkingLevel ?? thinkingLevel();
+		runThinkingLevel = undefined;
+		if (level) body.thinking_level = level;
 		// Pi's final stopReason tells a provider error ("error") from a user
 		// cancel ("aborted") or a normal finish. A retried error is not final.
 		const stopReason = finalStopReason(settledMessages);
@@ -722,8 +703,11 @@ export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: Trajector
 		toolErrors.clear();
 		agentRuns.reset("");
 		unsettledMessages = [];
+		runThinkingLevel = undefined;
 		pricingEvidence = new PiPricingSnapshots();
 		delete process.env[TRAJECTORY_PI_PARENT_SESSION_ENV];
+		// Reaching the query tools must never stop capture.
+		try { activateToolSearch(pi); } catch { /* The tools stay deferred. */ }
 		const eventSnapshot = { reason: event.reason, previousSessionFile: event.previousSessionFile };
 		const rawID = ctx.sessionManager.getSessionId();
 		if (rawID) process.env[TRAJECTORY_PI_PARENT_SESSION_ENV] = rawID;
@@ -814,11 +798,17 @@ export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: Trajector
 							.map((b: { type: "text"; text: string }) => b.text)
 							.join("\n");
 
-			post("UserPromptSubmit", {
+			const promptBody: Record<string, unknown> = {
 				session_id: sessionId,
 				prompt,
 				timestamp: Date.now(),
-			});
+			};
+			const level = thinkingLevel();
+			runThinkingLevel = level;
+			if (level) promptBody.thinking_level = level;
+			const reasoning = modelReasoning(ctx, ctx.model?.provider, ctx.model?.id);
+			if (reasoning !== undefined) promptBody.model_reasoning = reasoning;
+			post("UserPromptSubmit", promptBody);
 		} else if (msg.role === "assistant") {
 			const effective = ctx.model?.id === msg.model && ctx.model?.provider === msg.provider ? ctx.model : undefined;
 			const savedPricing = pricingEvidence.get(msg);
@@ -902,13 +892,14 @@ export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: Trajector
 		});
 	}));
 
-	pi.on("agent_end", captureCallback(async (event, _ctx) => {
+	pi.on("agent_end", captureCallback(async (event, ctx) => {
 		if (Array.isArray(event.messages)) unsettledMessages.push(...event.messages.map((message) => {
 			if (message.role !== "assistant") return message;
 			const evidence = pricingEvidence.get(message) ?? {
 				model_pricing: { schema_version: 1, model: message.model, provider: message.provider, status: "unavailable" },
 			};
-			return { ...message, ...evidence };
+			const reasoning = modelReasoning(ctx, message.provider, message.model);
+			return reasoning === undefined ? { ...message, ...evidence } : { ...message, ...evidence, model_reasoning: reasoning };
 		}));
 	}));
 
@@ -947,7 +938,6 @@ export function registerTrajectoryExtension(pi: ExtensionAPI, runtime: Trajector
 		const drainMs = runtime.shutdownDrainMs ?? SHUTDOWN_DRAIN_MS;
 		const drained = await captureQueue.drain(drainMs);
 		metadataReader.close();
-		void mcpSession.close();
 		if (drained) return;
 		const captures = Array.from(pendingCaptures.keys());
 		if (captures.length === 0) return;

@@ -41,18 +41,20 @@ goes where.
 
 ## Jamf Pro on macOS
 
+The Jamf script carries the kit's release R, the release of the
+`trajectory-mdm` that prepared the kit. On a new Mac, the first run downloads
+that release. The script reads no release list and no update setting. See
+[Updates](MANAGED-SETUP-DECISIONS.md#updates).
+
 Upload these bundle files to Jamf Pro:
 
 | File | Where it goes |
 | --- | --- |
-| `application/installer.sh` | A computer policy script that runs as root |
-| `update/installer.sh` | An update policy, only for computers where `install` stops with `installed_release_older` |
+| `trajectory-jamf.sh` | A Jamf script. Two policies run it: one at Login, once per user per computer, and one at Recurring Check-in, once every day |
 | `trajectory.mobileconfig` | A configuration profile at **Computer Level** |
-| `trajectory-login-items.mobileconfig` | A second configuration profile |
 | `adapter/extension-attribute.sh` | A computer extension attribute |
 | `adapter/configuration-inventory.sh` | A second extension attribute, of type String |
 | `adapter/package-policy-check.sh` | A recurring check-in policy for detection |
-| `adapter/reconcile-current-user.sh` | A policy script that stores the API keys and applies the settings |
 
 Read the other files, but do not upload them. `README.md` and
 `provider-notes.md` give the steps for Jamf Pro. `managed-policy/` shows the
@@ -62,23 +64,24 @@ API key to its script parameter.
 Host the files in [Hosted files](#hosted-files). The bundle has
 `config.defaults.yaml` in `remote-defaults/` when the intent lists it.
 
-Enter each API key in Jamf Pro, in the parameter of the
-`adapter/reconcile-current-user.sh` policy that
-`adapter/credential-parameters.json` names. Parameters start at 4. See
-[API keys](#api-keys).
+Enter each API key in Jamf Pro, in the parameter that
+`adapter/credential-parameters.json` names, on both policies that run
+`trajectory-jamf.sh`. Parameters start at 4. See [API keys](#api-keys).
 
 ## Microsoft Intune on macOS
+
+The Intune script is the Jamf script, made for Intune. Its release R is the
+release of the `trajectory-mdm` that prepared the kit.
 
 Upload these bundle files to Intune:
 
 | File | Where it goes |
 | --- | --- |
-| `application/installer.sh` | A macOS shell script, with **Run script as signed-in user** set to **No** |
-| `update/installer.sh` | An update script, only for computers where `install` stops with `installed_release_older` |
+| `trajectory-intune.sh` | A macOS shell script, with **Run script as signed-in user** set to **No** and a **Script frequency**, such as every day |
 | `trajectory.mobileconfig` | A custom configuration profile on the **Device channel** |
-| `trajectory-login-items.mobileconfig` | A second custom configuration profile |
 | `adapter/custom-attribute.sh` | A custom attribute |
 | `adapter/configuration-inventory.sh` | A second custom attribute, of type String |
+| `adapter/detect.sh` | Optional: a detection script in device context |
 
 `README.md` and `provider-notes.md` give the steps. Do not upload them.
 
@@ -122,14 +125,14 @@ each one from a `latest/` folder next to its `path`. For example, the path
 | File | Who writes it | What it does |
 | --- | --- | --- |
 | `config.defaults.yaml` | The bundle, in `remote-defaults/`, or `trajectory-mdm remote-defaults` | Behavior settings that you can change without a new profile. Its `path` must be `config.defaults.yaml`. |
-| `RELEASES.json` | You | Names the newest release that computers may install. Computers use it only under `binary_update.authority: trajectory`. |
+| `RELEASES.json` | You | Names the newest release that Macs may install. Windows computers do not use it. |
 | `markers.yaml` | You | Your marker rules. Its `path` must equal `organization_sync.markers_path`. |
 | `cohort.yaml` | You | Settings for the cohort that `cohort` names. Its `path` must be `cohorts/<cohort>.yaml`. |
 | `pricing.yaml` | You | A pricing catalog. |
 | `provider-pricing.yaml` | You | A provider rate card. |
 | `model-equivalence.yaml` | You | A mapping between model names. |
 | `custom-pricing.yaml` | You | Your organization's custom rate card. |
-| `deployment.json` | You | Decides which release computers install, in place of `RELEASES.json`. Do not use it to approve releases. |
+| `deployment.json` | Nobody | Retired. Computers still download a listed file, but they no longer use it. Remove its entry from `organization_sync.files`, then stop hosting it. The helper warns with `deployment_json_selected`, and `trajectory doctor` warns too. |
 
 When the intent lists `config.defaults.yaml`, check it before you publish it
 with `trajectory-mdm check-remote-defaults`. The command can also check your
@@ -144,14 +147,15 @@ Only Jamf Pro on macOS delivers Datadog API keys. Each destination's
 `api_key_ref` is the name of a keychain entry, such as `dd-primary-api-key`.
 It is never the key.
 
-1. In Jamf Pro, create the policy that runs
-   `adapter/reconcile-current-user.sh`.
+1. In Jamf Pro, create the two policies that run `trajectory-jamf.sh`.
 2. Open `adapter/credential-parameters.json`. It names the script parameter
    for each `api_key_ref`, from parameter 4 to parameter 11.
-3. Enter each API key in its parameter.
+3. Enter each API key in its parameter, on both policies.
 
-The script writes each key to the signed-in user's keychain under its
-`api_key_ref` name. Then it applies the settings.
+The script passes the keys to `trajectory install` on its standard input.
+Install checks each key with Datadog, then, as the signed-in user, stores it
+in that user's login keychain under its `api_key_ref` name. A key that is missing, invalid,
+or cannot be stored makes the run exit 2.
 
 Never put an API key in the intent file, the bundle, a profile, a hosted file,
 or a tag. The helper never asks for one.
