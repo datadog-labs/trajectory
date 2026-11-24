@@ -1,0 +1,19 @@
+{
+  "name": "Trajectory: managed Mac stopped reporting",
+  "type": "query alert",
+  "query": "max(last_72h):max:trajectory.ops.binary.heartbeat{binary_state:running,managed:true,trajectory.device_id:*} by {trajectory.device_id} < 1",
+  "message": "{{#is_no_data}}The managed Mac with device ID {{[trajectory.device_id].name}} has sent no Trajectory heartbeat for 3 days.{{/is_no_data}}\n\nThe device ID is the Mac's hardware UUID. Jamf Pro shows it as the UDID. A Mac that is shut down, offline, or retired also alerts. Datadog drops the alert about a day later, and tracks the Mac again when it reports.\n\nOn the Mac, run this command as the signed-in user, and read `reason` and `next_step`:\n\n`~/.trajectory/bin/trajectory managed status --scope all --format json`\n\nAdd the people or channel to notify to this message.",
+  "tags": [],
+  "options": {
+    "thresholds": {
+      "critical": 1
+    },
+    "notify_no_data": true,
+    "no_data_timeframe": 120,
+    "require_full_window": false,
+    "include_tags": true,
+    "notify_audit": false,
+    "new_group_delay": 0,
+    "evaluation_delay": 0
+  }
+}

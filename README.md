@@ -1,278 +1,97 @@
 # Trajectory
 
-Observe AI coding agents like production systems.
+Trajectory shows how people use AI coding agents and what that work produces.
 
-See the whole run. Measure the behavior. Improve the workflow.
+Coding agents run in local CLIs, IDEs, and desktop apps that application
+telemetry mostly misses. Trajectory turns their sessions into local timelines,
+Datadog LLM Observability traces, operational metrics, and marker results.
+You see which agents people use and where, their work, its cost and results,
+their failures, and adoption.
 
-Trajectory captures sessions from the coding agents listed under
-[Supported Clients](#supported-clients). It turns them into local timelines,
-Datadog LLM Observability traces, operational metrics, and Markers.
+## What It Is
 
-## What It Answers
+A client is a coding agent. A session is one conversation with it. A turn is
+one prompt and the agent's work on it.
 
-- What happened in this session?
-- Where did time, tokens, and cost go?
-- What kinds of work are agents doing, and what are they delivering?
-- Which repos, files, commits, and pull requests were involved?
-- Did the agent make progress, loop, retry, or stall?
-- Which agent workflows are improving across users and teams?
+Trajectory captures sessions, turns, tool calls, tokens, cost, repository
+context, and outcomes. If a client exposes them, it also captures commands,
+file edits, tests, permissions, commits, pull requests, compaction, and
+subagents. It links agent use to people, repositories, tools, commits, pull
+requests, and completed-session samples in one Datadog format.
 
-## Markers
+One local binary serves many clients through their hooks, plugins, or session
+files. It captures locally first, and developers keep their tools. Trajectory
+covers the agent's side of the work, next to APM, logs, infrastructure, and
+security monitoring.
 
-Markers are Trajectory's signature feature: YAML-defined measurements for agent
-behavior. Write a rule once, then evaluate it across turns, sessions, tasks,
-commits, and pull requests.
-
-Example: add this to `~/.trajectory/markers.yaml` to turn an agent force-push
-into a measurable signal.
-
-```yaml
-version: 2
-
-points:
-  - name: force-push
-    description: Agent force-pushed to a remote
-    severity: warn
-    confidence: high
-    emit: metric
-    scope: session
-    match:
-      tool: [Bash, Shell, exec_command, run_shell]
-      command: '(?i)^git\s+push\b.*--force'
-      not_input: '--force-with-lease'
-
-measures:
-  - name: force-pushes
-    scope: session
-    count:
-      point: force-push
-```
-
-How it works:
-
-- `points` define behavior to detect. This point watches shell-like tool calls
-  for `git push --force`.
-- `not_input` excludes the safer `--force-with-lease` path.
-- `emit: metric` makes the point eligible for marker metric export.
-- `scope: session` says the signal describes the session, not just one turn.
-- `measures` turns point hits into a count named `force-pushes`.
-
-When the command appears in a captured session, Trajectory records a
-`force-push` marker and can publish
-`trajectory.session.force_pushes.completed_count`. Raw behavior becomes
-something you can query by repo, team, environment, or release workflow.
-
-Use Markers to detect patterns such as:
-
-- retry loops
-- repeated failures
-- tool thrash
-- context churn
-- approval friction
-- cost spikes
-- task progress
-- pull-request attribution
-
-Marker results are available locally and can be exported as Datadog metrics, so
-agent behavior becomes something you can graph, alert on, compare, and improve.
-
-## Core Capabilities
-
-- **Multi-client instrumentation** for the coding agents listed under
-  [Supported Clients](#supported-clients).
-- **Local-first timelines** for session lifecycle, turns, tool calls, model
-  usage, cost signals, and repository context.
-- **Work Insights and reports** for adoption, outcomes, task mix, complexity,
-  agent-work cost, and pull-request attribution.
-- **Datadog-native export** for configurable LLM Observability traces and
-  operational metrics for tokens, cost, duration, tool use, capture health, and
-  attribution workflows.
-- **Agent Security controls** through the independently installable
-  `trajectory-security` plugin for Claude Code, Codex, and Cursor.
-- **Investigation tools** including `trajectory status`, `trajectory view`,
-  diagnostics, support bundles, MCP tools, and historical backfill.
-- **Privacy and capacity controls** including incognito, local-only capture,
-  and configurable trace detail. `trajectory config capture disable` stops all
-  new capture, and Trajectory-owned LLM calls have their own controls.
-- **Workflow attribution** across repositories, commits, pull requests, and
-  completed-session samples.
-- **Preview integrations** for more clients, marked (preview) under
-  [Supported Clients](#supported-clients).
+- **Export**: LLM Observability traces, and metrics for tokens, cost,
+  duration, tool use, capture health, and attribution.
+- **Work Insights**: adoption, outcomes, task mix, complexity, agent-work
+  cost, pull request attribution, stable JSON, and local pull request
+  evidence.
+- **Investigation**: `trajectory status`, `trajectory view`, diagnostics,
+  support bundles, MCP tools, and backfill.
+- **Privacy**: incognito, local-only capture, trace detail, a capture off
+  switch, and controls for Trajectory's own LLM calls.
 
 ## Install
 
-Choose the installation path that matches who manages the endpoint:
+Follow [Getting started](docs/GETTING-STARTED.md) to install Trajectory and
+connect your coding agents.
 
-- **Managed fleets (MDM/UEM):** Endpoint administrators should start with the
-  [Managed Endpoint Deployment guide](docs/MANAGED-ENDPOINTS.md). It covers
-  package preparation, policy deployment, coding-agent selection, and
-  managed-endpoint verification.
-- **Individual developers:** Use the personal installer below. It installs
-  Trajectory for the current user and runs interactive setup.
+To turn on Datadog Security for detected Claude Code, Codex, GitHub Copilot
+CLI, Cursor, and Kiro CLI, add `--security` to the installer. Pass `--app-key`,
+or set `DD_APP_KEY`. Security can block agent actions.
+`--security-mode observe` only records them.
 
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main/install.sh)
-```
+## For IT Admins
 
-The installer downloads the latest Trajectory release for your platform and
-installs it under `~/.trajectory/bin/trajectory`. It stages the Claude wrapper
-intercept runtime, runs `trajectory setup`, and connects the coding agents it
-finds. Agent command shims are opt-in. Install them with
-`--install-client-shims` where supported.
+For a managed fleet (MDM or UEM), start with the
+[managed deployment guide](docs/MANAGED-ENDPOINTS.md). It covers
+preparation, policy, client selection, and verification. Your MDM tool deploys
+the binaries and a policy that a job applies for each user, and owns updates.
 
-For local capture without a Datadog API key, leave the API-key prompt blank or
-make the choice explicit:
+Each release has these assets:
 
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/datadog-labs/trajectory/main/install.sh) --local-only
-```
-
-Configure Datadog export later with `trajectory publish destination configure`.
-
-Add `--security` to enable Datadog Security for detected Claude Code, Codex,
-and Cursor installations. Security defaults to enforce mode. Use
-`--security-mode observe` for non-blocking recording. Pass `--app-key` or set
-`DD_APP_KEY` when enabling security so result readback can authenticate.
-
-To upgrade an install from this repository, rerun the installer.
-
-Release assets use this naming convention:
-
-```text
-trajectory-darwin-amd64
-trajectory-darwin-arm64
-trajectory-darwin-universal
-trajectory-linux-amd64
-trajectory-linux-arm64
-trajectory-windows-amd64.exe
-trajectory-windows-amd64
-
-trajectory-mdm-darwin-amd64
-trajectory-mdm-darwin-arm64
-trajectory-mdm-darwin-universal
-trajectory-mdm-linux-amd64
-trajectory-mdm-linux-arm64
-trajectory-mdm-windows-amd64.exe
-```
-
-The `trajectory-mdm-*` assets are administrator tools for preparing and
-verifying managed endpoint deployment kits. They are not installed on employee
-endpoints.
+- `trajectory-darwin-amd64`, `trajectory-darwin-arm64`,
+  `trajectory-darwin-universal`
+- `trajectory-linux-amd64`, `trajectory-linux-arm64`
+- `trajectory-windows-amd64.exe`, and the same binary as
+  `trajectory-windows-amd64`
+- a `trajectory-mdm-*` administrator helper for each platform, with
+  `trajectory-mdm-windows-amd64.exe` for Windows
+- `checksums.sha256`
 
 ## Supported Clients
 
-Trajectory supports:
+[Supported clients](docs/SUPPORTED-CLIENTS.md) lists every client. Clients
+marked (preview) are preview integrations.
 
-- Claude Code
-- Claude Desktop (macOS)
-- Cline CLI
-- Codex CLI
-- GitHub Copilot CLI beta
-- Antigravity CLI (`agy`) on macOS and Linux
-- Aider
-- Continue CLI
-- Mistral Vibe
-- Codebuff
-- Goose
-- Hermes Agent
-- Amp Code
-- Qwen Code
-- OpenHands
-- Kiro CLI
-- Kilo Code
-- Cursor Desktop and cursor-agent
-- Factory Droid beta
-- Pi
-- OpenCode
-- CommandCode (preview)
-- Devin CLI (preview)
-- ForgeCode (preview)
-- gptme (preview)
-- Grok Build (preview)
-- Kimi Code CLI (preview)
-- Muse Code (preview)
-- Oh My Pi (preview)
-- Qoder CLI (preview)
-- VS Code Copilot Chat (preview)
-- Windsurf (preview)
-- ZCode (preview)
-- Zed (preview)
+## Documentation
 
-See [docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md) for version
-requirements and [docs/CLIENT-INSTRUMENTATION.md](docs/CLIENT-INSTRUMENTATION.md)
-for the per-client hook, MCP, watcher, and backfill surfaces.
-
-## Reports
-
-Turn local agent activity into an operational view:
-
-```bash
-trajectory summary                   # Usage, tokens, cost, agents, and projects
-trajectory patterns outcomes         # Commits and PRs linked to sessions, and their cost
-trajectory patterns                  # Work mix, outcomes, cost, and deliverables
-trajectory patterns session ID       # Task spans and turn-level cost drivers
-```
-
-Reports support bounded time windows, stable JSON, local-only PR evidence, and
-optional GitHub reconciliation. Historical classification is explicit:
-`trajectory patterns estimate` makes no model calls, and
-`trajectory patterns analyze --yes` is the spending boundary.
-
-See [docs/REPORTS.md](docs/REPORTS.md) for report semantics and
-[docs/WHY-TRAJECTORY.md](docs/WHY-TRAJECTORY.md) for how Trajectory fits into
-the broader observability stack.
-
-## Repository Contents
-
-```text
-.agents/plugins/          Codex marketplace metadata
-.claude-plugin/           Claude marketplace metadata
-commands/                 Gemini command assets
-docs/                     Public user documentation
-plugin/trajectory/        Claude Code plugin
-plugin/trajectory-security/ Standalone Agent Security plugin
-plugin/trajectory-codex/  Codex plugin
-plugin/trajectory-gemini/ Gemini context assets
-plugin/trajectory-antigravity/ Antigravity CLI plugin
-plugin/trajectory-pi/     Pi extension
-plugin/trajectory-opencode/ OpenCode plugin
-plugin/trajectory-kilo/   Kilo Code plugin
-intercepts/               Claude wrapper intercept runtime
-skills/                   Shared skill assets
-RELEASES.json             Release-channel selector
-install.sh                Installer
-```
-
-## Development
-
-This repository accepts changes to public docs, marketplace metadata, plugin assets, installer scaffolding, and release metadata.
-
-## Reference
-
-- [docs/USER-GUIDE.md](docs/USER-GUIDE.md): CLI workflows and day-to-day operation
-- [docs/WHY-TRAJECTORY.md](docs/WHY-TRAJECTORY.md): product scope and how Trajectory complements the rest of the observability stack
-- [docs/REPORTS.md](docs/REPORTS.md): summary, outcomes, Patterns, historical analysis, and session drilldown
-- [docs/OTLP.md](docs/OTLP.md): send traces, metrics, and logs to any OpenTelemetry collector
-- [docs/CONFIGURATION.md](docs/CONFIGURATION.md): config files, managed defaults, environment overrides, and common settings
-- [docs/API-APP-KEY-MANAGEMENT.md](docs/API-APP-KEY-MANAGEMENT.md): Datadog API/application key storage, resolution, permissions, and rotation
-- [docs/MANAGED-ENDPOINTS.md](docs/MANAGED-ENDPOINTS.md): managed endpoint bundle preparation and endpoint verification
-- [docs/FEATURE-FLAGS.md](docs/FEATURE-FLAGS.md): feature-flag commands, runtime overrides, and registered flags
-- [docs/SUPPORTED-CLIENTS.md](docs/SUPPORTED-CLIENTS.md): supported coding-agent clients and version requirements
-- [docs/CLIENT-INSTRUMENTATION.md](docs/CLIENT-INSTRUMENTATION.md): per-client hook, watcher, MCP, and backfill surfaces
-- [docs/COSTS.md](docs/COSTS.md): local cost summaries, turn evidence, objective observations, and fidelity checks
-- [docs/COST-ATTRIBUTION.md](docs/COST-ATTRIBUTION.md): additive cost totals and safe dashboard patterns
-- [docs/PRIVACY.md](docs/PRIVACY.md): incognito, capture levels, and what each destination receives
-- [docs/SECURITY-EVENT-STREAM.md](docs/SECURITY-EVENT-STREAM.md): managed security event log projection
-- [docs/LLM-CAPACITY.md](docs/LLM-CAPACITY.md): which features use additional LLM capacity and how to control them
-- [docs/METRICS-REFERENCE.md](docs/METRICS-REFERENCE.md): emitted metric names, types, tags, and query guidance
-- [docs/MARKERS.md](docs/MARKERS.md): marker authoring and marker-derived metrics
-- [docs/REPO-MARKERS.md](docs/REPO-MARKERS.md): repo-level marker files and publish overlays
-- [docs/SKILL-OBSERVABILITY.md](docs/SKILL-OBSERVABILITY.md): skill usage, attribution, and dashboard guidance
-- [docs/DATA-FORMATS.md](docs/DATA-FORMATS.md): materialized session fields and LLM Observability export fields
-- [docs/SUBAGENT-TRACE-MODEL.md](docs/SUBAGENT-TRACE-MODEL.md): semantic subagent trace rendering and span-link behavior
-- [docs/LLM-OBS-SPAN-TAGS.md](docs/LLM-OBS-SPAN-TAGS.md): Datadog LLM Observability span tag contract
-- [docs/COST-OVERLAP-CONSUMER-GUIDE.md](docs/COST-OVERLAP-CONSUMER-GUIDE.md): cost-overlap dashboard guidance
+- Start: [Getting started](docs/GETTING-STARTED.md),
+  [user guide](docs/USER-GUIDE.md)
+- Settings: [configuration](docs/CONFIGURATION.md),
+  [privacy](docs/PRIVACY.md)
+- Sending data: [publishing](docs/PUBLISH.md),
+  [traces](docs/TRACES.md),
+  [security event stream](docs/SECURITY-EVENT-STREAM.md),
+  [skill observability](docs/SKILL-OBSERVABILITY.md),
+  [AI Gateway](docs/AI-GATEWAY.md)
+- Cost, markers, and reports: [costs](docs/COSTS.md),
+  [markers](docs/MARKERS.md),
+  [reports](docs/REPORTS.md)
+- Metrics: [metrics reference](docs/METRICS.md),
+  [metrics consistency audit](docs/METRICS.md)
+- Managed fleets: [deployment guide](docs/MANAGED-ENDPOINTS.md),
+  [setup](docs/MANAGED-SETUP.md),
+  [decisions](docs/MANAGED-SETUP-DECISIONS.md),
+  [what goes where](docs/MANAGED-WHAT-GOES-WHERE.md),
+  [settings](docs/MANAGED-ENDPOINT-SETTINGS.md)
+- Agent Security: [Agent Security](docs/AGENT-SECURITY.md),
+  [security plugin](plugin/trajectory-security/README.md)
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE), [NOTICE](NOTICE), and [LICENSE-3rdparty.csv](LICENSE-3rdparty.csv).
+Apache-2.0. See [LICENSE](LICENSE), [NOTICE](NOTICE),
+and [LICENSE-3rdparty.csv](LICENSE-3rdparty.csv).

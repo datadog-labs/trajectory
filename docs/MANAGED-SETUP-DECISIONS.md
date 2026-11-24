@@ -6,8 +6,9 @@ ends with the intent fields it covers.
 
 For each field's default and allowed values, see the
 [Managed Endpoint Settings Reference](https://github.com/datadog-labs/trajectory/blob/main/docs/MANAGED-ENDPOINT-SETTINGS.md).
-`trajectory-mdm validate` checks every field. It prints a `Warning:` line for
-a setting that it accepts but that may not do what you expect.
+`trajectory-mdm validate` runs every check that `prepare` runs. It prints a
+`Warning:` line for a setting that it accepts but that may not do what you
+expect.
 
 ## Product, platform, and deployment
 
@@ -16,23 +17,34 @@ do:
 
 | Product and platform | What the bundle installs | Datadog destinations |
 | --- | --- | --- |
-| Jamf Pro on macOS | Installation script and configuration profile | Yes. Jamf Pro delivers the API keys. |
-| Microsoft Intune on macOS | Installation script and configuration profile | No |
+| Jamf Pro on macOS | Jamf script and configuration profile | Yes. Jamf Pro delivers the API keys. |
+| Microsoft Intune on macOS | Intune script and configuration profile | No |
 | Other products on macOS, and all products on Windows | Settings only, as a policy package | No |
 
 Datadog destinations need API keys on each computer. Only Jamf Pro on macOS
 delivers them. For every other product, use `schema_version` 1 and leave out
 `destinations`.
 
-- `provider` is the policy ID that `trajectory-mdm providers` lists.
+The Jamf and Intune scripts carry the download link of one release, the
+kit's release R. R is the release of the `trajectory-mdm` that prepared the
+kit. They read no release list and no update setting. See [Updates](#updates).
+
+- `provider` is the policy ID that `trajectory-mdm providers` lists. For the
+  Jamf Pro bundle, leave out `provider`, `platform`, and `migration_mode`:
+  `trajectory-mdm` fills in `jamf`, `macos`, and `update_in_place`. Every
+  other bundle needs `provider` and `platform`.
 - `schema_version` decides which fields the intent accepts. Use 5 for Jamf
   Pro, so you can use every field on this page.
 - `deployment_id` names this deployment. Keep it the same for every revision.
-  For Intune on macOS, a new ID needs a higher `--profile-revision`, or
-  computers refuse the profile. Jamf Pro bundles get a higher revision on
-  every run.
-- `migration_mode` decides what the first installation script does with an
-  existing personal installation. The default is `update_in_place`.
+  A computer moved to a new ID applies its profile at any revision. Keep one
+  Trajectory profile on each computer: a computer with the profiles of two
+  deployments applies neither.
+- `migration_mode` applies only to the migration tools of a package bundle,
+  for other MDM products and for Windows. It decides what they do with an
+  existing personal installation: `update_in_place`, the default, or
+  `clean_reinstall`. The Jamf Pro and Intune bundles on macOS accept only
+  `update_in_place`. Their launch keeps a working user copy of Trajectory of any
+  release.
 - `$schema` names the schema file that `trajectory-mdm schema` writes.
   Editors use it for completion.
 
@@ -50,8 +62,11 @@ in the administrator guide gives each client ID.
 - `client_command_shims` installs launcher wrappers for `claude`, `codex`, and
   `copilot` on macOS. Without it, Trajectory installs no wrappers.
 
-To change `clients`, deploy a new profile. The hosted settings file cannot
-change it.
+Once computers accept a hosted settings file, you can change the list there,
+as `setup.clients`. Computers read it only on releases later than 0.6.3, and
+earlier releases reject the whole file. So `trajectory-mdm` leaves it out, and
+you add it once the hosted file's `deployment.minimum_version` is later than
+0.6.3.
 
 Fields: `clients`, `auto_instrument`, `client_command_shims`, `client_command_shims.enabled`
 
@@ -160,45 +175,63 @@ Fields: `organization_sync.files[].name`, `organization_sync.files[].path`, `org
 
 ## Updates
 
-Decide who installs new releases on macOS:
+On macOS, Trajectory updates itself as your hosted `config.defaults.yaml`
+says, so you change these settings there, without a new profile:
 
-| You want | Set |
+| You want | Set in the hosted `config.defaults.yaml` |
 | --- | --- |
-| Your MDM installs each release that you assign | `binary_update.authority: mdm`, or leave out `binary_update` |
-| Computers install the release that you approve in a hosted file | `binary_update.authority: trajectory`, and a `RELEASES.json` entry in `organization_sync.files` |
-| Computers install each new release of their update ring | `binary_update.authority: trajectory`, and no `RELEASES.json` entry |
+| Computers install each new release of their update ring | `auto_update: true` |
+| Computers install the release that you approve in a hosted file | `auto_update: true`, and a `RELEASES.json` entry in `organization_sync.files` |
+| Computers run at least a given release | `deployment.minimum_version`, such as `0.6.5` |
+| Computers take releases from another ring | `deployment.ring`, such as `beta` |
 
-Windows accepts only `mdm`.
+Without these settings, automatic updates are off, computers have no version
+floor, and the ring is `stable`. Computers use these values before their
+first download too.
 
-- Under `mdm`, computers do not use a hosted `RELEASES.json`. To approve
-  releases with it, you need `trajectory`.
-- `RELEASES.json` is the file that approves a release. Do not host
-  `deployment.json` for this. While `files` lists `deployment.json`, that file
-  decides the release, and `RELEASES.json` does not cap it.
-- Leave out `allow_rollback`. It is retired, it has no effect with
-  `RELEASES.json` or with MDM update scripts, and `trajectory doctor` warns
-  when the profile sets it.
-- `deployment.minimum_version` sets the version floor, the lowest release
-  computers may run, such as `0.6.3`. It needs `schema_version` 5. A hosted
-  `config.defaults.yaml` that computers accept replaces it, so repeat it
-  there. Updates do not use the floor yet.
-- Computers that run 0.6.3-beta.5 or earlier refuse a profile that sets
-  `deployment.minimum_version`, and a hosted `config.defaults.yaml` that sets
-  it. Add the floor only after every computer runs a release that reads it.
-  The helper warns with `minimum_version_older_releases`.
-- The update ring comes from `deployment.ring` in the hosted
-  `config.defaults.yaml`. The intent has no ring setting.
+To turn automatic updates on for a share of computers first, keep
+`auto_update: false` in the hosted `config.defaults.yaml`. Publish a cohort
+file that sets `auto_update: true`, and add a `cohort_rollout` block that
+names it. Raise its `percent` step by step, and lower it to roll back. Once
+it reaches 100, set `auto_update: true` in the hosted file and remove the
+block.
 
-See
-[Choose who controls updates](https://github.com/datadog-labs/trajectory/blob/main/docs/MANAGED-ENDPOINTS.md#choose-who-controls-updates)
-for the rules on each computer.
+- The intent's update setting is `deployment.ring`, such as `stable` or
+  `beta`. Any `schema_version` accepts it, so an Intune intent at 1 can set
+  it too. Without it, the ring is `stable`. The
+  helper writes it into the generated hosted `config.defaults.yaml` and into
+  the `config.defaults.yaml` that the profile carries, but not into the
+  script.
+- The Jamf script places the kit's release R on a Mac whose binary for root
+  does not answer the kit's launcher interface.
+- The intent can also set the version floor, `deployment.minimum_version`,
+  such as `0.6.5`, for Jamf Pro and Intune on macOS. The kit's settings and
+  the generated hosted `config.defaults.yaml` carry it.
+  `prepare --minimum-version` sets the same floor and overrides this one for
+  that kit.
+- `trajectory-mdm` ignores `binary_update` in an intent and warns with
+  `unknown_field`. The kit is the one the intent builds without it. Remove
+  it, and set `auto_update` in the hosted file instead.
+- Windows computers install only the releases that your MDM assigns.
+- `RELEASES.json` is the file that approves a release. Computers no longer
+  read `deployment.json`. Leave it out of `files`. The helper warns with
+  `deployment_json_selected` when `files` lists it.
+- Computers that run 0.6.3-beta.5 or earlier refuse a hosted
+  `config.defaults.yaml` that sets `deployment.minimum_version`. Add the
+  floor only after every computer runs a release that reads it.
 
-Fields: `binary_update`, `binary_update.authority`, `binary_update.allow_rollback`, `deployment`, `deployment.minimum_version`
+See "Choose how computers update" in the
+[administrator guide](https://github.com/datadog-labs/trajectory/blob/main/docs/MANAGED-ENDPOINTS.md)
+for the rules on each computer. Its "Turn on automatic updates" section gives
+the steps of a staged rollout.
+
+Fields: `deployment`, `deployment.ring`, `deployment.minimum_version`
 
 ## Identity and tags
 
 - `identity.user_email_suffix` is your email domain, such as `@example.com`.
-  Trajectory uses it for user identity.
+  Trajectory adds it to each account name to make `trajectory.user_email`. It
+  never adds it to root or to a system or service account.
 - `tags` adds up to 64 tags to all managed data, deployment heartbeats
   included. Use them to filter dashboards by team or rollout.
 
@@ -224,13 +257,41 @@ before you publish one.
 
 Fields: `capture`, `capture.retention_limit_days`, `capture.aggregate_retention_limit_days`
 
+## Managed capture audit
+
+`managed_capture` turns on an audit that reports whether the selected clients
+capture and whether each required destination is configured. It never blocks
+a change. Leave it out for no audit.
+
+- `mode` is `off` or `audit`. With `audit`, also set `client_selection`,
+  `reconcile_interval_seconds`, `serve_active_repair_target_seconds`, and
+  `required_destination_names`.
+- `client_selection.mode` is `detected`, for the clients found on each
+  computer, or `explicit`, for the clients in `include`. `exclude` lists
+  clients to skip.
+- Each name in `required_destination_names` must be a destination in this
+  intent with `level` `full`, `incognito_exempt`, and an enabled
+  `event_stream`.
+
+Only the hosted settings file carries `managed_capture`, never the
+configuration profile. So it needs a hosted `config.defaults.yaml`. Computers
+read it only on releases later than 0.6.3, and earlier releases reject the
+whole file. So `trajectory-mdm` leaves it out of the file that it writes, and
+warns with `managed_capture_waits_for_floor`. Add the block to the hosted file
+once its `deployment.minimum_version` is later than 0.6.3.
+
+Fields: `managed_capture`, `managed_capture.mode`, `managed_capture.client_selection`, `managed_capture.client_selection.mode`, `managed_capture.client_selection.include`, `managed_capture.client_selection.exclude`, `managed_capture.reconcile_interval_seconds`, `managed_capture.serve_active_repair_target_seconds`, `managed_capture.required_destination_names`
+
 ## Advanced settings
 
 Most deployments leave these out. The settings reference lists each of their
 fields.
 
-- `security_modules` configures security modules. A later change needs a
-  restart, so the profile owns it.
+- `security_modules` configures security modules. Change them later in the
+  hosted settings file, as `modules`. Coding agents use an `agent-security`
+  change at their next tool call, and the background service when it
+  restarts. A `frontier-ai-gateway` change applies at the next launch that
+  asks for an AI Gateway profile.
 - `publish_trust` names the repositories whose `publish.trajectory.yaml`
   files Trajectory reads, and the Datadog sites those files can use.
 - `pricing` sets how Trajectory prices Cursor usage.

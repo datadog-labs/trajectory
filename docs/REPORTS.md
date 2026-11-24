@@ -1,408 +1,185 @@
 # Summary, Outcomes, and Patterns
 
-These commands report on the sessions that Trajectory recorded on your
-computer. They read the local SQLite cache. Each command can print JSON with a
-stable schema.
-
-| Command | What it shows |
-|---|---|
-| `trajectory summary` | Usage and cost for a period |
-| `trajectory patterns outcomes` | Commits and PRs linked to your sessions, with cost per commit and per PR |
-| `trajectory patterns` | Work mix, task outcomes, agent-work cost, and deliverables |
-
-## Run the reports
-
-### See this month's usage and cost
-
-```bash
-trajectory summary
-```
-
-It prints the local USD total, sessions, turns, and tokens for this month. It
-breaks them down by agent, project, model, and day.
-
-To use another window, add `--period`. This example shows the last seven days:
-
-```bash
-trajectory summary --period 7d
-```
-
-### See commits and PRs linked to your sessions
-
-```bash
-trajectory patterns outcomes
-```
-
-It prints cost per commit and cost per PR for this month.
-
-To start the window on a date, add `--since`:
-
-```bash
-trajectory patterns outcomes --since 2026-07-01
-```
-
-### See your work mix for the last week
-
-```bash
-trajectory patterns
-```
-
-It prints the task mix, task scores, agent-work cost, and deliverables for the
-last seven days. To change the window, add `--period`, for example
-`--period 30d`.
-
-### Look at one session in detail
-
-```bash
-trajectory patterns session SESSION_ID
-```
-
-It prints the tasks and turns of the session, with their cost and
-deliverables. See [Look at one session](#look-at-one-session).
-
-### Get JSON for scripts
-
-Add `--json` to any report command. For example:
-
-```bash
-trajectory summary --json
-```
-
-The output is one JSON document with a stable schema. Each section below names
-its schema.
-
-### Choose the time window
-
-| Command | Default `--period` | Values for `--period` |
-|---|---|---|
-| `trajectory summary` | `month` | `today`, `week`, `month`, `1d`, `7d`, `30d`, `90d`, `all` |
-| `trajectory patterns outcomes` | `month` | `today`, `week`, `month`, `1d`, `7d`, `30d`, `90d`, `all` |
-| `trajectory patterns` | `7d` | `1d`, `7d`, `30d`, `90d`, `all` |
-
-To use a different start time, set `--since`. It replaces `--period`. It
-accepts a duration, a date, `all`, or an RFC 3339 time, as `trajectory cost`
-does.
-
-In `summary` and `patterns outcomes`, `--limit` sets how many breakdown rows to
-show. The totals always use every session in the window.
+These commands report on the sessions Trajectory recorded on your computer,
+from its local cache. With `--json`, each prints one document with a stable
+schema: `trajectory.summary.v1`, `trajectory.outcomes.v3`,
+`trajectory.patterns.report.v5`, or `trajectory.patterns.session.v4`.
 
 ## Summary
 
-`trajectory summary` shows one local USD total, then sessions, turns, tokens,
-and averages. It breaks the totals down by agent, project, model, and day. It
-uses the same window and cost rules as `trajectory cost`.
+`trajectory summary` shows local USD, sessions, turns, tokens, and averages,
+by agent, project, model, and day. The default window is the current month.
+It uses the same window and cost rules as `trajectory cost`.
 
-In the day breakdown, each turn counts on its own day. It brings its cost, its
-tokens, and its provisional price if it has one. A day's cost is partial
-or unavailable when a turn of that day has no price.
-
-A session counts once on each day it has a turn. A session that runs for three
-days is counted on three days. So the session counts of the days can add up to
-more than the sessions in the window. Cost, turns, and tokens of the days add
-up to the window totals.
-
-Some values have no turn to place them by. They count on the session's last
-day in the window:
-
-- a cost that Trajectory knows only for a whole session, and the part of a
-  complete Codex session's cost that its turns do not show
-- the session's number of subagents
-- all of a session whose cost is an estimate or a total for the whole
-  session, such as a Codex Guardian session. Such a session stays on one day
-  with its turns and tokens.
-- all of a session whose turn records hold more turns, tokens, or cost than
-  its session record
-
-A session whose cost is hidden has no turns or tokens in the report. It gets
-no day row, and the summary counts it as an incomplete session.
-
-Some token usage has no verified price. If provisional pricing is on,
-Trajectory prices that usage and adds it to the total. The total then has a
-`*`, and one line shows the provisional part:
-
-```text
-* Contains $5.14 provisional cost. Run `trajectory cost pricing --since 2026-07-01` for details.
-```
-
-If some cost data is incomplete, a footnote shows how many sessions it affects.
-The USD values are local estimates. They are not an invoice. For pricing
-sources and reconciliation, run `trajectory user-guide costs`.
-
-`--json` prints the `trajectory.summary.v1` schema. The cost includes the cost
-of the subagents that sessions started. `cost.subagent_usd` is that part of
-`cost.amount_usd`, or of `cost.known_subtotal_usd` when the cost is partial.
-The breakdown rows include subagent cost and have no separate field for it.
-
-## Outcomes
-
-`trajectory patterns outcomes` shows two separate results:
-
-- **Cost per commit.** Each `git-commit` marker records the cost of the turns
-  since the previous commit in the same session. The report adds these up by
-  branch. It is a local value only. Trajectory no longer sends a commit cost metric to
-  Datadog.
-- **Cost per PR.** This reads the local PR-work table first. In Datadog, the
-  matching metric is `trajectory.pr.work.cost.usd.additive`. The distinct PRs
-  in `trajectory.pr.observations.total` are its coverage denominator. Older
-  caches use a fallback that counts only clearly linked PR interactions.
-  Trajectory does not publish that fallback as a metric.
-
-If a session has no outcome data, the report counts it as not covered. It does
-not use total cost in its place. A missing ratio shows as `-`, which is
-different from zero.
-
-PR attribution uses only local data. It needs no credentials and does not call
-GitHub or GitLab. The cost per PR covers AI work that Trajectory linked to a PR
-or MR. It is not the provider bill or the full engineering cost.
-
-A session whose full data aged out still counts as a session. The cache keeps
-the PRs it touched but not their cost. A PR that only such sessions touched
-is counted on its own line, without cost, and in `summary_only_prs` in the
-JSON. See
-[What reports show for an aged session](CONFIGURATION.md#what-reports-show-for-an-aged-session).
-
-`--json` prints the `trajectory.outcomes.v3` schema. The JSON includes
-methodology strings that explain how each value is computed.
+Each turn counts on its own day, so the days' cost, turns, and tokens add up to
+the totals. A session that runs for three days counts on each of those days.
+Values with no turn count on the session's last day in the window. These are
+session-only cost, subagent counts, whole-session estimates such as Codex
+Guardian sessions, and sessions whose turns hold more than the session record.
+A session whose cost is hidden adds no turns, tokens, or day row. It counts as
+incomplete, and a footnote gives the number.
 
 ## Patterns
 
-`trajectory patterns` shows the last seven days by default. The header counts
-sessions, classified tasks, and turns.
+`trajectory patterns` shows the last 7 days: sessions, tasks, turns, work mix,
+scores, agent split, agent-work cost, and deliverables.
 
-The report shows these sections:
+- **Work mix** uses the Work Insights v1 Level 1 and Level 2 categories. With
+  `--details`, a second table shows coding task types. Each task counts once
+  in each table.
+- **Per work type** rows give count, share, average turns, agent-work cost, and
+  complexity. They compare tasks of 1 to 2 turns with tasks of 10 or more.
+- **Scores** average outcome, autonomy, and risk.
+- **Deliverables** are commits, PRs created or touched, Markdown and test
+  files, and turns that changed files. Each counts once, from a successful tool
+  call or a PR-work record.
 
-- **Work mix.** The main table uses the Work Insights v1 Level 1 and Level 2
-  categories. A second table uses Trajectory's coding task types. Each
-  classified task counts once in each table.
-- **Per work type.** Each row shows task count, share, average turns,
-  agent-work cost, and average complexity. It also compares 1-2-turn tasks with
-  tasks of 10 or more turns.
-- **Scores.** Average outcome, autonomy, and risk, and a split by agent and
-  usage shape.
-- **Deliverables.** Commits, PRs created, PRs interacted with, Markdown and
-  test files, and turns that changed files.
-- **Delivery cost.** Cost per attributed PR, with attribution coverage.
-- **Highest-cost turns.** Each row has a `trajectory patterns session` command
-  that you can copy.
-
-`--json` prints the `trajectory.patterns.report.v5` schema.
-
-### How deliverables are counted
-
-Trajectory counts a deliverable only when a successful tool call shows it.
-It reads tool calls from every client and PR-work records. If a tool output
-summary was cut short, it also reads the local native transcript. Raw
-transcript content and file paths stay on your computer.
+Agent-work cost covers parent turns and their subagents. Coverage counts priced
+turns. It leaves out control turns with zero usage and automated-oversight
+child sessions.
 
 A PR interaction is a successful create, checkout, inspect, comment, review,
-edit, merge, or close. It can come from a shell command or a provider tool.
-Trajectory counts it only when the PR identity is clear. List and search
-operations across many PRs do not count.
+edit, merge, or close that names one PR. List and search commands do not
+count. A lone `gh pr view`, checks, or diff still counts while another
+workspace is active.
 
-### PR totals and GitHub
+By default, the headline PR count is your GitHub-authored PRs, which needs a
+GitHub sign-in. Without GitHub, the report uses PRs seen in sessions and
+warns. `--github=false` stays local. Delivery cost lists authored and
+interacted PRs, PRs with full, creating-turn-only, or no linked cost,
+coverage, and cost per PR.
 
-By default, Trajectory asks GitHub for the PRs you authored in the window. That
-count becomes the headline PR total. You must be signed in to GitHub for this
-step.
+`--details` adds coding task types, outcome spread, PR attribution
+diagnostics, and unlinked-PR splits. It also lists the highest-cost turns,
+with cost, duration, tokens, tools, and source, and a
+`trajectory patterns session` command to copy for each.
 
-- To use only PRs seen in local sessions, add `--github=false`.
-- If GitHub is not available, the report uses local data and prints a warning.
+`trajectory patterns session SESSION_ID` shows task and turn tables with cost,
+deliverables, scores, and tokens. `--details` adds short previews of the
+prompt, response, and classifier reasons. It reads local data only and shows
+incognito sessions too.
 
-Delivery cost reports these values:
+## Outcomes
 
-- authored and interacted PRs
-- PRs with full cost context
-- PRs linked only by the turn that created them
-- PRs with no linked cost
-- attribution coverage
-- one cost per attributed PR
+`trajectory patterns outcomes` shows the commits and PRs linked to your
+sessions, with cost per commit and per PR. The default window is the current
+month.
 
-`--details` splits the authored PRs with no linked cost into two groups. One
-group has no local interaction. The other has an interaction but no PR-work
-cost context.
+Each `git-commit` point stores the cost and turns since the last commit, in
+`attributed_cost_usd` and `attributed_turns`. Commits in the same turn split it
+evenly. Cost per commit stays local.
 
-### Look at one session
+PR attribution uses only local data. It needs no credentials, makes no GitHub
+or GitLab calls, and reads no provider bills. A session without outcome data
+counts as not covered, and a missing ratio shows `-`, not zero.
 
-To see the tasks and turns of one session, run:
+## Classify sessions
 
-```bash
-trajectory patterns session SESSION_ID
-```
+Work mix needs task classifications, which a model creates. Classification
+returns task boundaries and, for each turn, an outcome, complexity, autonomy,
+risk, task type, reversibility, side effects, and Work Insights labels.
 
-The task table shows each task's turn span, its privacy-reduced label, its
-classification, its cost, and its deliverables. The turn table shows each
-turn's position in its task. It also shows these values for each turn:
+Model calls cost money, so you opt in. In a terminal, `trajectory patterns`
+shows one estimate and asks. Non-interactive runs, `--json` reports,
+`trajectory patterns estimate`, and `analyze` without `--yes` never ask and
+never call a model.
 
-- outcome, complexity, autonomy, and risk
-- elapsed time
-- recorded cost and where the cost came from
-- tokens, tool calls, and lines of code changed
-- model and deliverables
+1. See the estimate: `trajectory patterns estimate --period 30d`. Use it to
+   plan. It does not predict the bill. Read it before `--period all`, which can
+   include every kept session.
+2. Classify: `trajectory patterns analyze --period 30d --yes`. Without
+   `--yes`, it prints the estimate and stops.
 
-Large costs show their duration and source next to them.
+`analyze` defaults to `--period 7d`, `--parallel 4` (at most 16), and
+`--batch-size 8`. `--details` and `--json` add the estimate's assumptions and
+content-free repair diagnostics: session ID, client, phase, and reason code.
 
-To add short previews of the prompt, the response, and the classifier's
-reasons, add `--details`:
+A confirmed run first repairs local data without models. Then it classifies
+finished top-level sessions that lack coverage. Complete sessions are skipped.
+`--yes --repair-only`, like `trajectory patterns repair`, only repairs.
 
-```bash
-trajectory patterns session --details SESSION_ID
-```
+Repair adds Claude, Codex, and Cursor sessions the cache lacks. Live Claude and
+Codex sessions get snapshots of their finished turns but wait for their real
+end. Active Cursor sessions wait too. An open session with finished turns and
+no provider transcript is labeled `provider-source-unavailable`. Child
+activity pulls its parent into the window, and child work and cost roll up to
+the root session. Repair and metric backfill keep the original turn and
+PR-interaction times, so a 7-day repair stays in those 7 days.
 
-To get JSON, add `--json`. It prints the `trajectory.patterns.session.v4`
-schema.
+If repair changes the estimate, the run stops before any model call. Run the
+same `--yes` command again to accept. A confirmed run uses a fixed plan of
+sessions and prompts, and sessions found later wait. JSON includes a
+content-free SHA-256 of the scope.
 
-The `session` command is read-only and local. Incognito does not hide sessions
-from it.
+Progress shows sessions done and total, workers, elapsed time, the expected
+finish, and slow providers. Interrupted runs resume and record each attempt's
+cost. The summary counts sessions analyzed, done elsewhere, and failed, and
+the analysis cost. If a provider returns bad JSON or an unknown category,
+Trajectory records the failed call and tries the next provider. If a client's
+history is unavailable, the command warns and shows cached sessions.
 
-### Agent-work cost
+Classification sends nothing to Datadog. To send retained history, run
+`trajectory publish history`.
 
-Agent-work cost includes parent turns and the subagents that they started.
-Coverage compares priced turns with turns that have cost. A control turn with
-zero usage still counts as a turn. The report does not show it as unpriced.
+## Aged sessions
 
-Trajectory does not count its own classifier cost as agent work. It reports
-that cost separately as `user-driven-segmentation`. `trajectory patterns` and
-`trajectory cost` never add it to agent-work spend. After analysis, reports show
-the total analysis cost for the window, including failed attempts.
+When a session's full data ages out, Trajectory keeps its totals.
 
-Automated-oversight child sessions appear in operational telemetry. They are
-left out of agent-work cost and its coverage.
+- `cost`, `cost top`, and `summary` count it whole, at its stored cost, in the
+  window that holds its end. A session that began before the window can shift
+  the window's totals, because its turns cannot be split. It has no subagent
+  count.
+- `cost inspect` prints its totals and notes it as summary-only.
+  `trajectory view` labels it. Turn and tool views show only sessions with
+  full data.
+- `patterns outcomes` counts it. PRs that only aged sessions touched count
+  without cost, listed in `summary_only_prs`.
+- Resuming it adds new turns to the kept totals without rereading old events.
 
-## Classify past sessions
+## Time windows
 
-`trajectory patterns` needs task classifications to fill its work mix. A model
-creates them. When some sessions in the window are not classified, the report
-shows one estimated cost to classify them. In a terminal, it asks whether to
-start. If you answer yes, it runs the same steps as
-`trajectory patterns analyze --yes`. Redirected output and `--json` never ask
-and never run a model.
+`trajectory patterns` takes `--period` `1d`, `7d` (default), `30d`, `90d`, or
+`all`. `summary` and `patterns outcomes` also take `today`, `week`, and
+`month` (default). `--since` replaces `--period` with a duration, a date,
+`all`, or an RFC 3339 time, as in `trajectory cost`.
 
-Model calls cost money, so the commands show an estimate first.
+## Local data and MCP tools
 
-1. See what classification of the last 30 days would cost. This step does not
-   run a model:
+There is no `trajectory query` command. Use `trajectory status`,
+`trajectory local-ui`, or the MCP tools. Clients that setup manages start
+`trajectory mcp`, with the tools `trajectory_status`,
+`get_session_trajectory`, `trajectory_incognito`, `trajectory_schema`,
+`trajectory_query`, and `trajectory_search`, and three `trajectory://`
+resources. Call `trajectory_schema` before `trajectory_query` to get the live
+database path and schema.
 
-   ```bash
-   trajectory patterns estimate --period 30d
-   ```
+## Check local data
 
-2. Start classification for the same window:
+`trajectory session audit data` checks nine areas without changing anything:
+sessions, conversations, tools, delegation, usage, outcomes, analysis,
+storage, and delivery. Its event checks cover the newest 100 sessions and skip
+the slow content, usage-outlier, and outcome checks. `--all` scans every
+session.
+`--details` shows findings, and `--json` suits scripts. Missing data stays
+apart from a checked zero. Pi delegation is not checked. `trajectory doctor`
+uses the same report and points to the audit, but never applies a repair.
 
-   ```bash
-   trajectory patterns analyze --period 30d --yes
-   ```
+To repair:
 
-Without `--yes`, `trajectory patterns analyze` prints the same estimate and
-stops.
+1. Write a plan: `trajectory session audit data --write-plan repair.json`. Add
+   `--only` to limit it.
+2. Review the plan.
+3. Apply it: `trajectory session audit data apply --plan repair.json --yes`.
 
-| Flag | What it changes |
-|---|---|
-| `--period` | The window to classify. The default is `7d` |
-| `--yes` | Confirms the estimate and starts the model calls |
-| `--parallel N` | Classifies N sessions at the same time (default 4, maximum 16) |
-| `--repair-only` | Repairs local data and never runs a model. Use it with `--yes` |
-| `--details` | Prints repair diagnostics and the estimate assumptions |
-| `--json` | Prints one JSON document |
-| `--db` | Uses another local cache |
+Apply refuses an expired plan, changed sources, a needed feature that is off,
+or an unclear repair. It checks that the gaps closed and writes a new receipt,
+which `--receipt PATH` places. A Codex rollout larger than 64 MiB, missing, or
+unsupported reports unverified.
 
-Before you use `--period all`, read the estimate. That window can include every
-session you kept.
-
-A confirmed run does these steps:
-
-1. It repairs local data first. This step makes no model calls. See
-   [How repair works](#how-repair-works).
-2. It classifies each completed top-level session that is missing task or turn
-   coverage, and saves the results in the local cache.
-
-The run sends nothing to Datadog. Trajectory no longer publishes task metrics.
-To republish retained history, run `trajectory publish history`.
-
-To repair local data only, run this command. It never runs a model:
-
-```bash
-trajectory patterns analyze --period 30d --yes --repair-only --details
-```
-
-`trajectory patterns repair` does the same.
-
-`--details` and `--json` list repair diagnostics: session ID, client, repair
-phase, and a reason code. They show no session content. The default output
-shows only the repair totals.
-
-The run can stop and resume. It records each successful and failed attempt
-with its cost.
-
-When the run ends, the summary shows how many sessions it analyzed, how many
-were already classified or in progress elsewhere, and how many failed. It also
-shows the analysis cost to date for the window.
-
-### If the estimate changes
-
-The repair step can find sessions or cost data that were not there when you
-saw the estimate. If the estimate changes, the command stops before its first
-model call. It shows the new estimate. Run the same `--yes` command again to
-confirm it.
-
-A confirmed run uses a fixed plan of sessions and prompts. Sessions found after
-that wait for the next run. JSON includes a SHA-256 of the analysis scope, so
-automation can check that the plan did not change.
-
-The estimate is for planning. It does not predict the provider bill.
-
-## Progress and output
-
-Interactive `patterns` commands show the current step on stderr. The line
-clears when the step changes or the command ends. Classification progress shows
-completed and total sessions, workers, elapsed time, and an estimated finish
-time. It also warns when a provider is slow.
-
-Redirected output keeps the same layout without color. JSON output is always a
-single document on stdout, with no progress mixed in.
-
-If one native history source is not available, the command prints a short
-warning. Sessions that are already in the cache still appear.
-
-## How repair works
-
-This section explains what the repair step in `trajectory patterns analyze`
-does. You do not need it to run the commands.
-
-**Sessions that are missing from the cache.** Before any model call, Trajectory
-looks for Claude, Codex, and Cursor sessions in each client's own history. It
-adds sessions that the local cache does not have.
-
-- Active Claude and Codex sessions are added as snapshots of their completed
-  turns. They get final classification only after the real session end
-  arrives.
-- Active Cursor sessions wait. Trajectory does not yet trust Cursor's snapshots
-  of active sessions.
-- An open session that has completed turns but no provider transcript still
-  appears as observed work. It is labeled `provider-source-unavailable`.
-  Trajectory does not add a fake session end to it.
-
-**Child sessions.** Activity in a child session brings its parent into the
-window. The child's work and cost roll up to the root session. The child does
-not count as another analyzed session. For Claude, Trajectory adds child
-sessions before their parent, so cost is not counted twice.
-
-**Cost and deliverables.** Trajectory refreshes old Codex token costs from the
-Codex session files with the current rate card. Confirmed repair also checks
-PR-work records and evaluates markers from completed local data.
-
-**Marker timestamps.** Marker repair uses each turn's original time. A marker
-that Trajectory evaluates again today stays in its original window.
-
-**Coverage passes.** Classification has two passes: the coding pass and the
-Work Insights v1 pass. Trajectory runs only the passes that a session is
-missing. If a session already has full coverage, Trajectory uses it and makes
-no call. If the coding task boundaries change, Trajectory updates the Work
-Insights tasks to match.
-
-For sessions that lack coding coverage, JSON reports
-`dynamic_work_insights_passes`. Their Work Insights pass reuses the same
-transcript and turns. Their task grouping comes from the checked coding pass.
-
-**Bad model output.** A provider can return malformed JSON or a value outside
-the categories. When that happens, Trajectory records the failed call. Then it
-tries the next provider in the shared headless list.
+`trajectory session audit --source-data` checks the local-ui cache:
+finalization, turn and session totals, tool parents, attribution, turn gaps,
+and active content. It checks input and output tokens apart.
+`session_turn_aggregate_drift` must pass. `--json` suits scripts, and
+`--db <path>` checks another cache.
+`trajectory session audit --deep` also explains local capture, trace-off
+settings, missing model or cost, and the trace intake time limit.

@@ -4,16 +4,24 @@ These operational metrics help you check a rollout, privacy settings, and
 publishing. Trajectory sends them on a best-effort basis.
 
 In the tables below, "serve tags" means the standard tags on metrics from
-`trajectory serve`. They include `host`, `os.type`, `trajectory.version`, and
-`trajectory.user`. "Fleet tags" means `role`, `owner`, `managed`, and
-`cohort`.
+`trajectory serve`. They include `host`, `os.type`, `trajectory.version`,
+`trajectory.user`, and on macOS
+[`trajectory.device_id`](../METRICS.md#who-and-where). "Fleet tags" means `role`, `owner`, `managed`, and
+`cohort`. `role` is always `serve` and `owner` is always `coordinator`, so
+`trajectory.ops.binary.heartbeat` and `trajectory.ops.required_destination.health`
+leave those two out.
+
+`cohort` is the cohort that the managed settings give this home. It comes from
+`~/.trajectory/cohort`, or from a `cohort_rollout` that includes the home. It
+is `unknown` when the home has no cohort. To measure a rollout, group fleet
+metrics by `cohort`.
 
 ### Setup state
 
 | Metric | Type | Tags | What it reports |
 |---|---|---|---|
 | `trajectory.ops.install.current_state` | gauge | Serve tags plus `managed`, `role`, `outcome`, `reason`, `setup_binary_status`, `setup_binary_version`, `management_provider` | The managed setup summary |
-| `trajectory.ops.install.agent_state` | gauge | Serve tags plus `client_source`, `trajectory.client_source`, `agent_status`, `setup_outcome`, `setup_stage`, `setup_component`, `setup_capture_path`, `setup_next_step`, `reason`, `setup_binary_status`, `setup_binary_version`, `management_provider` | Setup state for each selected client |
+| `trajectory.ops.install.agent_state` | gauge | Serve tags plus `trajectory.client_source`, `agent_status`, `setup_outcome`, `setup_stage`, `setup_component`, `setup_capture_path`, `setup_next_step`, `reason`, `setup_binary_status`, `setup_binary_version`, `management_provider` | Setup state for each selected client |
 | `trajectory.ops.install.auto_instrument_state` | gauge | Serve tags plus `install_owner`, `managed`, `auto_instrument_enabled`, `apply_enabled`, `allow_clients_configured`, `clients_hooked`, `publish_configured`, `reason` | Whether auto-instrument capture is ready on each managed publishing host |
 
 #### Managed setup gauges
@@ -76,6 +84,15 @@ It sends `0` when the host publishes but does not capture. The `reason` tag
 then names the first check that failed. `ready_with_drift` still sends `1`,
 but it warns that a partial repair is needed.
 
+The gauge describes the whole host, not one client. Trajectory derives one
+value from every detected, allowed client in the latest receipt, so the gauge
+has no client tag. Its `trajectory.client_source` is `unknown`, as on other
+host-level serve gauges. `ready_with_drift`, `setup_drift`, and
+`repair_failed` therefore do not say which client needs repair. On the host,
+`trajectory setup auto-instrument status --json` lists the planned action for
+each client. `trajectory.ops.install.agent_state` reports each client, but
+only after `trajectory setup --managed-keychain` verifies the install.
+
 Trajectory sends this gauge at these times:
 
 - after `setup auto-instrument apply` saves its receipt, even without the
@@ -136,16 +153,31 @@ publish_configured:true AND (auto_instrument_enabled:false OR apply_enabled:fals
 
 | Metric | Type | Tags | What it reports |
 |---|---|---|---|
-| `trajectory.ops.agent.present` | gauge | Serve tags plus `client_source`, `trajectory.client_source` | Once a day: `1` if a supported coding agent is installed on the machine, `0` if it is not |
-| `trajectory.ops.agent.version` | gauge | Serve tags plus `client_source`, `trajectory.client_source`, `client_version`, `trajectory.client_version`, `version_source`. Desktop clients also add `app_version`, `trajectory.app_version`, `app_version_source`, `app_version_disposition`. | Once a day: `1` for each detected client, with its installed version |
-| `trajectory.ops.agent.active_sessions` | gauge | Serve tags plus `client_source`, `trajectory.client_source` | Once an hour: the number of fresh active sessions for each client |
-| `trajectory.ops.agent.active_session_version` | gauge | Serve tags plus `client_source`, `trajectory.client_source`, `client_version`, `trajectory.client_version`, `version_source`, and `app_version` and `trajectory.app_version` when captured | Once an hour: the number of active sessions for each client version |
-| `trajectory.inventory.extension.installed` | gauge | `extension_name`, `extension_version`, `extension_kind`, `client_source`, `session_id`, `session_start_reason` | One point for each installed extension, plugin, or MCP server at session start |
+| `trajectory.ops.agent.present` | gauge | Serve tags plus `trajectory.client_source` | Once a day: `1` for each supported coding agent installed on the machine |
+| `trajectory.ops.agent.version` | gauge | Serve tags plus `trajectory.client_source`, `client_version`, `trajectory.client_version`, `version_source`. Desktop clients also add `app_version`, `app_version_source`, `app_version_disposition`. | Once a day: `1` for each detected client, with its installed version |
+| `trajectory.ops.agent.active_sessions` | gauge | Serve tags plus `trajectory.client_source` | Once an hour: the number of fresh active sessions for each client that has some |
+| `trajectory.inventory.extension.installed` | gauge | `extension_name`, `extension_version`, `extension_kind`, `trajectory.client_source`, `session_id`, `gen_ai.conversation.id`, `session_start_reason` | One point for each installed extension, plugin, or MCP server at session start |
 
 `agent.present` covers every coding agent that Trajectory supports. This
 includes clients that setup manages and clients that Trajectory sees only at
 run time, such as `codex-app` and `openclaw`. Aliases such as `cc` report as
 `claude-code`. Cursor Desktop and `cursor-agent` both report as `cursor`.
+
+`agent.present`, `agent.active_sessions`, and `agent.running` send a series
+only while its value is above zero. A client that is not installed or not in
+use sends no series. A session that runs no sub-agents sends only its
+`agent_kind:session` series. When a value drops to zero, Trajectory sends one `0` for
+that series. A graph then shows the drop instead of the last value. After
+that, the series sends nothing until its value rises again. If
+`trajectory serve` restarts, it does not send that `0` for a client that is
+already absent.
+
+To count the machines that do not have a client, use a window of at least one
+day. Take the hosts that report
+`trajectory.ops.binary.heartbeat{binary_state:running}`. Then remove the hosts
+where that client's `trajectory.ops.agent.present` is `1`. Group by `host`
+and keep the hosts whose maximum is above zero. A host that sent only the
+closing `0` in the window does not have the client.
 
 For `agent.version`, `client_version` is the semantic version from the
 client's command-line tool. It is `unknown` when that version is not
@@ -156,47 +188,17 @@ separate. Bundle reads have limits and report a fixed result code in
 
 `agent.active_sessions` counts each session once, even when several
 `trajectory serve` processes run. Each process writes heartbeat files that
-Trajectory uses to remove duplicates. Known clients with no fresh active
-sessions report `0`.
-
-`agent.active_session_version` uses the session-start state saved in the
-heartbeat files. A missing version reports as `client_version:unknown`.
+Trajectory uses to remove duplicates.
 
 For `inventory.extension.installed`, `extension_version` is `unknown` when the
 client does not report it.
-
-### CLI and MCP usage
-
-| Metric | Type | Tags | What it reports |
-|---|---|---|---|
-| `trajectory.ops.cli.command.started` | count | `trajectory.command`, `trajectory.command_class`, `trajectory.invocation_mode`, `trajectory.distribution`, `trajectory.version`, `host`, `os.type`, and metric-catalog tags | One count just before a CLI command runs |
-| `trajectory.ops.mcp.tool.started` | count | `trajectory.mcp_tool`, `trajectory.mcp_tool_class`, `trajectory.mcp_transport`, `trajectory.version`, `host`, `os.type`, and metric-catalog tags | One count before a registered MCP tool handler runs |
-| `trajectory.ops.mcp.tool.completed` | count | MCP tool tags plus `trajectory.mcp_outcome` | One count when the handler ends, as `success`, `tool_error`, `handler_error`, `canceled`, or `panic` |
-| `trajectory.ops.mcp.tool.duration_ms` | distribution | MCP tool tags plus `trajectory.mcp_outcome` | How long the registered handler ran |
-
-For `capture-hook`, `hook-dispatch`, and `runtime`, Trajectory adds counts with
-the same tags into one-minute rows. Other commands keep one row for each run.
-Hook processes write to a local file without locks. The serve process then
-adds those entries into one-minute rows. A hook's background worker is not
-counted again.
-
-Recording the MCP completion count and duration does not change the tool's
-result, error, cancellation, or panic.
-
-Both families go by default to managed required Datadog destinations that
-accept ordinary metrics. Managed policy can limit or turn off this export.
-
-These metrics never include arguments, results, queries, or paths. They also
-never include session identity, prompts, errors, credentials, or arbitrary user
-tags.
 
 ### Destinations and managed configuration
 
 | Metric | Type | Tags | What it reports |
 |---|---|---|---|
-| `trajectory.ops.required_destination.health` | gauge | Serve tags plus fleet tags, `destination`, `incognito_exempt`, `destination_state` | Whether each required destination is active |
+| `trajectory.ops.required_destination.health` | gauge | Serve tags plus `managed`, `cohort`, `destination`, `incognito_exempt`, `destination_state` | Whether each required destination is active |
 | `trajectory.ops.org_sync.success_age_seconds` | gauge | Serve tags plus fleet tags, `verified`, `sync_status`, `failure_reason`, `failure_scope`, `fetch_error_class`, `http_status_class`, `failure_streak` | Seconds since the last successful managed configuration sync |
-| `trajectory.ops.config_migration.heartbeat` | gauge | Deployment heartbeat tags plus `migration_state`, `reason`, `trajectory.version` | Once an hour: the state of managed user-configuration reconciliation. It carries no configuration content. |
 
 The elected serve owner sends `required_destination.health`,
 `org_sync.success_age_seconds`, and both `managed_capture` gauges at most once
@@ -269,23 +271,105 @@ A `degraded` sync met the core managed requirements, but an optional file
 failed. Trajectory still records the success. The cause stays visible in the
 tags. The exact HTTP status appears only in the structured operational event.
 
-### Resource use
+### Delivery audit
 
 | Metric | Type | Tags | What it reports |
 |---|---|---|---|
-| `trajectory.ops.resource.cpu_percent.avg` | gauge | Resource-window tags | Mean CPU over a complete five-minute window aligned to UTC |
-| `trajectory.ops.resource.cpu_percent.max` | gauge | Resource-window tags | The largest 15-second CPU interval in the same window |
+| `trajectory.instrumentation.publish.daily_sent` | gauge | Serve tags plus `trajectory.user_email` when Trajectory resolves one, `kind`, `day` | Once a day: how many turns and sessions of the day before this destination accepted from the machine |
 
-The runtime sends resource-window metrics behind the default-on
-`resource_observation` control. Turning it off stops collection on an endpoint.
+Use this metric to check that what each machine sent reached your Datadog
+organization. Trajectory can see that the intake accepted a point, but not
+whether Datadog stored it. For example, Datadog drops a point that arrives more
+than about three hours late unless your organization has Historical Metrics
+Ingestion. The metric reports what the machine counts as delivered. Compare it
+with what your organization received.
 
-For both metrics, 100% is one busy core. Values can be higher than 100%. Use
-`max` rollups for `cpu_percent.max`, and never `.as_count()`.
+The serve owner on each machine sends it once each UTC day, at its first check
+three or more hours after midnight UTC. It counts the day before:
+
+- `kind:turns` is the number of distinct turns whose
+  `trajectory.turn.completed` point the destination accepted.
+- `kind:sessions` is the number of sessions whose
+  `trajectory.session.completed` point the destination accepted.
+- `day` is the day it counts, as `YYYY-MM-DD`.
+
+A turn or session counts on the day of its completion time, the time its point
+carries. The audit point itself carries the time Trajectory sends it, so it
+appears on the day after the day it counts. A point dated the day before would
+arrive too late for Datadog to keep it.
+
+Each destination receives its own counts. A destination that accepted nothing
+that day receives `0`. Trajectory matches a destination's points by where they
+go, its endpoint and API key reference, so a renamed destination keeps its
+counts. A destination that moved to another key reference counts only the
+points it accepted after the move. The metric goes to the same destinations as
+`trajectory.ops.binary.heartbeat`: every Datadog destination in your user or
+managed configuration that takes metrics. Destinations that only a project's
+configuration names do not receive it. Incognito mode and the metric export
+settings apply to it as they do to the heartbeat.
+
+Trajectory reads the counts from its own record of the points each destination
+accepted. It does not read your session history. It reads that record once a
+day and saves the counts. If the send fails, Trajectory sends the saved counts
+an hour later to the destinations that did not accept them. A restart on the
+same day does not send the day again.
+Trajectory sends no audit point in these cases:
+
+- `trajectory serve` does not run at all on the next UTC day.
+- The day has more than 250,000 completion points, which Trajectory does not
+  count.
+- The destination was added after Trajectory counted the day.
+
+#### Compare sent with received
+
+[`delivery-audit-dashboard.json`](delivery-audit-dashboard.json) is a Datadog
+dashboard definition. To add it to your organization, use **Import dashboard
+JSON** in a new dashboard's settings. You can also send it in the body of a
+`POST` request to the Datadog `/api/v1/dashboard` endpoint. For each machine and
+day, it shows `daily_sent` next to the `trajectory.turn.completed` and
+`trajectory.session.completed` points that your organization received, and the
+difference between them. It uses only these three metrics and the `kind`,
+`host`, and `trajectory.user` tags.
+
+Each audit point appears on the day after the day it counts. So the dashboard
+compares it with what your organization received one day earlier, through
+`day_before()`:
+
+```text
+sum:trajectory.instrumentation.publish.daily_sent{kind:turns} by {host}.rollup(max, 86400)
+day_before(sum:trajectory.turn.completed{*} by {host}.as_count().rollup(sum, 86400))
+```
+
+Read the difference, sent minus received, like this:
+
+- Above `0`: Datadog accepted points that it did not store.
+- Below `0`: your organization received more than the machine counted. This
+  can happen when backfill later sends turns with their original time.
+- No value: the machine did not send an audit point, or it counted nothing
+  that day. Datadog reads a missing series as `0`, so the difference charts
+  leave these days out.
+
+`daily_sent` counts each turn once. Received points count each series. A turn
+that reached your organization as two series counts twice in the received
+sum. For example, Trajectory may send it again with a changed tag. Such a turn
+lowers the difference and can hide a lost one. A difference of `0` or below
+shows only that the received sum is at least the count. A lost turn can still
+hide behind a repeated one. The same holds for sessions.
+
+The audit does not cover points that never left the machine. To see those, run
+`trajectory publish status` on the machine.
+
+### Resource use
+
+The serve cost metrics report the CPU, memory, and disk use of
+`trajectory serve`. Examples are
+`trajectory.instrumentation.serve.cpu_seconds_per_hour` and
+`trajectory.instrumentation.serve.rss_bytes`. See
+[Serve cost intervals](instrumentation-health-metrics.md#serve-cost-intervals).
 
 On Apple Silicon Macs, releases up to 0.6.3-beta.5 read the kernel's CPU
 counters in the wrong unit and reported about 42 times too little CPU. That
-affects these two metrics, `trajectory.ops.resource.exit_remainder_cpu_seconds.total`
-and `trajectory.instrumentation.serve.cpu_seconds_per_hour`, tagged
+affects `trajectory.instrumentation.serve.cpu_seconds_per_hour`, tagged
 `os.type:darwin` or `os:darwin`. Later releases report the real figure, so a
 Mac series steps up at the upgrade. Intel Macs, Linux and Windows were always
 right. Compare Mac CPU only between releases after 0.6.3-beta.5.
@@ -294,32 +378,22 @@ right. Compare Mac CPU only between releases after 0.6.3-beta.5.
 
 | Metric | Type | Tags | What it reports |
 |---|---|---|---|
-| `trajectory.serve.process.start_total` | count | `start_source` | The capture server listener started |
-| `trajectory.serve.process.exit_total` | count | `exit_reason`, optional `signal` | The capture server exited normally or with an error, before publishing shut down |
 | `trajectory.serve.capture.request_error_total` | count | `client`, `event_type`, `error_kind`, `http_status_class` | A capture HTTP request returned 4xx or 5xx, or the handler failed |
-| `trajectory.serve.operational_log.dropped_total` | count | `reason:queue_full` plus serve tags | Operational events dropped because the in-process queue was full |
 | `trajectory.serve.goroutine.panic_recovered_total` | count | `goroutine`, `action` | A serve background task panicked and recovered. `action` is `restart` or `give_up`. |
 
-`start_source:rescue_hook` means a hook restarted the listener after it had
-stopped. Trajectory cannot record a forced kill directly. A later
-`rescue_hook` start shows that one happened.
-
-Trajectory sends `operational_log.dropped_total` on the owner's next
-maintenance pass. The events were dropped before Trajectory saved them.
+To count running serve processes, use
+`trajectory.ops.binary.heartbeat{binary_state:running}`. To count failed
+capture requests, use
+`trajectory.instrumentation.capture.hook_event{outcome:failure}`. See
+[Instrumentation Health Metrics](instrumentation-health-metrics.md).
 
 ### Local state
 
-Trajectory reads these gauges during the local-state health scan.
+Trajectory reads this gauge during the local-state health scan.
 
 | Metric | Type | Tags | What it reports |
 |---|---|---|---|
-| `trajectory.serve.local_state.live_session_files` | gauge | Serve tags plus `stage`, `warning`, `scan_error` | The number of live-session files, not counting lock files |
-| `trajectory.serve.local_state.heartbeat_files` | gauge | Serve tags plus `stage`, `warning`, `scan_error` | The number of active-session heartbeat files |
-| `trajectory.serve.local_state.serve_log_bytes` | gauge | Serve tags plus `stage`, `warning`, `scan_error` | The size of `trajectory-serve.log` in bytes |
-| `trajectory.serve.local_state.serve_diag_bytes` | gauge | Serve tags plus `stage`, `warning`, `scan_error` | The size of `serve-diag.ndjson` in bytes |
 | `trajectory.serve.local_state.publish_ledger_held_claims` | gauge | Serve tags plus `artifact_scope` | Publish claims still held long after any live publish could need them |
-| `trajectory.serve.local_state.publish_ledger_held_claims_detail` | gauge | Serve tags plus `artifact_type`, `claim_scope`, `age_bucket`, `hold_reason` | The held claims, split by type, scope, age, and bounded reason, including ambiguous export, unrecorded completion, missing legacy evidence, unverified owner identity, and a disabled reclaimer |
-| `trajectory.instrumentation.publish.ledger_recovery` | count | `component:publish`, `signal:final_session`, `outcome`, `reason` | One record for each durable dead-owner reclaim and each first operator-required classification. Repeated retries do not increment it |
 
 #### Held publish claims
 
@@ -338,14 +412,6 @@ This check only reads the ledger. A separate maintenance task is on by
 default. It completes non-final claims for a single destination that are older
 than seven days. It does not release them to be published again.
 
-`publish_ledger_held_claims_detail` splits the same claims:
-
-| Tag | Values |
-|---|---|
-| `claim_scope` | Separates older whole-session claims from current claims for a single destination |
-| `age_bucket` | `30m_to_2h`, `2h_to_1d`, `1d_to_7d`, `7d_plus` |
-| `hold_reason` | `ambiguous_export`: the owner saved an uncertain submission. `completion_unrecorded`: the export succeeded, but Trajectory could not record completion locally. `owner_lost_or_legacy`: no result was recorded, or the row comes from an older release. `none`: the healthy final-session zero. |
-
 An older release can still read the ledger and keep publishing. Session,
 claim, destination, and path identities are never tags.
 
@@ -355,7 +421,7 @@ To recover, run `trajectory publish queue claims`, then
 ### Terminal recovery
 
 When a session ends, Trajectory finalizes it. If a step fails, Trajectory keeps
-a receipt and retries later. These gauges and counts track that work.
+a receipt and retries later. These gauges track that work.
 
 Recovery's cost does not grow with the number of receipts. A receipt gets at
 most five attempts. An attempt that its 110-second deadline cuts off counts as
@@ -383,20 +449,12 @@ window.
 | Metric | Type | Tags | What it reports |
 |---|---|---|---|
 | `trajectory.serve.terminal_recovery.pending` | gauge | Serve tags plus `feature` | Ended sessions with receipts that still wait for finalization |
-| `trajectory.serve.terminal_recovery.pending_detail` | gauge | Serve tags plus `feature`, `reason`, `retry_state`, `age_bucket` | The pending work, split by cause, retry state, and the age of the session's last event |
 | `trajectory.serve.terminal_recovery.oldest_age_seconds` | gauge | Serve tags plus `feature` | The age of the oldest pending receipt in each feature |
-| `trajectory.serve.terminal_recovery.attempt_total` | count | Serve tags plus `feature`, `outcome` | Recovery attempts that ran for a receipt, and receipts retired without one. `outcome` is `success`, `failure`, `retired_spent` (the receipt used its five attempts), `retired_old` (the session's last event is more than 60 days old), or `retired_no_file` (the session file is gone). |
-| `trajectory.serve.terminal_recovery.success_age_seconds` | gauge | Serve tags plus `feature` | Whole seconds since the last successful repair for each feature |
 
 `feature` is `finalization`, `sensitivity`, or `segmentation`. The
 `finalization` count includes every pending receipt. The owner sends healthy
 zero series on every health sweep, which runs every 10 minutes. Healthy
 features report `0` for `oldest_age_seconds`.
-
-`age_bucket` is `under_7d`, `7d_to_30d`, `30d_to_60d`, or `60d_plus`, from the
-time of the session's last event. It is `unknown` when the receipt records no
-such time, and `none` on the healthy zero series. A `60d_plus` receipt waits
-for the next look to retire it.
 
 While a receipt waits, the owner also sends these gauges every minute. It
 sends them once more when the last receipt clears. With nothing pending, the
@@ -408,39 +466,6 @@ Serve keeps the receipts in memory. A receipt this serve process adds or
 clears shows at the next minute check. Serve reads the receipts from disk
 again every 10 minutes, so a change that another process makes can take up to
 10 minutes to show.
-
-For `pending_detail`, `reason` gives the cause:
-
-- Sensitivity keeps the classifier cause: `timeout`, `auth`, `upstream`, a
-  model, configuration, or response category, `storage`, or publisher
-  availability.
-- Segmentation keeps its provider, storage, or budget cause.
-- Generic finalization uses `pending`.
-
-`retry_state` is `ready`, `backoff`, `blocked`, or `exhausted`.
-
-- `blocked` means an automatic retry cannot change the result. A spent
-  monthly segmentation budget is one example. A blocked receipt uses no more
-  attempts. After you repair or reset the dependency, run a catch-up.
-- After an upgrade to a newer recovery policy, receipts from earlier releases
-  become `ready` once, with a new, limited budget.
-- Healthy zeros use `reason:none,retry_state:none`. When a partition clears,
-  the owner sends a final zero for it.
-- Session and receipt identities are never tags.
-
-Use `oldest_age_seconds` with `pending_detail` to tell a short retry from a
-repair that has stalled or run out of attempts.
-
-For `attempt_total`, Trajectory saves the attempt budget before it starts the
-retry. A restart therefore cannot cause an automatic retry loop. Segmentation
-gets one automatic retry. Later shared sensitivity attempts skip it, and its
-detail reports `retry_state:exhausted`.
-
-For `success_age_seconds`, Trajectory reads a saved success time for each
-feature. `-1` means the host has not yet seen a successful automatic repair.
-It never means "just repaired". Use it with the pending and attempt metrics.
-Together they tell an idle healthy host from a recovery path that has never
-succeeded.
 
 ### Backfill failures
 
@@ -517,11 +542,11 @@ Datadog. It also does not show that Datadog received the historical points.
 
 Local health retains `codex_capture_progress` with per-stage counts and ages.
 A request that stays in a stage for more than ten minutes emits one
-`trajectory.instrumentation.watchdog.gap_detected{client_source:codex,reason:capture_stage_stuck}`
+`trajectory.instrumentation.watchdog.gap_detected{trajectory.client_source:codex,reason:capture_stage_stuck}`
 count with a bounded `stage` tag. A stage reports again only after an observation
 below the threshold. Idle processes send no progress samples.
 
 The event marks a new stall. Read the local health snapshot to check whether
 the stage remains stuck.
 
-Return to the [Metrics Reference index](../METRICS-REFERENCE.md).
+Return to the [Metrics Reference index](../METRICS.md).

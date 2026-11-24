@@ -1,14 +1,17 @@
 # Support
 
-For support, use the support channel provided by your Datadog contact or open a GitHub issue.
+For support, use the channel your Datadog contact gave you, or open a GitHub
+issue.
 
-When filing a GitHub issue, include:
+In an issue, include:
 
-- Trajectory version from `trajectory version`
-- Operating system and architecture
-- Coding-agent client and version
-- Install method
-- Output from `trajectory doctor`
-- Relevant `trajectory doctor logs --grep <term>` output with secrets removed
+- the output of `trajectory version`
+- your operating system and architecture
+- the coding agent and its version
+- how you installed Trajectory
+- the output of `trajectory doctor`
+- matching lines from `trajectory doctor logs --grep <term>`, with secrets
+  removed
 
-Do not paste API keys, app keys, access tokens, private prompts, customer data, or full session transcripts into public issues.
+Never paste API keys, application keys, tokens, private prompts, customer
+data, or full transcripts into a public issue.

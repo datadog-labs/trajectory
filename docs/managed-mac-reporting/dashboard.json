@@ -1,0 +1,91 @@
+{
+  "title": "Trajectory: managed Macs that do not report",
+  "description": "Find managed Macs where the Trajectory Jamf script succeeded but Trajectory sends no heartbeat. See the trajectory-mdm user guide, setup topic, section Find Macs that do not report.",
+  "layout_type": "ordered",
+  "reflow_type": "fixed",
+  "template_variables": [],
+  "widgets": [
+    {
+      "definition": {
+        "type": "note",
+        "content": "The table lists each Mac by its device ID: the Mac's hardware UUID, which Jamf Pro shows as the UDID.\n\n- **Successful script runs:** runs of the Trajectory Jamf script that ended with outcome `ok` in the last 7 days. An empty cell means that the Mac sends heartbeats but had no successful run.\n- **Trajectory heartbeat:** the highest number of Trajectory background processes that the Mac reported at one time in the last 7 days. `0` means that the Mac sent no heartbeat.\n\nMacs with `0` come first. They got Trajectory but do not report. Macs that reported and then stopped show in the monitor **Trajectory: managed Mac stopped reporting**.",
+        "background_color": "white",
+        "font_size": "14",
+        "text_align": "left",
+        "vertical_align": "top",
+        "show_tick": false,
+        "has_padding": true
+      },
+      "layout": {
+        "x": 0,
+        "y": 0,
+        "width": 12,
+        "height": 3
+      }
+    },
+    {
+      "definition": {
+        "type": "query_table",
+        "title": "Macs set up by the Jamf script in the last 7 days",
+        "title_size": "16",
+        "title_align": "left",
+        "has_search_bar": "always",
+        "time": {
+          "live_span": "1w"
+        },
+        "requests": [
+          {
+            "response_format": "scalar",
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "script_runs",
+                "query": "sum:trajectory.ops.mdm_script.run.count{outcome:ok,!trajectory.device_id:unknown} by {trajectory.device_id}.as_count()",
+                "aggregator": "sum"
+              },
+              {
+                "data_source": "metrics",
+                "name": "heartbeat",
+                "query": "max:trajectory.ops.binary.heartbeat{binary_state:running,trajectory.device_id:*} by {trajectory.device_id}",
+                "aggregator": "max"
+              }
+            ],
+            "formulas": [
+              {
+                "formula": "script_runs",
+                "alias": "Successful script runs"
+              },
+              {
+                "formula": "default_zero(heartbeat)",
+                "alias": "Trajectory heartbeat",
+                "conditional_formats": [
+                  {
+                    "comparator": "<",
+                    "value": 1,
+                    "palette": "white_on_red"
+                  }
+                ]
+              }
+            ],
+            "sort": {
+              "count": 500,
+              "order_by": [
+                {
+                  "type": "formula",
+                  "index": 1,
+                  "order": "asc"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      "layout": {
+        "x": 0,
+        "y": 3,
+        "width": 12,
+        "height": 8
+      }
+    }
+  ]
+}

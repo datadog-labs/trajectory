@@ -1,0 +1,260 @@
+{
+  "title": "Trajectory delivery audit",
+  "description": "Daily count of the completed turns and sessions each machine delivered, next to what this organization received. Each point appears on the day after the day it counts.",
+  "layout_type": "ordered",
+  "template_variables": [
+    {
+      "name": "host",
+      "prefix": "host",
+      "default": "*"
+    },
+    {
+      "name": "user",
+      "prefix": "trajectory.user",
+      "default": "*"
+    }
+  ],
+  "widgets": [
+    {
+      "definition": {
+        "type": "note",
+        "content": "Each machine's Trajectory sends `trajectory.instrumentation.publish.daily_sent` once a UTC day, three or more hours after midnight. It counts the turns (`kind:turns`) and sessions (`kind:sessions`) that completed on the day before and whose points this Datadog organization accepted from the machine. The `day` tag names that day.\n\nEach point therefore appears on the day after the day it counts. The charts compare it with what this organization received on the day before, through `day_before()`, so each day on the time axis shows the previous day's audit.\n\n- **Sent minus received above 0**: Datadog acknowledged points that it did not store, such as points older than its intake window or two points in the same second.\n- **Below 0**: this organization received more than the machine counted, such as turns that backfill sent later with their original time.\n- **No sent value**: the machine did not run Trajectory on the next UTC day, or it runs a release that does not send this metric.\n\nDatadog reads a missing series as 0, so the difference charts multiply by `sent / sent`. They show only the days a machine counted at least one turn or session, which includes every day it lost one.\n\n`daily_sent` counts each turn once, and the received sum counts each series. A turn that reached this organization as two series, such as one sent again with a changed tag, lowers the difference. A difference of 0 or below shows only that the received sum is at least the count, and a lost turn can still hide behind a repeated one.\n\nPoints that never left the machine are not counted here. Check `trajectory publish status` on the machine for those.",
+        "background_color": "white",
+        "font_size": "14",
+        "text_align": "left",
+        "show_tick": false,
+        "has_padding": true
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Completed turns per machine: sent and received",
+        "show_legend": true,
+        "legend_layout": "auto",
+        "legend_columns": [
+          "value",
+          "max"
+        ],
+        "time": {
+          "live_span": "1w"
+        },
+        "requests": [
+          {
+            "response_format": "timeseries",
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "sent",
+                "query": "sum:trajectory.instrumentation.publish.daily_sent{kind:turns,$host,$user} by {host}.rollup(max, 86400)"
+              }
+            ],
+            "formulas": [
+              {
+                "formula": "sent",
+                "alias": "Sent (daily_sent kind:turns)"
+              }
+            ],
+            "display_type": "line",
+            "style": {
+              "palette": "cool",
+              "line_type": "solid",
+              "line_width": "thick"
+            }
+          },
+          {
+            "response_format": "timeseries",
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "received",
+                "query": "sum:trajectory.turn.completed{$host,$user} by {host}.as_count().rollup(sum, 86400)"
+              }
+            ],
+            "formulas": [
+              {
+                "formula": "day_before(received)",
+                "alias": "Received (trajectory.turn.completed)"
+              }
+            ],
+            "display_type": "line",
+            "style": {
+              "palette": "orange",
+              "line_type": "dashed",
+              "line_width": "thick"
+            }
+          }
+        ],
+        "yaxis": {
+          "include_zero": true
+        }
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Completed turns per machine: sent but not received",
+        "show_legend": true,
+        "legend_layout": "auto",
+        "legend_columns": [
+          "value",
+          "max"
+        ],
+        "time": {
+          "live_span": "1w"
+        },
+        "requests": [
+          {
+            "response_format": "timeseries",
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "sent",
+                "query": "sum:trajectory.instrumentation.publish.daily_sent{kind:turns,$host,$user} by {host}.rollup(max, 86400)"
+              },
+              {
+                "data_source": "metrics",
+                "name": "received",
+                "query": "sum:trajectory.turn.completed{$host,$user} by {host}.as_count().rollup(sum, 86400)"
+              }
+            ],
+            "formulas": [
+              {
+                "formula": "(sent - day_before(received)) * sent / sent",
+                "alias": "Sent minus received"
+              }
+            ],
+            "display_type": "bars",
+            "style": {
+              "palette": "purple"
+            }
+          }
+        ],
+        "yaxis": {
+          "include_zero": true
+        },
+        "markers": [
+          {
+            "value": "y = 0",
+            "display_type": "info dashed"
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Completed sessions per machine: sent and received",
+        "show_legend": true,
+        "legend_layout": "auto",
+        "legend_columns": [
+          "value",
+          "max"
+        ],
+        "time": {
+          "live_span": "1w"
+        },
+        "requests": [
+          {
+            "response_format": "timeseries",
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "sent",
+                "query": "sum:trajectory.instrumentation.publish.daily_sent{kind:sessions,$host,$user} by {host}.rollup(max, 86400)"
+              }
+            ],
+            "formulas": [
+              {
+                "formula": "sent",
+                "alias": "Sent (daily_sent kind:sessions)"
+              }
+            ],
+            "display_type": "line",
+            "style": {
+              "palette": "cool",
+              "line_type": "solid",
+              "line_width": "thick"
+            }
+          },
+          {
+            "response_format": "timeseries",
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "received",
+                "query": "sum:trajectory.session.completed{$host,$user} by {host}.as_count().rollup(sum, 86400)"
+              }
+            ],
+            "formulas": [
+              {
+                "formula": "day_before(received)",
+                "alias": "Received (trajectory.session.completed)"
+              }
+            ],
+            "display_type": "line",
+            "style": {
+              "palette": "orange",
+              "line_type": "dashed",
+              "line_width": "thick"
+            }
+          }
+        ],
+        "yaxis": {
+          "include_zero": true
+        }
+      }
+    },
+    {
+      "definition": {
+        "type": "timeseries",
+        "title": "Completed sessions per machine: sent but not received",
+        "show_legend": true,
+        "legend_layout": "auto",
+        "legend_columns": [
+          "value",
+          "max"
+        ],
+        "time": {
+          "live_span": "1w"
+        },
+        "requests": [
+          {
+            "response_format": "timeseries",
+            "queries": [
+              {
+                "data_source": "metrics",
+                "name": "sent",
+                "query": "sum:trajectory.instrumentation.publish.daily_sent{kind:sessions,$host,$user} by {host}.rollup(max, 86400)"
+              },
+              {
+                "data_source": "metrics",
+                "name": "received",
+                "query": "sum:trajectory.session.completed{$host,$user} by {host}.as_count().rollup(sum, 86400)"
+              }
+            ],
+            "formulas": [
+              {
+                "formula": "(sent - day_before(received)) * sent / sent",
+                "alias": "Sent minus received"
+              }
+            ],
+            "display_type": "bars",
+            "style": {
+              "palette": "purple"
+            }
+          }
+        ],
+        "yaxis": {
+          "include_zero": true
+        },
+        "markers": [
+          {
+            "value": "y = 0",
+            "display_type": "info dashed"
+          }
+        ]
+      }
+    }
+  ]
+}

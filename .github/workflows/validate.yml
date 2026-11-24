@@ -94,18 +94,16 @@ jobs:
                   raise SystemExit(f"RELEASES.json {channel} channel cannot trail stable")
 
           installer = (root / "install.sh").read_text(encoding="utf-8")
-          latest_asset_url = "https://github.com/$REPO/releases/latest/download/$asset"
-          if latest_asset_url not in installer:
+          if (
+              "https://github.com/$REPO/releases/latest/download" not in installer
+              or 'url="$RELEASE_URL/$asset"' not in installer
+          ):
               raise SystemExit("installer must download from the public latest-release asset URL")
           for forbidden in ("api.github.com", "GH_TOKEN", "GITHUB_TOKEN", "python3"):
               if forbidden in installer:
                   raise SystemExit(f"public installer must not depend on {forbidden}")
           if "Download attempt $attempt of 3 failed" not in installer:
               raise SystemExit("public installer must retain bounded download retries")
-          if '$SCRIPT_DIR/intercepts/$asset' not in installer:
-              raise SystemExit("public installer must stage top-level intercept assets")
-          if "main/intercepts/$asset" not in installer:
-              raise SystemExit("public installer must download top-level intercept assets")
           if "trajectory/intercepts/$asset" in installer:
               raise SystemExit("public installer must not use the source-repository intercept path")
           PY

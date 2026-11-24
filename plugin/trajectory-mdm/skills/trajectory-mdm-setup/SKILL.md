@@ -33,26 +33,24 @@ goes where.
    policy ID of their MDM product with `trajectory-mdm providers`. Do not guess
    the product, the clients, the destinations, or who installs updates.
 4. Write the intent as `trajectory-managed.yaml`, with a comment for each
-   choice. For editor completion, run
+   choice. For the default Jamf Pro bundle, leave out `provider`, `platform`,
+   and `migration_mode`: `trajectory-mdm` fills them in. For editor completion, run
    `trajectory-mdm schema --output managed-endpoint-intent.schema.json`.
 5. Check the intent after each change:
    `trajectory-mdm validate --file trajectory-managed.yaml`. Fix each error.
    Explain each `Warning:` line, and change the setting unless the
    administrator keeps it on purpose.
-6. Make the bundle. Jamf Pro and Intune on macOS need the release files that
-   the `setup` topic names:
-
-   ```bash
-   trajectory-mdm prepare --file trajectory-managed.yaml \
-     --release-json public-release.json --checksums checksums.sha256 \
-     --output trajectory-deployment.zip
-   ```
-
-   Other products and Windows leave them out:
+6. Make the bundle:
    `trajectory-mdm prepare --file trajectory-managed.yaml --output trajectory-deployment.zip`.
-   Jamf Pro bundles get a higher profile revision on every run. To change an
-   Intune deployment that computers already have, add `--profile-revision`
-   with a number above every revision deployed before.
+   The Jamf Pro and Intune scripts on macOS place the release of the helper
+   that makes the bundle, where needed. The helper must be from the release to
+   deploy.
+   They do not read `deployment.ring`. To move Macs to a later release,
+   follow the `Updates` section of the `decisions` topic.
+   A computer applies its deployment's profile at any revision. Keep one
+   Trajectory profile on each computer. Computers on earlier releases need a
+   higher revision: each Jamf Pro run gives one. For Intune, add
+   `--profile-revision` with a number above every revision deployed before.
 7. Check the bundle: `trajectory-mdm verify --bundle trajectory-deployment.zip`.
 8. When the intent lists `config.defaults.yaml`, check the hosted settings
    file from the extracted bundle:

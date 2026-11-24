@@ -1,497 +1,507 @@
 # Cost Tracking
 
-`trajectory cost` shows the tokens and cost of your coding-agent sessions. Use
-it to see what your sessions cost, find the expensive sessions and files, and
-check where a cost number came from.
+Trajectory estimates what your coding-agent sessions cost from the tokens it
+captures. Local USD values estimate captured activity. They are not invoices.
+Codex credits show separately, and `*` marks provisional values. This page
+covers pricing, price sources, attribution, double counting, and how to check
+the numbers.
 
-The command reads data on your machine and does not query Datadog. Its USD
-values are estimates. They cover only the activity that Trajectory captured.
-Before you compare them with a client, provider, gateway, cloud, Cursor Admin,
-or invoice total, read `trajectory user-guide cost-reconciliation`.
+For deeper questions, the binary has these guides:
+`trajectory user-guide cost-attribution` for dashboards,
+`trajectory user-guide cost-reconciliation` before you compare with bills, and
+`trajectory user-guide cursor-cost`.
 
-Related guides:
+## How costs are estimated
 
-- `trajectory user-guide cost-attribution`: how to build Datadog dashboards
-  from Trajectory cost metrics.
-- `trajectory user-guide cost-reconciliation`: how to compare Trajectory cost
-  with other cost sources.
-- `trajectory user-guide cursor-cost`: how Trajectory prices Cursor tokens and
-  when it publishes Cursor cost.
+Trajectory prices each request with the rate of the client that produced it,
+at the time it ran (`observed_at`). It does this at capture and at repair, so
+aliases stay per client and old turns keep their rates. A missing price is
+never $0: an unpriced turn sends no USD
+and shows as unavailable, and a true zero price sends 0.
 
-## Commands
+### Tokens
 
-| Task | Command |
-| --- | --- |
-| See cost by day, agent, and session | `trajectory cost` |
-| Rank the most expensive sessions | `trajectory cost top --since 7d` |
-| Find the files that agents read and edit most | `trajectory cost hotspots --since 7d` |
-| Explain provisional prices | `trajectory cost pricing --since 7d` |
-| Show the cost of each turn in a session | `trajectory cost inspect --session <session-id>` |
-| List facts about a session's cost | `trajectory cost observations --session <session-id>` |
-| Check cost data for each agent | `trajectory cost validate --since 7d` |
+- Reasoning tokens are priced once, as output. Where output already includes
+  them, as in OpenAI, xAI Responses, Codex, and Pi, they are never counted
+  twice.
+- Cache writes with no price for their lifetime are priced at the shortest
+  lifetime, 5 minutes, or 30 minutes for OpenAI. That gives a lower bound,
+  tagged `cache_creation_ttl_assumed_5m` or `cache_creation_ttl_assumed_30m`.
+- If cache-write buckets add up to more than the total, the tokens stay
+  unpriced (`cache_creation_ttl_breakdown_inconsistent`).
+- Long-context rates apply per request. The input multiplier applies to input
+  and cache, and the output multiplier to output. Session sums that cross the
+  threshold stay unpriced.
+- Gemini tool-use prompt tokens count as input. Grounded search bills per
+  query from Gemini 3, and per grounded prompt before it.
+- Given only a provider's total, Trajectory splits it across components by
+  model and tokens. It keeps the total and labels it native.
+- Each WebSearch costs the calling model's rate per search at call time, such
+  as $0.01 for Claude or $0.035 for Gemini 2.5. Searches by unpriced or
+  unknown models, or in unpriced turns, send counts without cost. They also
+  block the session's search cost gauge.
+- Claude Code, Pi, and OpenCode usage comes from client files, once per
+  response. Their turns settle two minutes after they close.
 
-The summary, `top`, `hotspots`, `pricing`, and `validate` commands use the
-last seven days by default. To change the window, add `--since` with a value
-such as `24h`, `30d`, `all`, or a date.
+### Service tiers
 
-### Summary
+Requests are priced at the tier their usage states. That is `service_tier`
+or `speed` for Claude Code, and `fast`, `priority`, `flex`, or `ultrafast`
+for Codex. OpenAI `default` is standard. A rate card prices `fast` (alias
+`priority`) as one multiple of the model's standard prices, and the multiple
+differs by model. `flex` and `ultrafast` set a multiple for each price.
 
-To see your recent cost, run `trajectory cost`. The report has these parts:
+- A missing or unknown tier is priced at standard. If the model has tiers, it
+  is a lower bound (`service_tier_unstated`). Copilot and Cursor always are.
+- Fast without a tier price is a lower bound at standard price
+  (`service_tier_unpriced`). Flex or batch without one stays unpriced
+  (`service_tier_rate_missing`).
+- Fast and long-context multipliers combine only where the provider documents
+  it. Otherwise the request is unpriced (`fast_tier_long_context_unsupported`).
+- Calls captured through `trajectory codex` or `trajectory opencode` record
+  the service tier and cache-write lifetime.
 
-1. A stacked bar chart with one bar for each of seven rolling 24-hour periods.
-   The chart and its table appear only with the default seven-day window.
-   Each bar shows the cost of each agent in that period. Each turn counts in
-   the period of that turn, and a session counts in each period in which it
-   has a turn. For the costs that stay on a session's last day, run
-   `trajectory user-guide reports`.
-2. A legend with the daily average, the number of active periods, and the
-   peak period.
-3. A table of cost for each period.
-4. A table for each agent with cost, sessions, turns, subagents, and tokens.
-5. The sessions with the highest cost.
-6. A **Coverage** section and, when needed, an **Attention** section with
-   notes.
+### Lower bounds
 
-The chart fits the width of your terminal.
+A lower-bound cost carries `trajectory.cost_bound:lower` and a
+`trajectory.cost_bound_reason` joined by `/`. The reasons are `long_context`,
+`cache_write_lifetime`, `service_tier_unstated`, `service_tier_unpriced`,
+`auxiliary_usage_unknown`, and `sub_agent_cost_unknown`. In Datadog, only
+`trajectory.turn.cost.usd.additive` points priced from a client's own usage
+file carry these tags, with the `auxiliary_usage_unknown` reason. Other cost
+metrics never do. A session is a lower bound if any turn, call, or subagent is.
+Bad pricing data loses only that part.
 
-### Rank the most expensive sessions
+GitHub Copilot and Cursor costs are floors, because calls go through their
+backends and the tier and cache lifetimes go unrecorded.
 
-To list the sessions with the highest cost, run `trajectory cost top`.
+### Claude Code
 
-The ranking includes only sessions with complete cost data. A note at the
-bottom gives the number of incomplete sessions that the ranking left out. A
-session is incomplete when one of its turns has no price, or when a subagent
-that it started used tokens and has no price.
-Codex Guardian sessions are included when every turn has an estimate.
+- Claude Code's background requests, such as titles, summaries, and
+  suggestions, skip session files. Native metrics send them as
+  `query_source:auxiliary`, without duplicate retries.
+- Calls missing from the transcript, such as titles, carry
+  `trajectory.cost_component:captured_call`. They add to local and published
+  session cost. An unknown cost marks the session incomplete.
+- Auxiliary dollars are Claude Code's own. Organization rate cards only decide
+  whether they count. Models without a rate give tokens and no dollars.
+- Without native metrics, Claude Code counts from files carry
+  `trajectory.usage_bound:lower` and `trajectory.cost_bound:lower`. Backfilled
+  sessions always do, and they are below live counts.
+- Subagent output without closing entries is
+  `trajectory.output_bound:lower`. Extra native output is
+  `trajectory.output_source:native` when native and file counts match.
+- A session stays a lower bound if `OTEL_METRICS_INCLUDE_SESSION_ID` is false,
+  `query_source` is missing, or temporality is cumulative.
+- Setup leaves Claude native metrics off. Use `trajectory claude`, managed
+  settings, or `CLAUDE_CODE_ENABLE_TELEMETRY=1` with OTLP `http/json` to
+  `http://127.0.0.1:19222/v1/metrics`. If you changed `server.port`, use that
+  port. A managed Claude metrics route wins and leaves Trajectory no native
+  metrics.
 
-### Inspect one session
+### Codex
 
-If a session looks too expensive or too cheap, run
-`trajectory cost inspect --session <session-id>`. You must give the full
-session ID.
+- Codex shows tokens, API-equivalent USD, and ChatGPT credits apart. Never add
+  them. Credits stay local and never go to Datadog.
+- Sessions on ChatGPT credits are priced in USD at standard rates in any tier.
+  GPT-5.6 fast bills 2.5x credits, and cache writes cost input credits.
+- Codex `input_tokens` includes cache reads and writes. Each is split out once.
+  Writes are priced at the cache-write rate, or else at input.
+- Missing, invalid, or inconsistent token data, such as cache writes above
+  uncached input, leaves a turn unpriced (`tokens_status: partial`).
+- Codex model IDs use the base model's rates (`gpt-5.4-codex` uses `gpt-5.4`)
+  and count in `trajectory.turn.cost.usd.additive`. Unknown models stay
+  unpriced.
+- Session cost adds up accepted turn costs. It never prices total session
+  tokens at one rate.
+- Codex rollouts record no cache-write lifetime. Turn cost is a lower bound
+  unless you start Codex with `trajectory codex`.
 
-The command shows each turn with its cost, model, token counts, and tool
-counts. It also shows the cost provenance, which tells you where each cost
-came from. See [Cost Sources](#cost-sources).
+### Codex auto-review
 
-The estimate at the top covers the whole session, because `cost inspect` has
-no `--since` option. It is the same total that the summary and the ranking
-show for the session when their window covers the whole session. It includes
-the cost of the subagents that the session started. When there is such a
-cost, a `Subagent cost` line under the estimate shows that part. The turn table lists the session's own turns, so the turn
-costs add up to the estimate without the subagent part. See
-[Subagents](#subagents).
+Codex auto-review on a ChatGPT sign-in (`codex-auto-review`) has no price.
+Trajectory estimates it at `gpt-5.4` before 2026-07-30 and `gpt-5.6-luna`
+after. Since 2026-10-06 auto-review is free for ChatGPT sign-ins, so later
+reviews show 0 credits but keep API-equivalent USD. An auto-review reviewer on
+an API key names a listed model, such as `gpt-5.6-luna`, and is priced
+normally.
 
-To get facts about the same session, run
-`trajectory cost observations --session <session-id>`. The command reports
-local-cache observations and does not claim root cause or waste. Examples:
-
-- the turn with the highest cost
-- the share of the cost that came from subagents
-- the model with the most recorded cost
-- the mix of cost sources
-- the number of failed or denied tool calls
-- turns that have tokens but a recorded cost of zero
-
-See [Objective Observations](#objective-observations).
-
-### File hotspots
-
-To see which files in a project the agents edit and read most, run
-`trajectory cost hotspots`. The command uses the file tool calls that
-Trajectory kept, and shows two views:
-
-- **Editing hotspots** rank files with many write, edit, patch, or delete
-  attempts. Trajectory labels these rows `review-churn`. The label suggests a
-  file that might need a refactor. It does not tell you why the file changed
-  often.
-- **Read context** ranks files that agents read successfully. Trajectory
-  labels agent setup files `expected-context`. These files include
-  `AGENTS.md`, `CLAUDE.md`, `GEMINI.md`, skills, and agent configuration
-  directories. Agents read them often by design.
-
-Each view shows as a bar chart with its own scale. On a wide terminal the
-two charts are side by side. On a narrow terminal they are stacked.
-
-To look at the last 30 days, run:
-
-```bash
-trajectory cost hotspots --since 30d
-```
-
-To rank directories two levels deep, run:
-
-```bash
-trajectory cost hotspots --group-by directory --depth 2
-```
-
-To rank by tool call count, run:
-
-```bash
-trajectory cost hotspots --sort interactions
-```
-
-Options:
-
-| Option | Effect | Default |
-| --- | --- | --- |
-| `--project PATH` | Selects another local project. | The current directory, or the nearest recorded project that contains it |
-| `--group-by file\|directory` | Ranks single files or whole directories. | `file` |
-| `--depth N` | Sets the directory levels to keep with `--group-by directory`. | `1` |
-| `--sort cost\|interactions` | Ranks by cost indicator or by tool call count. | `cost` |
-
-The USD columns are rough indicators. For each priced turn, Trajectory splits
-the turn cost among the files in one view. It splits by the size of the
-payloads that it kept. If a size is unknown, it splits by the number of
-operations. The read view and the edit view each split the same turn cost.
-Do not add the two views together, and do not use them as the spend for one
-file.
-
-The coverage value is the share of file interactions whose turn had usable
-cost data. Interactions without a price still count toward the counts and
-weights. Trajectory does not show them as zero-cost work.
-
-### Validate cost data for each agent
-
-To check the cost data of recent sessions, run
-`trajectory cost validate --since 7d`. The report has one row for each agent.
-The agents are Claude Code, Codex, Gemini, Pi, OpenCode, Cursor, Hermes Agent, Amp
-Code, Qwen Code, Kilo Code, and Mistral Vibe.
-
-Each row shows:
-
-- whether the agent has recent data
-- the number of turns with a positive recorded cost
-- the number of turns with tokens but zero cost
-- the cost sources that the agent used
-
-The status column uses these values:
-
-| Status | Meaning |
-| --- | --- |
-| `ok` | The cost data is complete. |
-| `estimated` | Some Codex Guardian sessions use a provisional estimate. |
-| `session-aggregate` | The client gave cost only for the whole session. Trajectory does not count these sessions as turns with cost. |
-| `mixed` | Some turns have tokens but zero cost. |
-| `gap` | Some sessions have no priced turns and no session cost. |
-| `stale` | Some sessions have stale cost records. |
-| `no-data` | The agent has no sessions in the window. |
-
-The command exits with code 1 if a row is `gap` or `stale`. Add `--strict` to
-also fail on `mixed` and `no-data`.
-
-Gemini CLI is retired. Its row covers only sessions that Trajectory stored
-before the retirement. Without such sessions, the row shows `no-data`.
-
-The human tables for `inspect` and `validate` leave out the fidelity and
-provisional-count columns. The JSON output includes them.
+Estimates carry `fidelity: proxy` and `proxy_estimate:codex_auto_review`, and
+show as provisional in `trajectory cost`. Datadog gets only the oversight
+cost.
 
 ### Provisional pricing
 
-By default, Trajectory reports only the cost that it recorded with the
-session. Some turns have tokens but no recorded price. The
-`provisional_cost_estimates` feature adds a price for those turns when you
-run a report. The feature is off by default.
+Provisional pricing is off by default. When on, it prices unpriced token rows
+when a report runs. It never changes stored cost, publishes, or converts
+credits. Rates come from the organization card, then the installed version's
+bundled provider card, through approved aliases. Other rows stay unpriced.
+Provisional USD joins totals with a `*`, and one footnote gives the amount and
+a command for details.
 
-1. Turn on the feature:
+Subscription usage keeps API-equivalent USD. Label it included usage, not
+billed. A ChatGPT sign-in alone is not a paid plan.
 
-   ```bash
-   trajectory config features enable provisional_cost_estimates
-   ```
+## Pricing sources
 
-2. Run the summary. Values that include provisional cost end with `*`:
+`trajectory.pricing_source` names the rate source, such as
+`organization_rate_card`, `local_rate_card`, `public_rate_card`,
+`provider_reported`, or `unbilled_model`.
 
-   ```bash
-   trajectory cost --since 7d
-   ```
+The default card is built in, or comes from
+`~/.trajectory/org/provider-pricing.yaml` through full organization sync. It
+holds dated public prices with cache, fast, and long-context rules. Rows in
+the organization copy override the built-in card. The exception is a row that
+repeats a built-in `card_id` and `version`. Built-in models keep their name
+rules.
 
-3. To see how Trajectory priced each model, run:
+`~/.trajectory/org/model-equivalence.yaml`, also from full organization
+sync, maps client model names to provider models. It keeps thinking, speed,
+billing, and context modes apart.
 
-   ```bash
-   trajectory cost pricing --since 7d
-   ```
+Model names:
 
-With the feature on, there are two kinds of cost:
+- Names ending in `-low`, `-medium`, `-high`, or `-xhigh` use the base model's
+  built-in card. This does not apply to Claude names, `-max`, `-fast`,
+  `-none`, or `-minimal`. Since 2026-10-08, organization pricing files price
+  an effort name from its base row. A name whose base `org/pricing.yaml` does
+  not list stays unpriced. Without a base row in `provider-pricing.yaml`, the
+  built-in card prices it. Earlier releases leave such names unpriced.
+- The built-in card strips gateway prefixes and suffixes, such as
+  `baseten/zai-org/glm-5.2` and `:latest`. It accepts dotted Claude and
+  hyphenated GLM versions. Other names need aliases. For models the built-in
+  card lacks, organization files and the custom card retry the lookup
+  without the prefix, path, or suffix.
+- A guessed or `candidate` model match shows only in diagnostics. The turn
+  stays unpriced until organization config adds the exact mapping.
+- With no rate, tokens are recorded without cost (`rate_missing`), unless
+  organization `pricing.unbilled_model_suffixes` marks the model as a known $0.
+  Such a model costs $0, priced, with
+  `trajectory.pricing_source:unbilled_model`, even for clients with explicit
+  prices. User `config.yaml` cannot set the suffixes.
 
-- **Verified:** cost that Trajectory recorded with the local session data.
-- **Provisional:** a price that Trajectory calculates for an unpriced token
-  row when you run the report.
+Organization sync installs pricing files and the custom card only after
+strict validation: no unknown fields, bad entries, repeats, or overlaps. At
+runtime an unreadable catalog keeps the last copy or the built-in rates.
+Invalid cards are dropped, and an overlap drops only that model. Releases
+without custom card support ignore `custom-pricing.yaml`. Keep `pricing.yaml`,
+`provider-pricing.yaml`, and `model-equivalence.yaml` in organization config
+for them. Releases that read the custom card turn merged default rows back
+into replaced rates, so merged files and the card can coexist.
 
-The main `COST` value adds the two, so the summary keeps one headline number.
-In human output, a row or total that includes provisional USD ends with `*`.
-One line below the table explains the mark:
+### Custom rate card
 
-```text
-* Provisional cost: $5.14. Details: trajectory cost pricing --since 7d
+`~/.trajectory/org/custom-pricing.yaml` downloads only if the managed profile
+names it. A failed check keeps the last valid copy. Never edit an entry. Add
+one with a new `id` and window. Requests that no entry matches keep their
+default prices.
+
+```yaml
+schema_version: trajectory.custom_pricing.v1
+entries:
+  - id: cursor-token-rate-2026-10-15
+    client_source: cursor
+    all_default_models: true
+    effective_from: 2026-10-15T00:00:00Z
+    source: https://cursor.com/docs/models-and-pricing.md
+    reason: Token rate on third-party models.
+    modify:
+      fee_usd_per_million_tokens: 0.25
 ```
 
-To find a provisional rate, Trajectory checks the organization card first,
-then the provider card bundled with the installed version. It accepts approved
-aliases and the documented model-name forms. Other models stay unpriced.
+An entry (`trajectory.custom_pricing.v1`) takes an `id`, an optional
+`client_source`, a model scope, `effective_from`, an optional exclusive
+`effective_until`, `source`, `reason`, and one action:
 
-If token data does not split cache writes into 5-minute and 1-hour writes,
-the report says that it assumed 5-minute writes.
+- `override` replaces the default rate's listed fields. Input and output must
+  stay above 0, and `web_search_usd_per_request: 0` makes search free.
+- `add` prices a model the default card lacks.
+- `modify` sets `multiplier`, which scales token rates,
+  `fee_usd_per_million_tokens`, which is never multiplied, or both. Only
+  `modify` can use `all_default_models: true` instead of `models`.
 
-To see every provisional price in the window, run
-`trajectory cost pricing --since 7d`. You do not need a session ID. The
-headline shows `combined = verified + provisional`. The table groups each
-provisional or unresolved pricing decision by these fields:
+Entries match client and model after equivalence. A client-specific entry wins
+over one for all clients. One `override` or `add` and one `modify` can apply.
+Cursor needs entries that name it. An `override` or `modify` without a default
+rate leaves the request unpriced (`custom_rate_base_missing`). Names the
+organization copy refuses need `add`.
 
-- observed model and matched model
-- agent
-- pricing source and match method
-- reason and cache-rate basis
-- sessions, turns, tokens, and estimated USD
+Custom prices report `organization_rate_card`, the card `custom-pricing`, and
+the basis `usage_economic_cost`. Their pricing version joins the entry IDs
+with `+`. Fees show as `total_token_surcharge`.
 
-The table shows up to 50 groups. `--limit` changes only the number of groups
-in the table. The totals always cover all sessions in the window. `--json`
-returns the groups in a stable structure.
+### Cursor pricing
 
-Provisional pricing changes only the reports. Trajectory does not do these
-things with it:
+- `pricing.cursor.mode`: `off` sends no Cursor USD, `shadow` checks the lookup
+  without USD, and `emit`, the default, sends USD. Accept each model's card
+  first.
+- `pricing.cursor.source`: `org_file`, the default, needs a valid,
+  effective-dated `~/.trajectory/org/pricing.yaml`, which full organization
+  sync can supply. Otherwise Cursor stays unpriced.
+  `datadog_reference_table` is not built yet. It reports
+  `pricing_source_unavailable`, sends no USD, and leaves Cursor turns
+  unpriced. An empty value turns pricing off.
+- A managed `pricing.cursor` block replaces yours. It must set the mode and
+  source, or pricing turns off, and it never uses fallback cards.
+- Cursor USD applies from when pricing starts. Managed history sync can
+  republish eligible saved cost under the live metric names, with original
+  timestamps.
 
-- change the cost attribution in the SQLite cache
-- treat a guessed model name as a confirmed match
-- publish provisional dollars to Datadog
-- convert Codex credits into USD
+## Cost attribution
 
-To go back to verified cost only, run
-`trajectory config features disable provisional_cost_estimates`. The change
-applies to the next report.
+`trajectory.turn.cost.usd.additive` sends only for priced turns, tagged
+`trajectory.cost_contract:v2`, `trajectory.cost_role:attribution`, and
+`trajectory.cost_source:turn_metrics`.
+Token metrics always send. Published `trajectory.cost_source` names the stream,
+such as `turn_metrics` or `claude_native_otlp`. The local `cost_source` in
+reports is different.
 
-## Cost Sources
-
-When the cache has them, turn rows include three provenance columns. These
-columns tell you where a value came from:
-
-- `cost_source`: where the turn cost came from. Examples are
-  `native:materialized_token_usage`, `token_derived:materialized`, and
-  `content_length_estimate`.
-- `token_source`: where the token counts came from.
-- `tokens_status`: whether the token counts are real, corrected, estimated,
-  or unavailable.
-
-Use these columns to judge how reliable a cost number is. For example, they
-show if the cost came from the agent itself or from a token count and a rate
-card.
-
-The published Datadog tag `trajectory.cost_source` has a different meaning.
-It names the metric stream, such as `turn_metrics` or `claude_native_otlp`.
-Dashboards use the tag to select one stream.
-
-## Objective Observations
-
-`trajectory cost observations` says what the local cache shows. It does not
-say why the agent behaved that way.
-
-Example observations:
-
-- "Turn 14 accounted for 41% of recorded session cost."
-- "Model claude-opus-4 accounted for 72% of recorded session cost."
-- "The session recorded 6 failed tool calls and 1 denied tool call."
-- "2 turns have token counts but recorded zero cost."
-
-Do not read an observation as a cause. A turn with a high cost can come from a
-hard task. Use the observations as a start for your own review.
-
-## How the Report Is Built
-
-### Time windows
-
-A window such as `--since 7d` selects turns by when each turn happened. The
-session start time does not matter. If the window starts or ends during a
-session, Trajectory counts only the turns inside the window. If a whole
-session is inside the window, Trajectory can use the session total.
-
-Turns with missing or unclear timestamps show as unavailable. The summary and
-the ranking use the same set of turns. JSON output reports the window limits
-apart from the session start and end times.
-
-A session whose full data aged out has no turns left, only its totals. It
-counts as a whole in a window that holds its end, at the cost stored when it
-aged. So a window that starts during such a session counts all of its cost. `cost inspect` marks it "Summary only". See
-[What reports show for an aged session](CONFIGURATION.md#what-reports-show-for-an-aged-session).
+- `trajectory.cost_contract:v2` marks current cost. Only live points that pass
+  current usage checks get it. Legacy and replayed samples lack it, so never
+  widen totals to untagged points. Generic historical replay sends no live
+  cost metrics.
+- Every v2 USD point in a total records its price source, method, fidelity,
+  basis, unit, version, and card, or it is rejected.
+- Cursor cost carries `trajectory.cost_basis` and `trajectory.pricing_version`.
+  From the native rate card it also carries
+  `trajectory.cost_method:four_component_token_rate_card` and
+  `trajectory.cost_fidelity:token_derived`.
 
 ### Subagents
 
-A session's cost includes the subagents that it started. In a window, a
-subagent counts when the turn that started it is inside the window.
+Session cost includes the subagents it started. A window counts a subagent
+when its starting turn is in the window. Subagents recorded as their own
+sessions, as in Codex, show separately, and the parent adds only the rest, so
+each counts once. Claude subagent cost is one `agent_role:child` point per
+child model.
 
-Some agents record a subagent as a session of its own, as Codex does. Such a
-subagent shows as its own session. Trajectory adds to the session that started
-it only the part that the subagent's own session does not show, so each
-subagent counts once.
+### Pull requests
 
-If a subagent used tokens and has no price, the cost of the session that
-started it is partial. A partial session shows a known subtotal, leaves the
-ranking of `trajectory cost top`, and counts as an incomplete session there.
+`trajectory.pr.work.cost.usd.additive` splits each priced, completed turn's
+cost across the PRs with evidence on that turn. A turn's shares add up to one,
+so ungrouped `.as_count()` totals match the cost of PR-assigned turns. Turns
+with no PR share add nothing, so the PR total can be lower than the turn
+total. Only cost and fractional turns split, not tokens or duration.
 
-`trajectory cost`, `trajectory cost top`, `trajectory cost inspect`,
-`trajectory cost observations`, and `trajectory summary` all use this rule.
-`cost inspect` and `cost observations` always cover the whole session. The
-other commands show the same total for a session when their window covers the
-whole session.
+- Weights are 8 for an explicit PR action and 4 for a branch checkout, push,
+  or link. Work before the create weighs 2, and a PR URL in the prompt 1.
+- Attribution needs GitHub or GitLab change IDs, on any host, in local
+  output. Reading a PR alone earns no share.
+- An unpriced turn, or one without a completed `turn_end`, gets no PR share
+  and reverses earlier shares. It never sends zero.
+- Shares sent mid-session use cached turn cost. A signed correction at session
+  end aligns them with the final `trajectory.turn.cost.usd.additive`.
+- PR work rows carry confidence and allocation reason tags, plus their turns'
+  `trajectory.cost_role:attribution`, `trajectory.cost_source:turn_metrics`, and
+  route and overlap values, or `mixed`.
+- Cost per PR is PR-assigned cost over distinct PRs. In Datadog, divide
+  `trajectory.pr.work.cost.usd.additive` by the distinct PRs in
+  `trajectory.pr.observations.total`.
 
-`cost inspect` and `cost observations` show recorded cost only. With
-provisional pricing on, the summary and the ranking add provisional prices,
-for a session and for a subagent's own session. So they can differ from
-inspect by the provisional part.
+Trajectory decides locally which work a user produced: successful writes and
+eligible commits. Baselines, downloaded PRs, pulls, rebases, resets, merges,
+and cherry-picks never count.
 
-### Automatic history repair
+### Automated oversight
 
-You do not need to run a backfill command before you view cost. Before it
-builds a summary or a ranking, `trajectory cost` imports sessions from client
-history files on disk. This step
-covers Claude Code, Codex and Codex.app, Cursor, Pi, and OpenCode sessions in
-the window. A session counts as inactive after two minutes without changes.
-For each inactive session, the command does these things:
+Oversight cost counts only with a model, a finite amount of zero or more,
+`cost_attribution_status:priced`, and `oversight_cost_inclusion:independent`.
+`parent_included` reviews send no oversight token metrics and no second
+charge, because the parent turn already includes them. The local dashboard
+adds all priced oversight cost. `trajectory.oversight.cost.usd.additive` adds
+only independent reviews, so the totals can differ.
 
-- It writes the Trajectory session JSONL file if it is missing.
-- It adds the session to the local cache if it is missing.
-- It repairs incomplete cache records.
+## Overlap and double counting
 
-This step is local. It does not read remote credentials, queue metrics, or
-publish data. It skips client files that are still active or changing. If
-you set `--db`, the command skips it.
+A dashboard faces two separate overlaps. Several systems can report the same
+spend (source overlap). Turn, session, and PR views describe the same usage
+(grain overlap).
 
-A Codex session saved by an older version of Trajectory can have a stale cost.
-The background service rebuilds those sessions from their Codex rollouts once
-a day. To rebuild them now, run `trajectory backfill local --apply`.
+Grain: turn, session, and PR cost metrics describe the same usage. Never add
+them. PR work cost regroups turn cost.
 
-The **Coverage** section shows three counts. They are sessions found on disk,
-sessions in the local cache, and sessions with incomplete or unpriced cost.
-JSON output has the same counts in `local_history`, with the results for each
-source.
+Source: Trajectory cost is attribution with local context, such as user,
+project, and session. Billing data may sit closer to invoices. Decide each
+view's role.
 
-Trajectory leaves out a cost row if its source is active or missing, or if
-its Codex cost is stale. It does not use an older value for that row. Other sessions still count. The report shows one
-total, and a note at the bottom reports the coverage. JSON output gives the
-number of left-out sessions in `incomplete_ranking_sessions` or
-`incomplete_cost_sessions`.
+- Each total uses one source: Trajectory attribution, native client
+  telemetry, or provider, gateway, or cloud billing. Label each widget.
+  Comparison views never add sources.
+- `trajectory.cost_role:attribution` is Trajectory's attribution, for
+  breakdowns, with `trajectory.cost_contract:v2`.
+  `trajectory.cost_role:client_telemetry` is forwarded native telemetry, such as
+  uncorrected Claude native OTLP with
+  `trajectory.cost_source:claude_native_otlp`. Use it to cross-check, never to
+  add. File-work indicators use `indicator`.
+- Never add across `trajectory.cost_role`. If both attribution and client
+  telemetry exist, count one. With one trusted source, use only that one.
+- Claude Code cost also appears as `anthropic.user_cost.amount`,
+  `claude_code.cost.usage`, and older `claude_code.*` series. Each total uses
+  one of them.
+- Never add Trajectory Cursor cost to Cursor Admin API cost, or to the
+  integration's `total_cents`, `charged_cents`, or `spending.spend_cents`.
+  Never add those together either.
+- Cursor's share of the total holds only new turns priced in managed `emit`
+  mode. Show Cursor's organization ledger separately.
 
-When `trajectory serve` starts, it can also run its own background Codex
-repair. The `trajectory cost` command still repairs its own window.
+Trajectory dedupes only its own points. Each cost point has a stable ID for
+each turn or session, so restarts and replays never resend it. No source
+shares a request ID today, so totals across sources are never exact. Matches
+by email, model, time, or provider session ID are guesses. Keep such sources
+side by side and labeled, and never dedupe them. Before you compare with
+provider, gateway, cloud, or Cursor data, align the account, route, product,
+currency, policy, window, and late data. Attribution and billing differ in
+cardinality, timing, and coverage, so a difference alone does not mean a
+pricing error.
 
-To send cost points that a Datadog destination never received, use
-`trajectory cost publish`. It rebuilds the cost metrics from the session
-history that Trajectory kept, and keeps their original timestamps. Without
-`--yes`, it shows a preview and sends nothing.
+Audit or activity streams without cost fields give activity coverage only.
+Never build cost series or zero fallbacks from them. Series without cost role,
+source, or overlap tags are legacy or external. Show them as unverified, and
+keep them out of totals and dedupe.
 
-### Codex costs
+### Overlap tags
 
-Trajectory reports Codex tokens, API-equivalent USD, and ChatGPT Codex credits
-as separate values. Do not add credits to USD, because both measure the same
-usage.
+Overlap tags appear on `trajectory.turn.cost.usd.additive`, web search additive
+cost, session `.accumulated` gauges, cost distributions, and spans. They mark
+likely overlap, not bad data. Among metrics, only cost metrics carry them, so
+overlap filters on token, tool, duration, marker, or serve metrics give
+incomplete results. Do not use overlap tags in place of sensitive route
+configuration.
 
-- OpenAI publishes no price for `codex-auto-review`, the model name of a
-  Codex Guardian review on a ChatGPT sign-in. Trajectory estimates it at the
-  list price of the model OpenAI said reviews ran on: `gpt-5.4` before
-  2026-07-30 and `gpt-5.6-luna` from then on. Human output shows this note
-  once, at the bottom. JSON output and `cost observations` include the fidelity
-  details.
-- OpenAI made these reviews free for ChatGPT sign-ins on 2026-10-06. A review
-  from that day on has 0 credits and keeps its API-equivalent USD.
-- If token data is missing, invalid, or incomplete, the cost shows as
-  unavailable.
-- If the output tokens already include reasoning tokens, Trajectory does not
-  charge the reasoning tokens a second time.
+- `trajectory.provider_route`: `direct`, `llm_gateway`, `bedrock`, `vertex`,
+  `foundry`, `unknown`, or `mixed`. `trajectory.provider:anthropic` alone is
+  not evidence of overlap.
+- `trajectory.provider_cost_visibility` names the outside billing system that
+  can hold the same spend.
+- `trajectory.cost_dedupe_group` is a stable route bucket, such as
+  `anthropic:direct`, `anthropic:llm_gateway`, or `anthropic:mixed`. Groups can
+  overlap. Dedupe by it, never by model, service, or span name. It never
+  identifies a request.
+- `trajectory.cost_dedupe_confidence` (`high`, `medium`, `low`, or `mixed`)
+  rates how sure the route is. It does not rate whether two points are one
+  charge.
+- `trajectory.cost_overlap_risk` says whether another billing source likely
+  sees the same spend. It is the main signal for automatic dedupe:
+  - `possible`: Anthropic sees the spend. If you connected Anthropic
+    analytics, total with it and break down with Trajectory. Otherwise total
+    with Trajectory.
+  - `aggregate_only`: gateway or cloud billing sees the total. Use it for
+    billed totals, and Trajectory for allocation and trends.
+  - `mixed`: one aggregate holds several routes. Split by
+    `trajectory.cost_dedupe_group` before you dedupe, and show the review
+    state.
+  - `unknown`: too little route evidence. Keep the data visible with a review
+    badge and a confidence filter. Never hide it.
 
-### Cost of Trajectory analysis
+## Check costs
 
-`trajectory patterns analyze --yes` calls an LLM to classify your sessions.
-It is the only command that makes Trajectory call a model, and only after you
-confirm its estimate. This cost is not agent work.
+`trajectory cost` shows local tokens and estimated cost by day, agent, and
+session. It never queries Datadog. Its commands default to `--since 7d`, and
+also take `24h`, `30d`, `all`, or a date. `--limit` trims rows, never totals,
+and every command takes `--json`.
 
-When you run this command, `trajectory cost` adds a separate
-**Trajectory-owned analysis** table. It has a row for
-`user-driven-segmentation` with the run count, the tokens, and a cost from the
-rate card. Trajectory leaves this cost out of the USD headline, the agent rows,
-and the session ranking.
+- `trajectory cost`: a stacked chart of seven periods, in the default window
+  only, and the daily average and peak. Then tables by period, agent, and top
+  session, with Coverage notes.
+- `trajectory cost top`: the costliest sessions with complete cost data. A
+  note counts the incomplete ones left out. JSON has
+  `incomplete_ranking_sessions` and `incomplete_cost_sessions`. Guardian
+  sessions rank if every turn has an estimate. Text adds one note, and JSON
+  shows the fidelity details.
+- `trajectory cost inspect --session <full ID>`: each turn's cost, model,
+  tokens, tools, and cost source. Totals include subagents.
+- `trajectory cost observations --session <id>`: local facts, such as the
+  top-cost turn, the subagent share, the model, the source mix, and failed
+  tools. It names no root causes.
+- `trajectory cost pricing --since 7d`: provisional and unresolved pricing
+  decisions, up to 50 groups. Combined equals verified plus provisional.
+- `trajectory cost hotspots`: the project files agents edit and read most, with
+  folder totals.
+- `trajectory cost validate`: checks Claude Code, Codex, the Codex app, Gemini,
+  Pi, OpenCode, Cursor, Hermes, Amp, Qwen, Kilo, and Mistral Vibe.
+- `trajectory cost publish`: resends cost metrics a destination missed, from
+  kept history, with original timestamps. Without `--yes` it only previews.
 
-### Progress output
+`cost`, `cost top`, `cost inspect`, `cost observations`, and
+`trajectory summary` show the same session total when the window covers the
+session. `cost inspect` and `cost observations` show recorded cost only. They
+can differ from summaries and rankings that use provisional prices.
 
-On an interactive terminal, cost commands print the current step and the time
-spent to stderr. The steps include history import, Codex repair, aggregation,
-ranking, and rendering. During the Codex repair, the progress line counts the
-sessions that Trajectory checked, repaired, skipped, found missing, or failed
-to repair. Progress never goes to stdout, so JSON and redirected output do not
-change.
+### Windows and history
 
-## JSON Output
+A window selects turns by when they happened. A session wholly inside it may
+use its total. Turns with an unclear time show as unavailable. An aged-out
+session counts whole, at its stored cost, in the window that holds its end.
+`cost inspect` marks it `Summary only`.
 
-Every subcommand supports `--json` for agents and scripts. Add the flag to
-any command in the [Commands](#commands) table. For example, this command
-prints the summary as JSON:
+`cost` and `cost top` first import sessions idle for two minutes from Claude
+Code, Codex, the Codex app, Cursor, Pi, and OpenCode history, and repair them.
+This import is local: it uses no remote credentials, queues no metrics, and
+publishes nothing. It skips active files, and `--db` skips it. Interactive
+cost and patterns commands print progress, with Codex repair counts, to
+standard error only. JSON and redirected output stay clean.
 
-```bash
-trajectory cost --json
-```
+Codex pricing changes mark sessions stale. A stale session leaves the local
+totals only, until daily repair or `trajectory backfill local --apply`, which
+the CLI suggests, derives it again. `trajectory session import codex --force`
+also derives and republishes it. If its rollout is gone or its billing lane
+cannot be checked, the session stays stale, and `trajectory cost` keeps its
+stored cost. After repair, fast sessions on API keys keep priority pricing. API
+key and `unknown` lanes get no credit estimate, and sessions without a mode
+stay standard.
 
-The summary, hotspots, pricing, inspect, observations, and validate commands
-open the local SQLite cache as read-only. To read a test cache, set its path
-with `--db <path>` or `TRAJECTORY_CACHE_DB`.
+### Coverage and completeness
 
-### Token usage in `cost inspect`
+A session is incomplete if a turn, or a subagent that used tokens, lacks a
+price. It then shows the known subtotal. JSON counts `priced_items` and
+`unavailable_items`. Any unpriced turn blocks a complete session USD.
 
-The `cost inspect` JSON includes `schema_version: 1`. Read token data from
-`session.token_usage`:
+The Coverage section counts sessions on disk, in the cache, and with
+incomplete or unpriced cost. JSON `local_history` adds the result for each
+source. Claude Code and Cursor `session_end` report `cost_complete`, priced
+and unpriced turns, and the known subtotal. `session_cost_usd` appears only
+when every turn with tokens is priced.
 
-```json
-{
-  "schema_version": 1,
-  "session": {
-    "session_id": "01J...",
-    "token_usage": {
-      "scope": "turn_components",
-      "component_status": "complete",
-      "input": 120,
-      "output": 40,
-      "cache_read": 20,
-      "cache_creation": 0,
-      "total": 180
-    }
-  }
-}
-```
+In Datadog, check pricing coverage with `trajectory.pricing.lookup.total`, one
+point per Cursor generation, else per turn. Its `status` and `reason` tags say
+why a lookup found no price. Also check
+`trajectory.capture.gap{reason:usage_missing}`.
 
-Use `scope` and `component_status` to decide which fields you can use:
+### Turn details and JSON
 
-- If `component_status` is `complete`, you can use the four components.
-- If it is `partial`, the object keeps the values it has. They might not add
-  up to the total.
-- Some clients report only a total for the whole session. Then `scope` is
-  `session_aggregate_only`, and `component_status` is `unavailable`. The
-  object contains only `total`. Trajectory does not make up a split.
-- The scopes `mixed`, `session_totals`, and `unavailable` are also not
-  complete.
+Turn rows show `cost_source`, such as `token_derived:materialized`,
+`token_source`, and `tokens_status`: `real`, `corrected`, `estimated`, or
+`unavailable`. Fidelity columns are in JSON only.
 
-The older flat token fields are still present for compatibility. New
-automation should use `session.token_usage`.
+- `cost inspect --json` has `schema_version: 1`. Read `session.token_usage`.
+  Use its components only if `component_status` is `complete`. Flat token
+  fields are legacy.
+- Agent and breakdown rows include subagent cost. JSON `subagent_cost_usd`,
+  or `cost.subagent_usd` in the summary, gives that part. It is absent when
+  there is none.
+- Summary JSON adds `verified_cost_usd`, `provisional_cost_usd`, and
+  `contains_provisional_cost`. Incomplete data gives `cost_state: partial`
+  with a lower-bound `known_subtotal_usd`.
+- Classification cost has its own `user-driven-segmentation` table, failed
+  attempts included. It never enters the headline, agent rows, agent-work
+  cost, or the ranking.
 
-### Subagent cost
+### Hotspots
 
-The cost fields include the cost of the subagents that a session started. A
-separate field gives that part, so you can subtract it:
+`trajectory cost hotspots` takes `--project PATH`, `--group-by file|directory`
+(default `file`), `--depth N` (default 1), and `--sort cost|interactions`
+(default `cost`). It labels heavily edited files `review-churn`, and agent
+setup files such as `AGENTS.md`, `CLAUDE.md`, skills, and config
+`expected-context`. Its USD splits priced turn cost across files by payload
+size. It shows where work went. It does not measure spend on a file.
+Coverage shows the share of usable cost.
 
-- In a session object, `subagent_cost_usd` is the subagent part of `cost_usd`,
-  or of `known_subtotal_usd` when the cost is partial. It is also part of
-  `verified_cost_usd`. Session objects appear in `top_sessions` of the summary,
-  in `sessions` of `cost top`, and in `session` of `cost inspect` and
-  `cost observations`.
-- In the summary, `subagent_cost_usd` is the subagent part of `total_cost_usd`,
-  or of `known_subtotal_usd` when the total is partial.
-- `priced_items` and `unavailable_items` count a session's turns and its
-  subagents. A subagent that used tokens and has no price adds one to
-  `unavailable_items`.
-- The per-agent rows in `agents` include subagent cost in `cost_usd` and have
-  no separate field for it.
+### Validate
 
-The field is absent when no subagent cost was added.
+`cost validate` statuses are `ok`, `gap` (no priced turns), `mixed` (tokens but
+zero cost), `stale`, `no-data`, `session-aggregate`, and `estimated` (Guardian
+provisional). It exits 1 on any `gap` or `stale` row. `--strict` also fails
+`mixed` and `no-data`.
 
-### Provisional fields in the summary
-
-When provisional pricing applies, the summary JSON adds `verified_cost_usd`,
-`provisional_cost_usd`, and `contains_provisional_cost`. If all data in the
-window has a price, `total_cost_usd` is the combined total. If some data has
-no price, `cost_state` is `partial`. In that case, `known_subtotal_usd` is the
-combined lower bound.
+To recompute each session's turns, tool calls, tokens, and cost, and check
+the totals, run `trajectory session audit --source-data --db <cache.db>`.
