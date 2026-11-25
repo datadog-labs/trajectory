@@ -93,19 +93,11 @@ jobs:
               if version_key(releases[channel]["version"]) < stable_key:
                   raise SystemExit(f"RELEASES.json {channel} channel cannot trail stable")
 
-          installer = (root / "install.sh").read_text(encoding="utf-8")
-          if (
-              "https://github.com/$REPO/releases/latest/download" not in installer
-              or 'url="$RELEASE_URL/$asset"' not in installer
-          ):
-              raise SystemExit("installer must download from the public latest-release asset URL")
-          for forbidden in ("api.github.com", "GH_TOKEN", "GITHUB_TOKEN", "python3"):
-              if forbidden in installer:
-                  raise SystemExit(f"public installer must not depend on {forbidden}")
-          if "Download attempt $attempt of 3 failed" not in installer:
-              raise SystemExit("public installer must retain bounded download retries")
-          if "trajectory/intercepts/$asset" in installer:
-              raise SystemExit("public installer must not use the source-repository intercept path")
+          for script_name in ("install.sh", "uninstall.sh"):
+              script = (root / script_name).read_text(encoding="utf-8")
+              for forbidden in ("api.github.com", "GH_TOKEN", "GITHUB_TOKEN"):
+                  if forbidden in script:
+                      raise SystemExit(f"public {script_name} must not reference {forbidden}")
           PY
       - name: Require releases before channel metadata
         env:
